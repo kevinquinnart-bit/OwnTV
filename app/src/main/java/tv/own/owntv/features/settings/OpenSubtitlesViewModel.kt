@@ -59,12 +59,25 @@ class OpenSubtitlesViewModel(
         }
     }
 
-    fun signIn(username: String, password: String, staySignedIn: Boolean) {
+    /**
+     * [apiKey] / [serverUrl], when given, are saved BEFORE the login request goes out. They used to be
+     * saved by a separate, unawaited call, so the first sign-in after entering a key could still read
+     * the old blank key and go to the shared Worker, which refuses this build with 403.
+     */
+    fun signIn(
+        username: String,
+        password: String,
+        staySignedIn: Boolean,
+        apiKey: String? = null,
+        serverUrl: String? = null,
+    ) {
         if (username.isBlank() || password.isEmpty()) {
             _error.value = Error(ErrorKind.EMPTY_CREDENTIALS)
             return
         }
         viewModelScope.launch {
+            if (apiKey != null) settings.setOpenSubtitlesApiKey(apiKey)
+            if (serverUrl != null) settings.setOpenSubtitlesServerUrl(serverUrl)
             val pid = activeProfile() ?: return@launch
             _state.value = UiState.Busy
             runCatching { accounts.signIn(pid, username, password, staySignedIn) }

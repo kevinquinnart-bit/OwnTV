@@ -342,9 +342,8 @@ fun OpenSubtitlesAccountScreen(onBack: () -> Unit, modifier: Modifier = Modifier
                 showSignIn = false
                 // The optional fields are edited in place here, so Sign in is also their Save. A
                 // blank one is a deliberate clear: the form opened showing whatever was stored.
-                settingsVm.setOpenSubtitlesApiKey(apiKey)
-                settingsVm.setOpenSubtitlesServerUrl(serverUrl)
-                vm.signIn(signInUser.trim(), signInPass, signInStay)
+                // Saved inside signIn, before the login request, so the request uses this key.
+                vm.signIn(signInUser.trim(), signInPass, signInStay, apiKey = apiKey, serverUrl = serverUrl)
                 signInPass = ""
             },
             // Back returns to the local/remote chooser rather than closing both levels.
