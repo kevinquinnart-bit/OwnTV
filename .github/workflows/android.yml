@@ -171,11 +171,10 @@ jobs:
             CODE=$(( ${MA:-0} * 10000 + ${MI:-0} * 100 + ${PA:-0} ))   # 1.2.0 -> 10200
             [ "$CODE" -gt 0 ] || CODE=1
           else
-            # Dev (non-tag) builds mirror the local-build fallback in app/build.gradle.kts:
-            # pinned HIGH so a dev APK always installs over any published release
-            # (no INSTALL_FAILED_VERSION_DOWNGRADE) and the in-app updater stays quiet.
-            NAME="99.99.99"
-            CODE=99999
+            # Kevin's copy: every build on main is a numbered release, 1.0.<build number>, so each one
+            # is newer than the last and the in-app updater offers it to the TV.
+            NAME="1.0.${{ github.run_number }}"
+            CODE=$(( 100000 + ${{ github.run_number }} ))
           fi
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
@@ -233,7 +232,15 @@ jobs:
           # it as the env var it always did.
         run: |
           chmod +x ./gradlew
-          if [ -n "$KEYSTORE_FILE" ]; then
+          # Kevin's copy: always a signed release. With no keystore secret, app/build.gradle.kts signs
+          # with the fixed key in app/signing/, so every APK installs over the previous one.
+          if [ -z "$KEYSTORE_FILE" ] && [ -f app/signing/kevin-release.keystore ]; then
+            echo "Building signed release APK (arm) with Kevin's key"
+            ./gradlew assembleStandardRelease --stacktrace
+            ARM_SRC=$(ls app/build/outputs/apk/standard/release/*.apk | head -n1)
+            echo "Built arm: $ARM_SRC"
+            echo "ARM_SRC=$ARM_SRC" >> "$GITHUB_ENV"
+          elif [ -n "$KEYSTORE_FILE" ]; then
             echo "Building signed release APKs (both ABI flavors)"
             ./gradlew assembleRelease --stacktrace
             # Product flavors split the output by flavor subfolder:
@@ -258,12 +265,10 @@ jobs:
       - name: Name the APK (OwnTV-v<version>)
         run: |
           mkdir -p dist
-          if [ "$IS_TAG" = "true" ]; then
-            OUT="OwnTV-v${{ steps.ver.outputs.name }}.apk"
-          else
-            OUT="OwnTV-dev-${GITHUB_SHA::7}.apk"
-          fi
+          OUT="OwnTV-v${{ steps.ver.outputs.name }}.apk"
           cp "$ARM_SRC" "dist/$OUT"
+          # Fixed name for the always-latest link the TV's Downloader app uses.
+          cp "$ARM_SRC" "dist/OwnTV.apk"
           echo "APK_OUT=$OUT" >> "$GITHUB_ENV"
           echo "Packaged dist/$OUT (arm: arm64-v8a + armeabi-v7a)"
           # Tag builds also ship a stable-named copy so a fixed URL always serves the latest signed
@@ -286,6 +291,30 @@ jobs:
           name: ${{ env.APK_OUT }}
           path: dist/*
           if-no-files-found: error
+
+      # Kevin's copy: every build on main is published as a release, so the TV can fetch it from
+      # https://github.com/kevinquinnart-bit/OwnTV/releases/latest/download/OwnTV.apk and the in-app
+      # updater sees it. The body is the commit message, which the updater shows as "What's new".
+      - name: Write build notes
+        if: env.IS_TAG != 'true'
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          printf '%s\n' "${COMMIT_MSG:-Build ${{ steps.ver.outputs.name }}}" | head -n 20 > dist/BUILD_NOTES.md
+
+      - name: Publish build release
+        if: env.IS_TAG != 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ steps.ver.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          name: OwnTV ${{ steps.ver.outputs.name }}
+          files: |
+            dist/${{ env.APK_OUT }}
+            dist/OwnTV.apk
+          body_path: dist/BUILD_NOTES.md
+          make_latest: true
+          generate_release_notes: false
 
       - name: Extract release notes from CHANGELOG.md
         if: env.IS_TAG == 'true'
