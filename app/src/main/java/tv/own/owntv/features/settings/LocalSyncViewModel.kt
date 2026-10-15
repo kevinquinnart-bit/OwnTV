@@ -31,6 +31,11 @@ import tv.own.owntv.core.sync.local.SyncFailure
  */
 class LocalSyncViewModel(
     private val sync: LocalSyncManager,
+    private val sourceDao: tv.own.owntv.core.database.dao.SourceDao,
+    private val channelDao: tv.own.owntv.core.database.dao.ChannelDao,
+    private val movieDao: tv.own.owntv.core.database.dao.MovieDao,
+    private val seriesDao: tv.own.owntv.core.database.dao.SeriesDao,
+    private val catalogSync: tv.own.owntv.core.sync.work.CatalogSyncScheduler,
 ) : ViewModel() {
 
     val paired: StateFlow<List<PairedDevice>> = sync.pairedDevices
@@ -193,6 +198,10 @@ class LocalSyncViewModel(
         viewModelScope.launch {
             sync.apply(current.file, current.sections, current.password, deviceSettings)
                 .onSuccess { summary ->
+                    // Kevin's copy: a sync carries the playlist (address + login) but never its
+                    // channels, films or series. Start the download for any playlist that has none
+                    // yet, so the TV is usable straight after a sync instead of showing nothing.
+                    downloadEmptyPlaylists()
                     val sent = current.device != null && current.direction == SyncDirection.MERGE &&
                         sync.send(current.device, current.sections).isSuccess
                     step = Step.Result(received = summary, sent = sent)
@@ -200,6 +209,17 @@ class LocalSyncViewModel(
                 .onFailure { error = reason() }
             busy = false
         }
+    }
+
+    private suspend fun downloadEmptyPlaylists() {
+        runCatching {
+            sourceDao.getAllOnce().forEach { source ->
+                val held = channelDao.countForSourceOnce(source.id) +
+                    movieDao.countForSourceOnce(source.id) +
+                    seriesDao.countForSourceOnce(source.id)
+                if (held == 0) catalogSync.enqueueSync(source.id, reason = "local_sync")
+            }
+        }.onFailure { android.util.Log.w("LocalSync", "post-sync download not started: ${it.message}") }
     }
 
     fun cancel() {
