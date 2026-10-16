@@ -10,6 +10,11 @@
     <!-- In-app updates: hand the downloaded release APK to the system installer. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Kevin's copy: open the app when the TV starts or wakes, and again after an in-app update.
+         "Display over other apps" is what Android requires before an app may open itself; see AutoOpen. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- MODIFY_AUDIO_SETTINGS is declared by :player-core, which owns VolumeBoost. -->
 
     <!-- Android TV provider writes for Watch Next cards. -->
@@ -60,6 +65,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Kevin's copy: TV start-up and just-updated both reopen the app (see AutoOpen). -->
+        <receiver
+            android:name=".AutoOpenReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Disable WorkManager default auto-init; OwnTVApp provides Configuration. -->
         <provider
