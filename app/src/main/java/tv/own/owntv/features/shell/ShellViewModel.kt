@@ -84,7 +84,13 @@ class ShellViewModel(
 
     /** The Auto refresh settings — core's [tv.own.owntv.core.sync.AutoRefresh], shared with the phone. */
     fun checkAutoRefresh(includeStartup: Boolean) {
-        viewModelScope.launch { autoRefresh.check(includeStartup) }
+        viewModelScope.launch {
+            tv.own.owntv.applyDefaultPlaylistAutoRefresh(
+                settings,
+                org.koin.core.context.GlobalContext.get().get<tv.own.owntv.core.database.dao.SourceDao>(),
+            )
+            autoRefresh.check(includeStartup)
+        }
     }
 
     val themeMode: StateFlow<ThemeMode> = settings.themeMode
