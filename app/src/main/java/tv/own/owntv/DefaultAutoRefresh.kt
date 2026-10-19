@@ -32,3 +32,34 @@ internal suspend fun applyDefaultPlaylistAutoRefresh(settings: SettingsRepositor
         }
     }
 }
+
+/**
+ * Kevin's copy: any playlist with no channels, films or series, and any TV Guide source with no
+ * programmes, starts downloading now. Used at start-up and straight after a Wi-Fi sync, which copies
+ * a playlist or guide address but never its contents. An empty list or guide is never left waiting:
+ * unlike the timed refresh, this does not hold back while something is playing.
+ */
+internal suspend fun downloadEmptySources() {
+    val koin = org.koin.core.context.GlobalContext.get()
+    runCatching {
+        val channels = koin.get<tv.own.owntv.core.database.dao.ChannelDao>()
+        val movies = koin.get<tv.own.owntv.core.database.dao.MovieDao>()
+        val series = koin.get<tv.own.owntv.core.database.dao.SeriesDao>()
+        val catalog = koin.get<tv.own.owntv.core.sync.work.CatalogSyncScheduler>()
+        koin.get<SourceDao>().allSourceIds().forEach { id ->
+            val held = channels.countForSourceOnce(id) + movies.countForSourceOnce(id) + series.countForSourceOnce(id)
+            if (held == 0) catalog.enqueueSync(id, reason = EMPTY_FILL, policy = androidx.work.ExistingWorkPolicy.KEEP)
+        }
+    }
+    runCatching {
+        val epgDao = koin.get<tv.own.owntv.core.database.dao.EpgDao>()
+        val epgSync = koin.get<tv.own.owntv.core.sync.work.EpgSyncScheduler>()
+        koin.get<EpgSourceStore>().getAll().forEach { src ->
+            if (epgDao.countForSources(listOf(src.id)) == 0) {
+                epgSync.enqueueSync(src.id, EMPTY_FILL, 0, androidx.work.ExistingWorkPolicy.KEEP)
+            }
+        }
+    }
+}
+
+private const val EMPTY_FILL = "empty_fill"

@@ -19,6 +19,7 @@
 # category protocol: Stable protocol or comparison identifier.
 # category technical: Reviewed non-user-facing technical literal.
 
+1	technical	app/src/main/java/tv/own/owntv/DefaultAutoRefresh.kt	empty_fill
 1	log	app/src/main/java/tv/own/owntv/MainActivity.kt	BgImage
 1	log	app/src/main/java/tv/own/owntv/MainActivity.kt	OwnTVHome
 1	compiler	app/src/main/java/tv/own/owntv/MainActivity.kt	RememberReturnType
@@ -293,9 +294,6 @@
 1	technical	app/src/main/java/tv/own/owntv/features/settings/LocalSyncScreen.kt	localSyncBusy
 1	technical	app/src/main/java/tv/own/owntv/features/settings/LocalSyncScreen.kt	localSyncBusyAngle
 1	technical	app/src/main/java/tv/own/owntv/features/settings/LocalSyncScreen.kt	…
-1	log	app/src/main/java/tv/own/owntv/features/settings/LocalSyncViewModel.kt	LocalSync
-1	technical	app/src/main/java/tv/own/owntv/features/settings/LocalSyncViewModel.kt	local_sync
-1	log	app/src/main/java/tv/own/owntv/features/settings/LocalSyncViewModel.kt	post-sync download not started: ${it.message}
 7	empty	app/src/main/java/tv/own/owntv/features/settings/ManageSourcesScreen.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/features/settings/ManageSourcesScreen.kt	▶
 10	technical	app/src/main/java/tv/own/owntv/features/settings/MetadataSettingsScreen.kt	\0

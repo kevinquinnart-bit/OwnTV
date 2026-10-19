@@ -95,6 +95,7 @@ class ShellViewModel(
                 org.koin.core.context.GlobalContext.get().get<tv.own.owntv.core.database.dao.SourceDao>(),
             )
             autoRefresh.check(includeStartup)
+            if (includeStartup) tv.own.owntv.downloadEmptySources()
         }
     }
 
