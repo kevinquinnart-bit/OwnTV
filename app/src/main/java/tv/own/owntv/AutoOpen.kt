@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import kotlinx.coroutines.launch
 
 /**
  * Kevin's copy: bring OwnTV to the screen on its own.
@@ -22,17 +23,41 @@ import android.provider.Settings
  * Android only lets an app open itself from the background when it holds "display over other apps"
  * (SYSTEM_ALERT_WINDOW). A Fire TV has no menu to grant that; it is granted once over Wi-Fi from a phone.
  * Without it every path here does nothing, so the app behaves exactly as before.
+ *
+ * Also the place that knows when the app has left the screen, which is when stale playlists and guides
+ * are refreshed (see [refreshStaleWhileOffScreen]).
  */
 object AutoOpen {
     private const val DELAY_MS = 1_500L
     private var startedActivities = 0
+    private var heldWhileOffScreen: Set<Long> = emptySet()
+    private fun watch() = org.koin.core.context.GlobalContext.get().get<tv.own.owntv.core.live.WatchSession>()
     private val main = Handler(Looper.getMainLooper())
+    private val background = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+    )
 
     /** Called once from [OwnTVApp.onCreate]. */
     fun install(app: Application) {
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-            override fun onActivityStarted(activity: Activity) { startedActivities++ }
-            override fun onActivityStopped(activity: Activity) { startedActivities = (startedActivities - 1).coerceAtLeast(0) }
+            override fun onActivityStarted(activity: Activity) {
+                // Back on screen: the channel resumes, so mark it as being watched again.
+                if (startedActivities == 0) heldWhileOffScreen.forEach { watch().open(it) }
+                heldWhileOffScreen = emptySet()
+                startedActivities++
+            }
+            override fun onActivityStopped(activity: Activity) {
+                startedActivities = (startedActivities - 1).coerceAtLeast(0)
+                // Off screen: nothing is playing, so refresh anything past its refresh time now.
+                if (startedActivities == 0 && !activity.isChangingConfigurations) {
+                    // Playback is stopped while off screen (MainActivity.onStop), but the record of what
+                    // is being watched is kept by the player screen and would hold every timed refresh
+                    // back until the channel is closed. Release it while off screen.
+                    heldWhileOffScreen = watch().watching.value
+                    watch().closeAll()
+                    background.launch { refreshStaleWhileOffScreen() }
+                }
+            }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
             override fun onActivityResumed(activity: Activity) = Unit
             override fun onActivityPaused(activity: Activity) = Unit

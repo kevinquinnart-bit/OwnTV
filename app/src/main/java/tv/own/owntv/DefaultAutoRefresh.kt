@@ -63,3 +63,52 @@ internal suspend fun downloadEmptySources() {
 }
 
 private const val EMPTY_FILL = "empty_fill"
+
+/**
+ * Kevin's copy: refresh anything past its refresh time the moment the app leaves the screen (Home,
+ * another app, or the TV going to standby).
+ *
+ * The timed refresh in core waits for playback to stop, and someone who always has a channel on never
+ * gives it that moment: reopening the app resumes the channel, so the guide was never refreshed. With
+ * the app off screen nothing is playing, so the download cannot cause a stutter. Each playlist and guide
+ * keeps its own Auto refresh choice; Off is respected, and a playlist or guide with nothing saved uses
+ * the 12-hour default.
+ */
+internal suspend fun refreshStaleWhileOffScreen() {
+    val koin = org.koin.core.context.GlobalContext.get()
+    val settings = koin.get<SettingsRepository>()
+    val now = System.currentTimeMillis()
+    val twelveHours = 12 * 3_600_000L
+    runCatching {
+        val modes = settings.epgAutoRefresh.first()
+        val epgDao = koin.get<tv.own.owntv.core.database.dao.EpgDao>()
+        val epgSync = koin.get<tv.own.owntv.core.sync.work.EpgSyncScheduler>()
+        koin.get<EpgSourceStore>().getAll().forEach { src ->
+            val mode = modes[src.id]
+            if (mode?.mode == EpgAutoRefresh.OFF) return@forEach
+            val threshold = mode?.thresholdMs ?: twelveHours
+            if (now - (src.lastSyncAt ?: 0L) >= threshold) {
+                epgSync.enqueueSync(src.id, OFF_SCREEN, epgDao.countForSources(listOf(src.id)), androidx.work.ExistingWorkPolicy.KEEP)
+            }
+        }
+    }
+    runCatching {
+        val modes = settings.playlistAutoRefresh.first()
+        val catalog = koin.get<tv.own.owntv.core.sync.work.CatalogSyncScheduler>()
+        koin.get<SourceDao>().getAllOnce().forEach { source ->
+            val mode = modes[source.id]
+            if (mode?.mode == PlaylistAutoRefresh.OFF) return@forEach
+            val threshold = mode?.thresholdMs ?: twelveHours
+            if (now - (source.lastSyncAt ?: 0L) >= threshold) {
+                catalog.enqueueSync(
+                    source.id,
+                    reason = OFF_SCREEN,
+                    contentTypes = tv.own.owntv.core.sync.SyncContentTypes.enabledOf(source),
+                    policy = androidx.work.ExistingWorkPolicy.KEEP,
+                )
+            }
+        }
+    }
+}
+
+private const val OFF_SCREEN = "off_screen_refresh"
