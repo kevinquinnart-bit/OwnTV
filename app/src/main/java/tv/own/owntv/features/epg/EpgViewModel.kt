@@ -896,6 +896,12 @@ class EpgViewModel(
         val rawChannels = if (settings.guideShowEmpty.first()) channelDao.channelsForGuide(playlistIds, q, MAX_CHANNELS)
             else channelDao.channelsWithGuide(ids, q, MAX_CHANNELS)
         val favoriteIds = favoriteDao.observeFavoriteIds(pid, MediaType.LIVE).first().toSet()
+        // Kevin's copy: your own Favorites order (the one set with Move in Live TV), so the Guide's
+        // Favorites list and "Favourites first" follow it instead of the provider's channel order.
+        val favoriteOrder: Map<Long, Int> = if (favoriteIds.isEmpty()) emptyMap() else
+            channelDao.snapshotFavoritesManual(
+                pid, tv.own.owntv.core.database.entity.ContentOrderEntity.FAV_CONTEXT, playlistIds, MAX_CHANNELS,
+            ).withIndex().associate { (i, ch) -> ch.id to i }
         val sortGuideMode = settings.sortGuide.first()
         // Hidden categories keep their channels out of the guide too (parity with Live TV), and a
         // filter pointing at a now-hidden category falls back to "All" instead of an empty grid.
@@ -938,7 +944,7 @@ class EpgViewModel(
                 SettingsRepository.GuideSort.ALPHA -> matched.sortedWith(byAlpha)
                 SettingsRepository.GuideSort.PROVIDER -> matched.sortedWith(byProvider)
                 SettingsRepository.GuideSort.CATCHUP -> matched.sortedWith(compareByDescending<ChannelEntity> { it.catchup }.then(byProvider))
-                SettingsRepository.GuideSort.FAVORITES -> matched.sortedWith(compareByDescending<ChannelEntity> { it.id in favoriteIds }.then(byProvider))
+                SettingsRepository.GuideSort.FAVORITES -> matched.sortedWith(compareBy<ChannelEntity> { favoriteOrder[it.id] ?: if (it.id in favoriteIds) Int.MAX_VALUE - 1 else Int.MAX_VALUE }.then(byProvider))
                 // LIVE_TV, the old default, is the provider's order too (Channel number was the same thing).
                 SettingsRepository.GuideSort.LIVE_TV -> matched.sortedWith(byProvider)
             }.let { sorted ->
@@ -948,6 +954,8 @@ class EpgViewModel(
                     is tv.own.owntv.core.live.LiveKey.Folder -> sorted.filter { ch ->
                         ch.categoryId == filter.id && (folderKey == null || cust.movedFromOrigin[CustomizeKeys.channel(ch)] != folderKey)
                     }
+                    tv.own.owntv.core.live.LiveKey.Favorites -> sorted.filter { it.id in memberIds.orEmpty() }
+                        .sortedBy { favoriteOrder[it.id] ?: Int.MAX_VALUE }
                     else -> sorted.filter { it.id in memberIds.orEmpty() }
                 }
             }
