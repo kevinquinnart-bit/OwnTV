@@ -62,6 +62,11 @@ class ShellViewModel(
     /** The startup update check runs once per launch, not once per shell composition. */
     var startupUpdateCheckDone = false
 
+    /** Kevin's copy: when the automatic update check last ran (elapsed time), and whether the version it
+     *  finds should download straight away. */
+    var lastUpdateCheckAt = 0L
+    var autoInstallPending = false
+
     init {
         // One-time: move any existing playlist EPG into the new standalone EPG sources (v2.2.0).
         viewModelScope.launch { runCatching { epgMigration.run() } }

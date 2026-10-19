@@ -1983,13 +1983,43 @@ fun OwnTVShell(
         var showChangelog by remember { mutableStateOf(false) }
         val settingsRepo = koinInject<tv.own.owntv.core.settings.SettingsRepository>()
         val updateCheckOnStart by settingsRepo.updateCheckOnStart.collectAsStateWithLifecycle(initialValue = false)
-        LaunchedEffect(updateCheckOnStart) {
-            // Once per launch: a rebuilt shell must not bring the "latest version" card back.
-            if (updateCheckOnStart && !showStartupToast && !shellVm.startupUpdateCheckDone) {
-                kotlinx.coroutines.delay(5_000)
-                shellVm.startupUpdateCheckDone = true
-                showStartupToast = true
-                updateManager.check()
+        // Kevin's copy: check every time the app comes back on screen (a Fire TV keeps the app in
+        // memory, so "close and reopen" is a return to the screen, not a new launch), at most once every
+        // 10 minutes. A new version found by this check downloads straight away and goes to the
+        // installer, so the only press left is the system's own Install.
+        val updateLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+        var updateCheckTick by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+        DisposableEffect(updateLifecycle) {
+            val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_START) updateCheckTick++
+            }
+            updateLifecycle.lifecycle.addObserver(observer)
+            onDispose { updateLifecycle.lifecycle.removeObserver(observer) }
+        }
+        LaunchedEffect(updateCheckOnStart, updateCheckTick) {
+            if (!updateCheckOnStart || updateCheckTick == 0) return@LaunchedEffect
+            kotlinx.coroutines.delay(5_000)
+            val now = android.os.SystemClock.elapsedRealtime()
+            val last = shellVm.lastUpdateCheckAt
+            if (last != 0L && now - last < 10 * 60_000L) return@LaunchedEffect
+            shellVm.lastUpdateCheckAt = now
+            shellVm.startupUpdateCheckDone = true
+            shellVm.autoInstallPending = true
+            showStartupToast = true
+            updateManager.check()
+        }
+        LaunchedEffect(updateManager) {
+            updateManager.state.collect { s ->
+                when (s) {
+                    is UpdateManager.State.Available -> if (shellVm.autoInstallPending) {
+                        // Once per check: the manager returns to Available after handing over to the
+                        // installer, and that must not start a second download.
+                        shellVm.autoInstallPending = false
+                        updateManager.downloadAndInstall()
+                    }
+                    UpdateManager.State.UpToDate, is UpdateManager.State.Failed -> shellVm.autoInstallPending = false
+                    else -> Unit
+                }
             }
         }
         if (showChangelog) {
