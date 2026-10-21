@@ -1269,6 +1269,16 @@ class LiveViewModel(
         zapList.next(delta)?.let { zapTo(it) }
     }
 
+    /** Kevin's copy: the channel [delta] steps from the one playing, without changing anything. Only
+     *  answers from the browse list itself, so looking never moves the zap anchor. */
+    fun peekZap(delta: Int): tv.own.owntv.player.DirectTuneChannelInfo? {
+        val list = zapList.channels.value
+        val i = list.indexOfFirst { it.id == _previewChannel.value?.id }
+        if (i < 0 || list.isEmpty()) return null
+        val ch = list[Math.floorMod(i + delta, list.size)]
+        return tv.own.owntv.player.DirectTuneChannelInfo(ch.number, ch.name, ch.logoUrl)
+    }
+
     /**
      * CH+/- step: show the channel at once, open the stream once the user stops moving.
      *

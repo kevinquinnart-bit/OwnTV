@@ -159,6 +159,11 @@ fun PlayerHud(
     inert: Boolean = false,
     onChannelUp: (() -> Unit)? = null,
     onChannelDown: (() -> Unit)? = null,
+    // Kevin's copy: D-pad Up/Down browse channels without changing what is playing. [onPeekChannel]
+    // names the channel that many steps away; [onZapBy] changes to it when OK is pressed. Null keeps the
+    // old behaviour, where Up/Down change channel straight away.
+    onPeekChannel: ((Int) -> DirectTuneChannelInfo?)? = null,
+    onZapBy: ((Int) -> Unit)? = null,
     // Live: open the channel-list overlay (Left while the controls are hidden). Null = not a live channel.
     onOpenChannelList: (() -> Unit)? = null,
     // Live: open the watch-history list (Right while the controls are hidden) — jump straight back to a
@@ -335,6 +340,24 @@ fun PlayerHud(
     val zap: (Int) -> Unit = { d ->
         cancelDirectTune()
         (if (d < 0) onChannelUp else onChannelDown)?.invoke(); channelFlash++
+    }
+
+    // ---- Browse then confirm (Kevin's copy) ----
+    // Up/Down move a cursor through the channel list while the current channel keeps playing; the card
+    // names the channel under the cursor. OK changes to it, Back (or 6 s without a press) cancels.
+    val canBrowse = onPeekChannel != null && onZapBy != null
+    var browseDelta by remember { mutableIntStateOf(0) }
+    var browseTick by remember { mutableIntStateOf(0) }
+    var browseEndKey by remember { mutableStateOf<Key?>(null) }
+    val browseInfo = remember(browseDelta) { if (browseDelta != 0) onPeekChannel?.invoke(browseDelta) else null }
+    LaunchedEffect(browseTick) { if (browseDelta != 0) { delay(6_000); browseDelta = 0 } }
+    val browse: (Int) -> Unit = { d ->
+        cancelDirectTune()
+        val next = browseDelta + d
+        // The cursor never lands back on the playing channel by accident of wrapping: zero means "none".
+        browseDelta = if (next != 0 && onPeekChannel?.invoke(next) != null) next else 0
+        browseTick++
+        if (browseDelta == 0 && next != 0) zap(d) // no list to browse: fall back to a straight change
     }
 
     // Restartable timeout: each new digit restarts the ~2 s window. On expiry, submit.
@@ -543,6 +566,22 @@ fun PlayerHud(
                     }
                 }
             }
+            // ---- Browse then confirm: OK changes to the channel under the cursor, Back cancels ----
+            // The release of a key that ended a browse is swallowed too, so it cannot also open the
+            // controls (OK) or leave the player (Back).
+            if (e.type == KeyEventType.KeyUp && browseEndKey == e.key) {
+                browseEndKey = null
+                return@onPreviewKeyEvent true
+            }
+            if (browseDelta != 0 && !inert && dialog == HudDialog.NONE && e.type == KeyEventType.KeyDown &&
+                (e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter || e.key == Key.Back)
+            ) {
+                val chosen = browseDelta
+                browseDelta = 0
+                browseEndKey = e.key
+                if (e.key != Key.Back) { onZapBy?.invoke(chosen); channelFlash++ }
+                return@onPreviewKeyEvent true
+            }
             // ---- Existing key handling (unchanged, but skip for digit KeyUp already consumed above) ----
             if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             when {
@@ -558,6 +597,8 @@ fun PlayerHud(
                 // intended: CH-/Down from the first channel lands on the last, and vice versa.
                 canZap && e.key == Key.MediaNext -> { zap(1); true }
                 canZap && e.key == Key.MediaPrevious -> { zap(-1); true }
+                canBrowse && isLive && !controlsVisible && e.key == Key.DirectionUp -> { browse(1); true }
+                canBrowse && isLive && !controlsVisible && e.key == Key.DirectionDown -> { browse(-1); true }
                 canZap && isLive && !controlsVisible && e.key == Key.DirectionUp -> { zap(1); true }
                 canZap && isLive && !controlsVisible && e.key == Key.DirectionDown -> { zap(-1); true }
                 // N6 — Left/Right with the controls hidden: reveal them on the timeline and take the first
@@ -615,7 +656,10 @@ fun PlayerHud(
                 .padding(start = 28.dp, top = if (controlsVisible) 92.dp else 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (isLive && (tuned != null || (showFlash && !controlsVisible))) {
+            if (isLive && browseInfo != null && !controlsVisible) {
+                // Browsing: the channel under the cursor. What is playing has not changed yet.
+                ChannelOsdCard(title = browseInfo.name, subtitle = browseInfo.number?.let { stringResource(R.string.player_channel_number, it) }, logoUrl = browseInfo.logoUrl)
+            } else if (isLive && (tuned != null || (showFlash && !controlsVisible))) {
                 // A fresh tune drives the card from the lookup result, not player metadata: the Stalker and
                 // mpv paths publish their metadata after an async resolve, which would show the old channel.
                 if (tuned != null) {
