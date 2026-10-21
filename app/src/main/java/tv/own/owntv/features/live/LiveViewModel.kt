@@ -613,6 +613,25 @@ class LiveViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), defaultRail)
 
+    // Kevin's copy: which entries are versions of the same channel (FHD / HD / SD). Rebuilt when the
+    // playlists change or their channels are re-downloaded. See ChannelVariants.
+    private val variantIndex = MutableStateFlow(VariantIndex.EMPTY)
+
+    init {
+        viewModelScope.launch {
+            ctx.flatMapLatest { c ->
+                if (c.sourceIds.isEmpty()) flowOf(c to 0)
+                else channelDao.countAll(c.sourceIds).map { c to it }
+            }
+                .debounce(2_000)
+                .collect { (c, _) ->
+                    variantIndex.value = if (c.sourceIds.isEmpty()) VariantIndex.EMPTY else withContext(Dispatchers.Default) {
+                        VariantIndex(channelDao.snapshotAll(c.sourceIds, VARIANT_INDEX_LIMIT))
+                    }
+                }
+        }
+    }
+
     val channels: Flow<PagingData<ChannelEntity>> = combine(
         _selected,
         ctx,
@@ -623,6 +642,7 @@ class LiveViewModel(
         // Rebuild the pager when a folder gains/loses manual order (C3): the fast-path plain
         // PagingSource doesn't observe content_order, so the switch must recreate it.
         .combine(orderedContexts) { args, _ -> args }
+        .combine(variantIndex) { args, _ -> args }
         .flatMapLatest { (key, c, query, sort, cs) ->
             // Customizations are applied to each fresh PagingData inside the pager chain — a PagingData
             // that the UI already collected must never be re-transformed (Paging forbids re-collection,
@@ -633,16 +653,30 @@ class LiveViewModel(
                 val cust = cs.cust
                 val hiddenCats = cs.hiddenCats
                 val movedFrom = cust.movedFromOrigin
-                if (cust.hiddenItems.isEmpty() && cust.itemNames.isEmpty() && hiddenCats.isEmpty() && movedFrom.isEmpty()) paging
-                else paging
+                val variants = variantIndex.value
+                // Kevin's copy: one entry per channel. Of a channel's versions, only the best one that
+                // this list holds is shown; a search shows whatever it matched.
+                val inThisList: (ChannelEntity) -> Boolean = when {
+                    query.isNotBlank() -> { _ -> false }
+                    key is LiveKey.Folder -> { m -> m.categoryId == key.id && isChannelVisible(m, cust, hiddenCats, key) }
+                    key == LiveKey.Favorites -> { m -> m.id in favoriteIds.value }
+                    key == LiveKey.Catchup -> { m -> m.catchup && isChannelVisible(m, cust, hiddenCats, key) }
+                    key == LiveKey.All -> { m -> isChannelVisible(m, cust, hiddenCats, key) }
+                    else -> { _ -> false } // History and your own categories list exactly what you put there
+                }
+                paging
                     .filter { ch ->
                         isChannelVisible(ch, cust, hiddenCats, key) &&
                             // Moved-out items leave ONLY their origin folder (they stay in All/search).
                             (movedFrom[CustomizeKeys.channel(ch)]?.let { origin ->
                                 key !is LiveKey.Folder || origin != folderContextKeys.value[key.id]
-                            } ?: true)
+                            } ?: true) &&
+                            variants.isShownIn(ch, inThisList)
                     }
-                    .map { ch -> cust.itemNames[CustomizeKeys.channel(ch)]?.let { ch.copy(name = it) } ?: ch }
+                    .map { ch ->
+                        cust.itemNames[CustomizeKeys.channel(ch)]?.let { ch.copy(name = it) }
+                            ?: ChannelVariants.displayName(ch.name).let { if (it == ch.name) ch else ch.copy(name = it) }
+                    }
             }
         }
         .cachedIn(viewModelScope)
@@ -984,6 +1018,7 @@ class LiveViewModel(
     /** In-pane preview playback (no history) — triggered by the UI after the focus settles. */
     fun playPreview(channel: ChannelEntity) {
         if (channel.categoryId != null && channel.categoryId in hiddenCategoryIds.value) return
+        disarmVariantWatch()
         // Core keeps the preview off a promoted full-screen stream, re-mutes on a re-focus instead of
         // reloading, mints a Stalker link, and holds back on a one-session panel while mpv plays.
         live.preview(channel, muted = !livePreviewAudio.value)
@@ -1517,12 +1552,22 @@ class LiveViewModel(
         // #115 — a protected channel stays in-app whatever this setting says: no standard intent extra
         // carries a licence URL, so the external player would open it and fail immediately.
         if (externalPlayerOn.value && channel.drmConfig == null) { playExternal(channel); return }
-        _previewChannel.value = channel
+        // Kevin's copy: no quality label in the name on screen (a renamed channel keeps your name).
+        val shown = if (custom.value.itemNames[CustomizeKeys.channel(channel)] != null) channel
+            else ChannelVariants.displayName(channel.name).let { if (it == channel.name) channel else channel.copy(name = it) }
+        _previewChannel.value = shown
         clearTimeshift() // normal live = not timeshifted
         _catchupActive.value = false // tuning live ends any archive playback the HUD was showing
+        // Kevin's copy: start on the channel's best visible version; the watch below steps down to a
+        // lighter one if it keeps buffering. What the screen calls "the channel" stays the one picked.
+        val cs = custResolved.value
+        val versions = variantIndex.value.group(channel).filter { isChannelVisible(it, cs.cust, cs.hiddenCats, null) }
+            .ifEmpty { listOf(channel) }
+        armVariantWatch(versions, shown.name)
+        val first = versions.first()
         // Core routes it (DRM, the pin, a learned panel refusal, the playlist, the setting), arms the
         // ladder and starts the engine — the same code the phone runs.
-        live.start(channel, getSource(channel.sourceId))
+        live.start(if (first.id == channel.id) shown else first.copy(name = shown.name), getSource(first.sourceId))
         recordLiveHistory(channel)
     }
 
@@ -1893,6 +1938,7 @@ class LiveViewModel(
     }
 
     fun stopPreview() {
+        disarmVariantWatch()
         live.stop() // both engines, every watcher and the give-up alarm, and the reconnect link
         _previewChannel.value = null
     }
@@ -2107,7 +2153,88 @@ class LiveViewModel(
     private fun countFlow(key: LiveKey, c: Ctx, hiddenCats: Set<Long>): Flow<Int> =
         liveCountFlow(key, c.profileId, c.sourceIds, hiddenCats, channelDao, customCategoryDao)
 
+    // ---- Kevin's copy: step down to a lighter version of the channel when it keeps buffering ----
+    // Three stalls of a second or more within two minutes, or one stall of eight seconds, moves to the
+    // channel's next version down (FHD → HD → the unlabelled one → SD). Only full-screen live playback;
+    // a rewind or a catch-up programme is left alone. Opening a channel starts again from its best.
+    private var variantVersions: List<ChannelEntity> = emptyList()
+    private var variantAt = 0
+    private var variantShownName = ""
+    private val variantStalls = ArrayDeque<Long>()
+    private var variantHasPlayed = false
+    private var variantBufferingSince = 0L
+    private var variantLongStall: Job? = null
+
+    private fun armVariantWatch(versions: List<ChannelEntity>, shownName: String) {
+        variantVersions = if (versions.size > 1) versions else emptyList()
+        variantAt = 0
+        variantShownName = shownName
+        resetVariantStalls()
+    }
+
+    private fun disarmVariantWatch() {
+        variantVersions = emptyList()
+        resetVariantStalls()
+    }
+
+    private fun resetVariantStalls() {
+        variantStalls.clear()
+        variantHasPlayed = false
+        variantBufferingSince = 0L
+        variantLongStall?.cancel()
+        variantLongStall = null
+    }
+
+    private fun onVariantPlayback(buffering: Boolean, playing: Boolean) {
+        if (variantVersions.isEmpty()) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (playing && !buffering) {
+            if (variantBufferingSince > 0L && now - variantBufferingSince >= VARIANT_STALL_MS) {
+                variantStalls.addLast(now)
+                while (variantStalls.isNotEmpty() && now - variantStalls.first() > VARIANT_STALL_WINDOW_MS) variantStalls.removeFirst()
+            }
+            variantHasPlayed = true
+            variantBufferingSince = 0L
+            variantLongStall?.cancel()
+            if (variantStalls.size >= VARIANT_STALLS_TO_STEP) stepDownVariant()
+            return
+        }
+        if (buffering && variantHasPlayed && variantBufferingSince == 0L) {
+            variantBufferingSince = now
+            variantLongStall?.cancel()
+            variantLongStall = viewModelScope.launch {
+                delay(VARIANT_LONG_STALL_MS)
+                if (variantBufferingSince > 0L) stepDownVariant()
+            }
+        }
+    }
+
+    private fun stepDownVariant() {
+        if (_catchupActive.value || timeshift.isRewound) { resetVariantStalls(); return }
+        if (variantAt + 1 >= variantVersions.size) { resetVariantStalls(); return }
+        variantAt++
+        val next = variantVersions[variantAt]
+        resetVariantStalls()
+        Log.i(ENGINE_TAG, "variant step down to ${next.id} (${variantAt + 1} of ${variantVersions.size})")
+        live.launch { live.start(next.copy(name = variantShownName), getSource(next.sourceId)) }
+    }
+
+    init {
+        viewModelScope.launch {
+            combine(previewEngine.buffering, player.buffering, previewEngine.isPlaying, player.isPlaying) { b1, b2, p1, p2 ->
+                (b1 || b2) to (p1 || p2)
+            }
+                .distinctUntilChanged()
+                .collect { (buffering, playing) -> onVariantPlayback(buffering, playing) }
+        }
+    }
+
     private companion object {
+        const val VARIANT_INDEX_LIMIT = 100_000
+        const val VARIANT_STALL_MS = 1_000L
+        const val VARIANT_STALL_WINDOW_MS = 120_000L
+        const val VARIANT_STALLS_TO_STEP = 3
+        const val VARIANT_LONG_STALL_MS = 8_000L
         const val ENGINE_TAG = "LiveEngine"
 
         /** How long a channel must stay tuned before it counts as watched — see [recordLiveHistory]. */
