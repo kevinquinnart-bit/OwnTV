@@ -121,10 +121,11 @@
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	(?<![\\p{L}\\p{N}])
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	UHD|4K|FHD|FULL ?HD|HDR|HEVC|H\\.?26[45]|HD|SD|1080[PI]?|720P|576P|540P|(?:50|60) ?FPS|LQ|HQ|RAW
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	[^\\p{L}\\p{N}+]+
-1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	\\(\\s*\\)|\\[\\s*]|\\{\\s*}
+1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	\\(\\s*\\)|\\[\\s*\\]|\\{\\s*\\}
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	\\s*([|•\\-:])(\\s*[|•\\-])+\\s*
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	\\s+
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	^[\\s|•\\-:]+|[\\s|•\\-:]+$
+1	technical	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	id|${ch.id}
 1	technical	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	|
 3	technical	app/src/main/java/tv/own/owntv/features/live/LiveScreen.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/features/live/LiveScreen.kt	+
