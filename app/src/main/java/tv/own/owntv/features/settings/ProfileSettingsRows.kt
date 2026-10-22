@@ -29,6 +29,7 @@ import tv.own.owntv.ui.theme.mpx
 import tv.own.owntv.ui.theme.stageAccent
 
 private const val ADD_ROW = -1L
+private const val CLEAR_FAV_ROW = -2L
 
 /** How many profiles Settings › Profile lists, for the page's count. */
 @Composable
@@ -53,17 +54,26 @@ internal fun ProfileSettingsRows() {
     var editing by remember { mutableStateOf<ProfileEntity?>(null) }
     var creating by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf<ProfileEntity?>(null) }
+    // Clear favourites: the same picker as More › Favourites, for the profile in use.
+    val favVm: tv.own.owntv.features.more.MoreCountsViewModel = koinViewModel()
+    val favCounts by favVm.favorites.collectAsStateWithLifecycle()
+    var clearingFavourites by remember { mutableStateOf(false) }
+    val clearFavFocus = remember { FocusRequester() }
     // A closing editor or confirmation hands focus back to the row it came from (Add a profile, or the
     // profile — its neighbour when it was deleted).
     val rowFocus = remember { HashMap<Long, FocusRequester>() }
     val addFocus = remember { FocusRequester() }
     var returnTo by remember { mutableStateOf<Long?>(null) }
-    LaunchedEffect(editing, creating, confirmDelete, profiles) {
-        if (editing != null || creating || confirmDelete != null) return@LaunchedEffect
+    LaunchedEffect(editing, creating, confirmDelete, clearingFavourites, profiles) {
+        if (editing != null || creating || confirmDelete != null || clearingFavourites) return@LaunchedEffect
         val id = returnTo ?: return@LaunchedEffect
         withFrameNanos { }
         val target = rowFocus[id].takeIf { profiles.any { it.id == id } } ?: profiles.lastOrNull()?.let { rowFocus[it.id] } ?: addFocus
-        if (id == ADD_ROW) runCatching { addFocus.requestFocus() } else runCatching { target.requestFocus() }
+        when (id) {
+            ADD_ROW -> runCatching { addFocus.requestFocus() }
+            CLEAR_FAV_ROW -> runCatching { clearFavFocus.requestFocus() }
+            else -> runCatching { target.requestFocus() }
+        }
         returnTo = null
     }
 
@@ -114,6 +124,23 @@ internal fun ProfileSettingsRows() {
         help = help,
         modifier = Modifier.focusRequester(addFocus),
     )
+    StageSettingRow(
+        icon = OwnTVIcon.TRASH,
+        title = stringResource(R.string.more_fav_clear),
+        desc = stringResource(R.string.more_fav_clear_line),
+        value = null,
+        onClick = { returnTo = CLEAR_FAV_ROW; clearingFavourites = true },
+        help = help,
+        modifier = Modifier.focusRequester(clearFavFocus),
+    )
+
+    if (clearingFavourites) {
+        tv.own.owntv.features.more.ClearFavouritesDialog(
+            counts = favCounts,
+            onClear = { type -> favVm.clearFavourites(type); clearingFavourites = false },
+            onDismiss = { clearingFavourites = false },
+        )
+    }
 
     if (creating) {
         ProfileEditorDialog(

@@ -203,18 +203,23 @@ class MoreCountsViewModel(
     }
 
     /**
-     * "Clear all" on More › Favourites: every favourite on this profile, of every type and from every
-     * playlist, plus the hand-made favourites order. Each one goes through [UserDataWriter.removeFavorite]
-     * so the deletion is recorded and a later Local sync does not bring it back from the other device.
+     * Clear favourites, from More › Favourites or Settings › Profile: one type ([type] LIVE / MOVIE /
+     * SERIES) or everything ([type] null), on the active profile, from every playlist, plus that type's
+     * hand-made favourites order. Each one goes through [UserDataWriter.removeFavorite] so the deletion is
+     * recorded and a later Local sync does not bring it back from the other device.
+     *
+     * Reads the profile fresh rather than from [ctx]: Settings can call this while nothing is collecting
+     * the More page's flows, when [ctx] still holds its empty starting value.
      */
-    fun clearAllFavourites() {
-        val pid = ctx.value.profileId.takeIf { it >= 0 } ?: return
+    fun clearFavourites(type: MediaType?) {
         _move.value = null
         viewModelScope.launch {
-            val rows = favoriteDao.getAllOnce().filter { it.profileId == pid }
+            val pid = settings.activeProfileId.first()
+            if (pid < 0) return@launch
+            val rows = favoriteDao.getAllOnce().filter { it.profileId == pid && (type == null || it.mediaType == type) }
             rows.forEach { userDataWriter.removeFavorite(pid, it.mediaType, it.itemId) }
-            rows.map { it.mediaType }.distinct().forEach { type ->
-                contentOrderDao.replaceContext(pid, type, ContentOrderEntity.FAV_CONTEXT, emptyList())
+            rows.map { it.mediaType }.distinct().forEach { t ->
+                contentOrderDao.replaceContext(pid, t, ContentOrderEntity.FAV_CONTEXT, emptyList())
             }
             reload.value++
         }

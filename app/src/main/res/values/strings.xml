@@ -3,8 +3,14 @@
     <string name="content_search_channels">Search channels\u2026</string>
     <string name="content_search_movies">Search movies…</string>
     <string name="content_search_series">Search series…</string>
-    <!-- More › Favourites: the button that removes every favourite, and its confirmation. -->
-    <string name="more_fav_clear_all">Clear all</string>
-    <string name="more_fav_clear_all_confirm">Clear all favorites?</string>
-    <string name="more_fav_clear_all_body">Removes every channel, movie and series from Favorites on this profile. Your playlists are not affected.</string>
+    <!-- Clear favourites (More › Favourites, Settings › Profile): the button and row, the picker and its four confirmations. -->
+    <string name="more_fav_clear">Clear favourites</string>
+    <string name="more_fav_clear_line">Remove Live TV, Movies or Series favourites, or all of them</string>
+    <string name="more_fav_clear_choose">Choose what to remove for this profile. Playlists and history are not affected.</string>
+    <string name="more_fav_clear_all_option">All favourites</string>
+    <string name="more_fav_clear_confirm_live">Clear Live TV favourites?</string>
+    <string name="more_fav_clear_confirm_movies">Clear movie favourites?</string>
+    <string name="more_fav_clear_confirm_series">Clear series favourites?</string>
+    <string name="more_fav_clear_confirm_all">Clear all favourites?</string>
+    <string name="more_fav_clear_keywords">favourites favorites clear remove delete empty reset channels movies series</string>
 </resources>
