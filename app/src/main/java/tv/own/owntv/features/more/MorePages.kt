@@ -304,8 +304,11 @@ internal fun FavouritesPage(
     val itemFocus = remember { HashMap<Pair<MediaType, Long>, FocusRequester>() }
     fun focusOf(type: MediaType, id: Long) = itemFocus.getOrPut(type to id) { FocusRequester() }
     var returnTo by remember { mutableStateOf<FocusRequester?>(null) }
-    LaunchedEffect(menu, move) {
-        if (menu == null && move == null) returnTo?.let { withFrameNanos { }; runCatching { it.requestFocus() }; returnTo = null }
+    // "Clear all": its confirmation, and the button it returns to on Cancel.
+    var confirmClear by remember { mutableStateOf(false) }
+    val clearFocus = remember { FocusRequester() }
+    LaunchedEffect(menu, move, confirmClear) {
+        if (menu == null && move == null && !confirmClear) returnTo?.let { withFrameNanos { }; runCatching { it.requestFocus() }; returnTo = null }
     }
 
     val showLive = filter == FavFilter.ALL || filter == FavFilter.LIVE
@@ -333,6 +336,14 @@ internal fun FavouritesPage(
                 onSelect = { filter = FavFilter.entries[it] },
                 modifier = Modifier.focusRequester(segFocus),
             )
+            if (counts.total > 0) {
+                Spacer(Modifier.weight(1f))
+                StageTool(
+                    stringResource(R.string.more_fav_clear_all), icon = OwnTVIcon.TRASH, danger = true,
+                    modifier = Modifier.focusRequester(clearFocus),
+                    onClick = { returnTo = clearFocus; confirmClear = true },
+                )
+            }
         }
         androidx.compose.runtime.SideEffect { setEntry { runCatching { firstTarget.requestFocus() }.isSuccess } }
         if (counts.total == 0) {
@@ -401,6 +412,17 @@ internal fun FavouritesPage(
                 }
             }
         }
+    }
+    if (confirmClear) {
+        tv.own.owntv.ui.stage.StageConfirm(
+            title = stringResource(R.string.more_fav_clear_all_confirm),
+            body = stringResource(R.string.more_fav_clear_all_body),
+            confirm = stringResource(R.string.common_clear),
+            onConfirm = { vm.clearAllFavourites(); returnTo = segFocus; confirmClear = false },
+            onCancel = { confirmClear = false },
+            // A mis-press must not wipe a list the user built up by hand.
+            focusCancel = true,
+        )
     }
     move?.let { m ->
         MoveOrderOverlay(

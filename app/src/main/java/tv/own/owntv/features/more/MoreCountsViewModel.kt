@@ -20,6 +20,7 @@ import tv.own.owntv.core.companion.CompanionServerState
 import tv.own.owntv.core.customize.CustomizationStore
 import tv.own.owntv.core.database.dao.ChannelDao
 import tv.own.owntv.core.database.dao.ContentOrderDao
+import tv.own.owntv.core.database.dao.FavoriteDao
 import tv.own.owntv.core.database.dao.HistoryDao
 import tv.own.owntv.core.database.dao.MovieDao
 import tv.own.owntv.core.database.dao.ProgressDao
@@ -97,6 +98,7 @@ class MoreCountsViewModel(
     private val historyDao: HistoryDao,
     private val progressDao: ProgressDao,
     private val contentOrderDao: ContentOrderDao,
+    private val favoriteDao: FavoriteDao,
     private val userDataWriter: UserDataWriter,
     private val guide: GuideReader,
     private val customize: CustomizationStore,
@@ -198,6 +200,24 @@ class MoreCountsViewModel(
     fun removeFavourite(type: MediaType, id: Long) {
         val pid = ctx.value.profileId.takeIf { it >= 0 } ?: return
         viewModelScope.launch { userDataWriter.removeFavorite(pid, type, id) }
+    }
+
+    /**
+     * "Clear all" on More › Favourites: every favourite on this profile, of every type and from every
+     * playlist, plus the hand-made favourites order. Each one goes through [UserDataWriter.removeFavorite]
+     * so the deletion is recorded and a later Local sync does not bring it back from the other device.
+     */
+    fun clearAllFavourites() {
+        val pid = ctx.value.profileId.takeIf { it >= 0 } ?: return
+        _move.value = null
+        viewModelScope.launch {
+            val rows = favoriteDao.getAllOnce().filter { it.profileId == pid }
+            rows.forEach { userDataWriter.removeFavorite(pid, it.mediaType, it.itemId) }
+            rows.map { it.mediaType }.distinct().forEach { type ->
+                contentOrderDao.replaceContext(pid, type, ContentOrderEntity.FAV_CONTEXT, emptyList())
+            }
+            reload.value++
+        }
     }
 
     /** The same removal each browse screen's "Remove from History" does, per type. */
