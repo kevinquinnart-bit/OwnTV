@@ -156,6 +156,7 @@ fun LiveScreen(
     val externalPlayerOn by vm.externalPlayerOn.collectAsStateWithLifecycle()
     val catchupPlayer by vm.catchupPlayer.collectAsStateWithLifecycle()
     val previewChannel by vm.previewChannel.collectAsStateWithLifecycle()
+    val heldChannel by vm.heldChannel.collectAsStateWithLifecycle()
     val previewCategoryName by vm.previewCategoryName.collectAsStateWithLifecycle()
     val previewArmed by vm.previewArmed.collectAsStateWithLifecycle()
     val previewBlockedSingleSession by vm.previewBlockedSingleSession.collectAsStateWithLifecycle()
@@ -197,10 +198,13 @@ fun LiveScreen(
 
     // In-pane preview: play the focused channel after the focus settles (700ms). Disabled while the
     // fullscreen/mini player owns the surface (previewEnabled=false) to avoid two surfaces fighting.
-    LaunchedEffect(previewChannel?.id, effectivePreview, previewArmed) {
+    LaunchedEffect(previewChannel?.id, heldChannel?.id, effectivePreview, previewArmed) {
+        if (!effectivePreview) return@LaunchedEffect
+        // Kevin's copy: the channel left on after full screen keeps playing, with sound, whatever is focused.
+        heldChannel?.let { vm.playHeld(it); return@LaunchedEffect }
         // previewArmed gates the case where the last channel was restored on startup — we don't auto-preview
         // it until the user actually focuses a channel (then it plays normally).
-        if (!effectivePreview || !previewArmed) return@LaunchedEffect
+        if (!previewArmed) return@LaunchedEffect
         val ch = previewChannel ?: return@LaunchedEffect
         delay(700)
         vm.playPreview(ch)
@@ -562,7 +566,8 @@ fun LiveScreen(
     val categoriesModifier = Modifier
         .onFocusChanged {
             railPaneFocused = it.hasFocus
-            if (it.hasFocus && previewEnabled) vm.stopPreview()
+            // A held channel keeps playing while the categories are browsed.
+            if (it.hasFocus && previewEnabled && heldChannel == null) vm.stopPreview()
             // The sheet closes when focus leaves it (◀ to the rail) — not while its own menus are open,
             // and not on the "unfocused" report every node gets when it first attaches.
             if (it.hasFocus) sheetHadFocus = true
@@ -762,7 +767,8 @@ fun LiveScreen(
                             .weight(1f, fill = false)
                             .width(if (separate) listWidth * (230f / 620f) else listWidth * (456f / 846f))
                             .focusRequester(listSearchFocus)
-                            .onFocusChanged { if (it.hasFocus && previewEnabled) vm.stopPreview() }
+                            // A held channel keeps playing while searching.
+                            .onFocusChanged { if (it.hasFocus && previewEnabled && heldChannel == null) vm.stopPreview() }
                             // ◀ Categories from the search field too, as from the rows (not while typing).
                             .onPreviewKeyEvent { e ->
                                 if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
@@ -905,6 +911,9 @@ fun LiveScreen(
                 LiveStagePane(
                     channel = previewChannel,
                     channelName = previewChannel?.let { ProviderTags.parse(it.name).name },
+                    // The video names what is actually playing: the held channel, when there is one.
+                    videoChannel = heldChannel ?: previewChannel,
+                    videoChannelName = (heldChannel ?: previewChannel)?.let { ProviderTags.parse(it.name).name },
                     nowNext = nowNext,
                     previewEngine = vm.previewEngine,
                     showVideo = effectivePreview,

@@ -955,6 +955,26 @@ class LiveViewModel(
         _previewChannel.value = channel
     }
 
+    /**
+     * Kevin's copy: the channel left playing in the small screen after full screen. While it is set, the
+     * Live TV list and the TV Guide keep playing it, with sound, wherever the cursor goes; the cursor
+     * only changes the information shown. OK on a channel opens that one, and leaving full screen again
+     * holds whatever was on. Cleared with the preview itself (leaving Live TV, the sleep timer).
+     */
+    private val _heldChannel = MutableStateFlow<ChannelEntity?>(null)
+    val heldChannel: StateFlow<ChannelEntity?> = _heldChannel.asStateFlow()
+
+    /** Called on leaving full screen while a live channel is on: keep it playing in the small screen. */
+    fun holdPlaying() {
+        _heldChannel.value = _previewChannel.value
+    }
+
+    /** Plays the held channel in the small screen with its sound on (re-applies the sound if already on). */
+    fun playHeld(channel: ChannelEntity) {
+        disarmVariantWatch()
+        live.preview(channel, muted = false)
+    }
+
     /** Search's "Go to channel": the list scrolls to [reveal] and focuses it, then calls [revealDone]. */
     private val _reveal = MutableStateFlow<tv.own.owntv.features.search.Reveal?>(null)
     val reveal: StateFlow<tv.own.owntv.features.search.Reveal?> = _reveal.asStateFlow()
@@ -1200,7 +1220,8 @@ class LiveViewModel(
     init {
         viewModelScope.launch {
             livePreviewAudio.collect { on ->
-                if (!liveOnExo.value && previewEngine.currentUrl != null) previewEngine.setMuted(!on)
+                // A held channel keeps its sound whatever the preview-sound setting says.
+                if (!liveOnExo.value && previewEngine.currentUrl != null && _heldChannel.value == null) previewEngine.setMuted(!on)
             }
         }
         viewModelScope.launch { player.archiveEnded.collect { continueAfterCatchup() } }
@@ -1302,16 +1323,6 @@ class LiveViewModel(
      *  the target is chosen. [ensurePlaying], reached through [zapTo], cancels any pending rebuild. */
     fun zap(delta: Int) {
         zapList.next(delta)?.let { zapTo(it) }
-    }
-
-    /** Kevin's copy: the channel [delta] steps from the one playing, without changing anything. Only
-     *  answers from the browse list itself, so looking never moves the zap anchor. */
-    fun peekZap(delta: Int): tv.own.owntv.player.DirectTuneChannelInfo? {
-        val list = zapList.channels.value
-        val i = list.indexOfFirst { it.id == _previewChannel.value?.id }
-        if (i < 0 || list.isEmpty()) return null
-        val ch = list[Math.floorMod(i + delta, list.size)]
-        return tv.own.owntv.player.DirectTuneChannelInfo(ch.number, ch.name, ch.logoUrl)
     }
 
     /**
@@ -1941,6 +1952,7 @@ class LiveViewModel(
         disarmVariantWatch()
         live.stop() // both engines, every watcher and the give-up alarm, and the reconnect link
         _previewChannel.value = null
+        _heldChannel.value = null
     }
 
     /**

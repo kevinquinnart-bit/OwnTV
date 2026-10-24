@@ -200,6 +200,7 @@ fun EpgScreen(
     val playlistMarks by liveVm.playlistMarks.collectAsStateWithLifecycle()
     val livePreviewSetting by liveVm.livePreviewEnabled.collectAsStateWithLifecycle()
     val previewChannel by liveVm.previewChannel.collectAsStateWithLifecycle()
+    val heldChannel by liveVm.heldChannel.collectAsStateWithLifecycle()
     val previewArmed by liveVm.previewArmed.collectAsStateWithLifecycle()
     val guidePreview by vm.guidePreview.collectAsStateWithLifecycle()
 
@@ -212,8 +213,11 @@ fun EpgScreen(
     val effectivePreview = previewEnabled && livePreviewSetting && guidePreview
     // Switching the Guide's own preview off stops what is already playing, not only the next channel.
     LaunchedEffect(guidePreview) { if (!guidePreview && previewEnabled) liveVm.stopPreview() }
-    LaunchedEffect(previewChannel?.id, effectivePreview, previewArmed) {
-        if (!effectivePreview || !previewArmed) return@LaunchedEffect
+    LaunchedEffect(previewChannel?.id, heldChannel?.id, effectivePreview, previewArmed) {
+        if (!effectivePreview) return@LaunchedEffect
+        // Kevin's copy: the channel left on after full screen keeps playing, with sound, as in Live TV.
+        heldChannel?.let { liveVm.playHeld(it); return@LaunchedEffect }
+        if (!previewArmed) return@LaunchedEffect
         val ch = previewChannel ?: return@LaunchedEffect
         delay(700)
         liveVm.playPreview(ch)
@@ -431,13 +435,13 @@ fun EpgScreen(
         Column(Modifier.fillMaxSize()) {
         // Top (44 → 404): the video, and beside it the programme under the cursor.
         Row(Modifier.padding(start = fx(64), end = fx(64), top = 44.mpx).fillMaxWidth().height(360.mpx)) {
-        val videoChannel = if (effectivePreview) previewChannel ?: topChannel else topChannel
+        val videoChannel = if (effectivePreview) heldChannel ?: previewChannel ?: topChannel else topChannel
         GuideVideo(
             channel = videoChannel,
             channelLine = videoChannel?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(" · ") },
             nowTitle = videoChannel?.let { ch -> programmeAt(vm.cachedProgrammes(ch), liveNow)?.takeIf { liveNow < it.stopMs }?.title },
             previewEngine = liveVm.previewEngine,
-            showVideo = effectivePreview && previewArmed,
+            showVideo = effectivePreview && (previewArmed || heldChannel != null),
             modifier = Modifier.width(640.mpx),
         )
         // … and the programme under the cursor, with what it can do.

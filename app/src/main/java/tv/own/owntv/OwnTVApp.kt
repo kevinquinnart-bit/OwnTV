@@ -115,6 +115,10 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         Perf.stamp("koin-started")
         // Kevin's copy: open on TV start / wake and after an update (does nothing without the permission).
         AutoOpen.install(this)
+        // Kevin's copy: keep a record of each automatic update step, and hold an Install screen that could
+        // not open while the app was off screen (see UpdateRecord).
+        tv.own.owntv.features.update.UpdateRecord.isOnScreen = { AutoOpen.isOnScreen }
+        tv.own.owntv.features.update.UpdateRecord.install(this)
         // A chosen icon colour ("Later", the first-run pick, a restore) reaches the launcher when the app
         // is next in the background, never while it is on screen.
         tv.own.owntv.core.brand.AppIconSwitcher.start(this, GlobalContext.get().get())

@@ -30,6 +30,9 @@ import kotlinx.coroutines.launch
 object AutoOpen {
     private const val DELAY_MS = 1_500L
     private var startedActivities = 0
+
+    /** Whether one of OwnTV's screens is showing right now. */
+    val isOnScreen: Boolean get() = startedActivities > 0
     private var heldWhileOffScreen: Set<Long> = emptySet()
     private fun watch() = org.koin.core.context.GlobalContext.get().get<tv.own.owntv.core.live.WatchSession>()
     private val main = Handler(Looper.getMainLooper())

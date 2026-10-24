@@ -560,6 +560,9 @@ fun OwnTVShell(
         movieVm.saveProgressNow()
         seriesVm.saveEpisodeProgressNow()
         resumeVideo() // restore mpv `vid=auto` before stop so the next played item isn't left video-less
+        // Kevin's copy: a live channel (not a catch-up) carries on in the small screen, with its sound,
+        // while the list or guide is browsed. Read before playerMode is reset below.
+        if (playerMode != PlayerMode.NONE && zapSource == MainSection.LIVE_TV && !catchupActive) liveVm.holdPlaying()
         playerMode = PlayerMode.NONE
         showChannelList = false
         showHistoryList = false
@@ -1651,8 +1654,6 @@ fun OwnTVShell(
                     inert = showChannelList || showHistoryList || showCategoryBrowser || showSubtitleSearch || showLocalSubPicker,
                     onChannelUp = zap?.let { z -> { z(-1) } },
                     onChannelDown = zap?.let { z -> { z(1) } },
-                    onPeekChannel = if (isLiveChannel) liveVm::peekZap else null,
-                    onZapBy = zap,
                     onOpenChannelList = if (isTunedLive && liveCanZap) { { showChannelList = true } } else null,
                     // Live channels only, and only once Multiview is switched on: the channel on screen
                     // becomes tile 1 and the grid takes over. Everything it needs is already tuned.
@@ -1998,6 +1999,14 @@ fun OwnTVShell(
             updateLifecycle.lifecycle.addObserver(observer)
             onDispose { updateLifecycle.lifecycle.removeObserver(observer) }
         }
+        val updateContext = androidx.compose.ui.platform.LocalContext.current
+        LaunchedEffect(updateCheckTick) {
+            if (updateCheckTick == 0) return@LaunchedEffect
+            // An Install screen that could not open while OwnTV was off screen opens now. The pause lets a
+            // "cancelled" answer from the installer, which can arrive just after this, clear it first.
+            kotlinx.coroutines.delay(2_000)
+            tv.own.owntv.features.update.UpdateRecord.showPendingInstall(updateContext)
+        }
         LaunchedEffect(updateCheckOnStart, updateCheckTick) {
             if (!updateCheckOnStart || updateCheckTick == 0) return@LaunchedEffect
             kotlinx.coroutines.delay(5_000)
@@ -2011,15 +2020,36 @@ fun OwnTVShell(
             updateManager.check()
         }
         LaunchedEffect(updateManager) {
+            // Kevin's copy: every step is written down (More › About shows the last one).
+            val record = tv.own.owntv.features.update.UpdateRecord
+            var downloadingVersion: String? = null
             updateManager.state.collect { s ->
                 when (s) {
-                    is UpdateManager.State.Available -> if (shellVm.autoInstallPending) {
+                    is UpdateManager.State.Available -> if (downloadingVersion != null) {
+                        // Back to Available after a download: the file has gone to the system installer —
+                        // unless the installer has already said its screen is waiting for OwnTV to return.
+                        val already = record.read(updateContext)
+                        if (already?.step != tv.own.owntv.features.update.UpdateRecord.Step.WAITING_FOR_SCREEN || already.version != downloadingVersion) {
+                            record.note(updateContext, tv.own.owntv.features.update.UpdateRecord.Step.HANDED_TO_INSTALLER, downloadingVersion)
+                        }
+                        downloadingVersion = null
+                    } else if (shellVm.autoInstallPending) {
                         // Once per check: the manager returns to Available after handing over to the
                         // installer, and that must not start a second download.
                         shellVm.autoInstallPending = false
+                        record.note(updateContext, tv.own.owntv.features.update.UpdateRecord.Step.FOUND, s.info.version)
+                        downloadingVersion = s.info.version
                         updateManager.downloadAndInstall()
                     }
-                    UpdateManager.State.UpToDate, is UpdateManager.State.Failed -> shellVm.autoInstallPending = false
+                    UpdateManager.State.UpToDate -> {
+                        shellVm.autoInstallPending = false
+                        record.note(updateContext, tv.own.owntv.features.update.UpdateRecord.Step.UP_TO_DATE, null)
+                    }
+                    is UpdateManager.State.Failed -> {
+                        shellVm.autoInstallPending = false
+                        record.note(updateContext, tv.own.owntv.features.update.UpdateRecord.Step.FAILED, s.retryInfo?.version ?: downloadingVersion, s.failure)
+                        downloadingVersion = null
+                    }
                     else -> Unit
                 }
             }

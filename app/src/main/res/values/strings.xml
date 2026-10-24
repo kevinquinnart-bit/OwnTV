@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="content_search_channels">Search channels\u2026</string>
     <string name="content_search_movies">Search movies…</string>
     <string name="content_search_series">Search series…</string>
@@ -13,4 +13,13 @@
     <string name="more_fav_clear_confirm_series">Clear series favourites?</string>
     <string name="more_fav_clear_confirm_all">Clear all favourites?</string>
     <string name="more_fav_clear_keywords">favourites favorites clear remove delete empty reset channels movies series</string>
+    <!-- More › About (Kevin's copy): what the automatic update last did. %1$s = when, %2$s = what happened. -->
+    <string name="kevin_update_last">Last update: <xliff:g id="when">%1$s</xliff:g> · <xliff:g id="what">%2$s</xliff:g></string>
+    <string name="kevin_update_up_to_date">up to date (<xliff:g id="version">%1$s</xliff:g>)</string>
+    <string name="kevin_update_found">found <xliff:g id="version">%1$s</xliff:g>, downloading</string>
+    <string name="kevin_update_installed"><xliff:g id="version">%1$s</xliff:g> installed</string>
+    <string name="kevin_update_not_installed"><xliff:g id="version">%1$s</xliff:g> downloaded and sent to the TV\'s installer, but it did not install</string>
+    <string name="kevin_update_waiting"><xliff:g id="version">%1$s</xliff:g> downloaded; the Install screen opens when OwnTV is next on screen</string>
+    <string name="kevin_update_cancelled">install of <xliff:g id="version">%1$s</xliff:g> was cancelled</string>
+    <string name="kevin_update_failed">failed: <xliff:g id="reason">%1$s</xliff:g></string>
 </resources>

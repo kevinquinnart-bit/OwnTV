@@ -689,6 +689,15 @@ internal fun AboutPage(vm: MoreCountsViewModel, entry: FocusRequester, onOpenLan
                     style = stageText(17, 500), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 6.mpx),
                 )
+                // Kevin's copy: what the automatic update last did, step by step.
+                val updateEntry = remember { tv.own.owntv.features.update.UpdateRecord.read(context) }
+                updateEntry?.let { entry ->
+                    Text(
+                        stringResource(R.string.kevin_update_last, recordingWhen(entry.at), tv.own.owntv.features.update.updateRecordText(entry)),
+                        style = stageText(17, 500), color = StageColors.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 6.mpx),
+                    )
+                }
             }
         }
         Text(stringResource(R.string.more_about_description), style = stageText(18, 500).copy(lineHeight = 29.mpxSp), color = stageTone(Color(0xFFD3DCD8), StageColors.Body),
