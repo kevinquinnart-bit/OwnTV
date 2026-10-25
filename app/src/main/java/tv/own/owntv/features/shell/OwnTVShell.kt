@@ -402,14 +402,16 @@ fun OwnTVShell(
     // Favorite toggle for whatever is playing: the live channel, the movie, or the series (episodes
     // favorite their parent series). Picked by the section that armed the stream. Hoisted here because
     // the audio capsule in the top bar carries the same control as the fullscreen HUD.
+    // Kevin's copy: while a channel plays in the mini player, the one playing — not the one under the cursor.
+    val heldLive by liveVm.heldChannel.collectAsStateWithLifecycle()
     val favToggle: (() -> Unit)? = when (zapSource) {
-        MainSection.LIVE_TV -> previewChannel?.let { ch -> { liveVm.toggleFavorite(ch) } }
+        MainSection.LIVE_TV -> (heldLive ?: previewChannel)?.let { ch -> { liveVm.toggleFavorite(ch) } }
         MainSection.MOVIES -> playingMovie?.let { m -> { movieVm.toggleFavorite(m) } }
         MainSection.SERIES -> playingSeries?.let { s -> { seriesVm.toggleFavorite(s) } }
         else -> null
     }
     val favActive = when (zapSource) {
-        MainSection.LIVE_TV -> previewChannel?.let { liveFavoriteIds.contains(it.id) } ?: false
+        MainSection.LIVE_TV -> (heldLive ?: previewChannel)?.let { liveFavoriteIds.contains(it.id) } ?: false
         MainSection.MOVIES -> playingMovie?.let { movieFavoriteIds.contains(it.id) } ?: false
         MainSection.SERIES -> playingSeries?.let { seriesFavoriteIds.contains(it.id) } ?: false
         else -> false
