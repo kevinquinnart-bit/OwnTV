@@ -12,6 +12,12 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import kotlin.math.roundToInt
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -552,7 +558,12 @@ fun OwnTVShell(
         runCatching { liveVm.previewEngine.exitAudioOnly() }
     }
     // The mini-player's own expand button always maximizes.
-    val expandPlayer = { resumeVideo(); restoreFocus = false; playerMode = PlayerMode.FULLSCREEN }
+    val expandPlayer = {
+        resumeVideo(); restoreFocus = false
+        // Kevin's copy: full screen shows the channel playing in the mini player, not the one under the cursor.
+        if (zapSource == MainSection.LIVE_TV) liveVm.restoreHeld()
+        playerMode = PlayerMode.FULLSCREEN
+    }
     val exitPlayer = {
         // Flush the resume position BEFORE the stream is torn down — stop() drops the loaded item's
         // identity, after which neither view model can tell the position was theirs. Both calls are
@@ -560,9 +571,8 @@ fun OwnTVShell(
         movieVm.saveProgressNow()
         seriesVm.saveEpisodeProgressNow()
         resumeVideo() // restore mpv `vid=auto` before stop so the next played item isn't left video-less
-        // Kevin's copy: a live channel (not a catch-up) carries on in the small screen, with its sound,
-        // while the list or guide is browsed. Read before playerMode is reset below.
-        if (playerMode == PlayerMode.FULLSCREEN && zapSource == MainSection.LIVE_TV && !catchupActive) liveVm.holdPlaying()
+        // Kevin's copy: the player is closing, so no channel is held in the mini player any more.
+        liveVm.clearHeld()
         playerMode = PlayerMode.NONE
         showChannelList = false
         showHistoryList = false
@@ -646,8 +656,10 @@ fun OwnTVShell(
     // just their logo). Browsing the list does not change it; OK on a channel plays that one in the mini
     // player. A catch-up programme, Multiview and anything that is not live close as before.
     val leaveFullscreen = {
-        if (zapSource == MainSection.LIVE_TV && !catchupActive && multiview == null && !liveVm.externalPlayerOn.value) dockPlayer()
-        else exitPlayer()
+        if (zapSource == MainSection.LIVE_TV && !catchupActive && multiview == null && !liveVm.externalPlayerOn.value) {
+            liveVm.holdPlaying()
+            dockPlayer()
+        } else exitPlayer()
     }
     // Switch the current stream to audio-only and surface the now-playing bar in the top bar. Stop the
     // video decoder FIRST (plan §5 ordering rule), then drop the video surface by leaving FULLSCREEN/MINI.
@@ -1107,7 +1119,12 @@ fun OwnTVShell(
                 // Live TV's view (List / Guide, G14), and how a guide — the TV Guide or Live TV's Guide view —
                 // starts a channel or an archive programme: through LiveViewModel, the one live path.
                 val liveView by liveVm.liveView.collectAsStateWithLifecycle()
-                val guidePlayChannel: (ChannelEntity, List<ChannelEntity>) -> Unit = { ch, _ ->
+                val guidePlayChannel: (ChannelEntity, List<ChannelEntity>) -> Unit = guidePlay@{ ch, _ ->
+                    // Kevin's copy: OK on the channel already playing in the mini player goes back to full screen.
+                    if (playerMode == PlayerMode.MINI && zapSource == MainSection.LIVE_TV && liveVm.heldChannel.value?.id == ch.id) {
+                        expandPlayer()
+                        return@guidePlay
+                    }
                     restoreFocus = false
                     liveVm.watchFromGuide(ch)
                     zapSource = MainSection.LIVE_TV
@@ -1317,6 +1334,8 @@ fun OwnTVShell(
 
                         selectedSection == MainSection.LIVE_TV -> LiveScreen(
                             onFullscreen = { openFullscreen() },
+                            // Kevin's copy: OK on the channel playing in the mini player takes it back to full screen.
+                            onExpandMini = if (playerMode == PlayerMode.MINI && zapSource == MainSection.LIVE_TV) expandPlayer else null,
                             onOpenGuide = { liveVm.setLiveView(tv.own.owntv.core.settings.SettingsRepository.LiveView.GUIDE) },
                             onChildFocused = { focusedLayer = ShellLayer.CONTENT },
                             previewEnabled = playerMode == PlayerMode.NONE,
@@ -1564,9 +1583,27 @@ fun OwnTVShell(
 
       if (multiview == null && (playerMode == PlayerMode.FULLSCREEN || playerMode == PlayerMode.MINI)) {
         val isFull = playerMode == PlayerMode.FULLSCREEN
+        // Kevin's copy: a live channel in the mini player sits in Live TV's (or the Guide's) own small
+        // screen while that screen is showing, instead of in a corner. Measured against this layer's own
+        // origin, so the two line up whatever lies around them.
+        val slot = tv.own.owntv.features.live.LiveVideoSlot.bounds
+        val inSlot = !isFull && slot != null && zapSource == MainSection.LIVE_TV &&
+            (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.EPG)
+        var layerOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+        if (inSlot) {
+            Spacer(Modifier.matchParentSize().onGloballyPositioned { layerOrigin = it.positionInRoot() })
+        }
+        val slotDensity = LocalDensity.current
         Box(
             modifier = if (isFull) {
                 Modifier.fillMaxSize().background(Color.Black)
+            } else if (inSlot && slot != null) {
+                with(slotDensity) {
+                    Modifier
+                        .offset { androidx.compose.ui.unit.IntOffset((slot.left - layerOrigin.x).roundToInt(), (slot.top - layerOrigin.y).roundToInt()) }
+                        .size(slot.width.toDp(), slot.height.toDp())
+                        .clip(RoundedCornerShape(28.mpx)).background(Color.Black)
+                }
             } else {
                 // Dynamic docked size/position: a screen-width fraction at the chosen corner/edge, so it
                 // scales with the panel + UI zoom (unlike the old fixed 340×191 dp box).

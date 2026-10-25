@@ -1,5 +1,7 @@
 package tv.own.owntv.features.live
 
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import tv.own.owntv.ui.theme.stageTone
 import tv.own.owntv.ui.theme.stageShadow
 import androidx.compose.foundation.background
@@ -257,11 +259,14 @@ internal fun LiveStagePane(
     val loading = showVideo && previewState == tv.own.owntv.player.LivePreviewEngine.State.LOADING
     val videoR = 28.mpx
     val videoShadow = tv.own.owntv.ui.theme.stageShadow(0.55f)
+    // Kevin's copy: tell the mini player where this screen is, and forget it when the screen goes.
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { tv.own.owntv.features.live.LiveVideoSlot.bounds = null } }
     Column(modifier) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
+                .onGloballyPositioned { tv.own.owntv.features.live.LiveVideoSlot.bounds = it.boundsInRoot() }
                 .drawBehind {
                     drawBoxShadow(videoShadow, 80.mpx.toPx(), videoR.toPx(), dy = 30.mpx.toPx())
                 }

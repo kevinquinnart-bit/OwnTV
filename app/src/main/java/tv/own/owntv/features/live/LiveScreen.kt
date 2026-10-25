@@ -131,6 +131,8 @@ fun LiveScreen(
      * More → History show channels without a second copy of this list existing.
      */
     lockedKey: LiveKey? = null,
+    /** Kevin's copy: set while a channel plays in the mini player; OK on that channel's row calls it. */
+    onExpandMini: (() -> Unit)? = null,
     /** Guide view (Live TV tool row): opens the TV Guide until the in-place guide arrives (P5). */
     onOpenGuide: () -> Unit = {},
 ) {
@@ -878,8 +880,12 @@ fun LiveScreen(
                                         if (rememberLive) perCategoryChannelIds[selectedKey] = channel.id
                                     },
                                     onClick = {
-                                        vm.watchFullscreen(channel, channels.itemSnapshotList.items.filterNotNull())
-                                        if (!externalPlayerOn) onFullscreen()
+                                        if (onExpandMini != null && heldChannel?.id == channel.id) {
+                                            onExpandMini()
+                                        } else {
+                                            vm.watchFullscreen(channel, channels.itemSnapshotList.items.filterNotNull())
+                                            if (!externalPlayerOn) onFullscreen()
+                                        }
                                     },
                                     onLongClick = { contextChannel = channel; contextChannelId = channel.id },
                                 )

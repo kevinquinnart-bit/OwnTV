@@ -956,17 +956,31 @@ class LiveViewModel(
     }
 
     /**
-     * Kevin's copy: the channel left playing in the small screen after full screen. While it is set, the
-     * Live TV list and the TV Guide keep playing it, with sound, wherever the cursor goes; the cursor
-     * only changes the information shown. OK on a channel opens that one, and leaving full screen again
-     * holds whatever was on. Cleared with the preview itself (leaving Live TV, the sleep timer).
+     * Kevin's copy: the live channel playing in the mini player while the list or guide is browsed.
+     * Moving the cursor changes [previewChannel] (the information shown) but not this; it follows only a
+     * real change of channel (OK on a row, Channel +/-, a catch-up). Cleared when playback stops.
      */
     private val _heldChannel = MutableStateFlow<ChannelEntity?>(null)
     val heldChannel: StateFlow<ChannelEntity?> = _heldChannel.asStateFlow()
 
-    /** Called on leaving full screen while a live channel is on: keep it playing in the small screen. */
+    /** Called on shrinking a live channel to the mini player: remember which channel that is. */
     fun holdPlaying() {
         _heldChannel.value = _previewChannel.value
+    }
+
+    /** Playback stopped (or the player closed): nothing is held any more. */
+    fun clearHeld() {
+        _heldChannel.value = null
+    }
+
+    /** Back to full screen from the mini player: what is "on" is the held channel, not the cursor's. */
+    fun restoreHeld() {
+        _heldChannel.value?.let { _previewChannel.value = it }
+    }
+
+    /** A real change of channel while one is held: the mini player now plays [ch]. */
+    private fun followHeld(ch: ChannelEntity) {
+        if (_heldChannel.value != null) _heldChannel.value = ch
     }
 
     /** Plays the held channel in the small screen with its sound on (re-applies the sound if already on). */
@@ -1092,7 +1106,9 @@ class LiveViewModel(
     // they apply are shared with the browse lists and belong beside them.
     private val zapList = LiveZapList(
         scope = viewModelScope,
-        playingChannelId = { _previewChannel.value?.id },
+        // Kevin's copy: while a channel plays in the mini player the cursor moves the shown channel, so
+        // Channel +/- steps from the one actually playing.
+        playingChannelId = { (_heldChannel.value ?: _previewChannel.value)?.id },
         loadForChannel = ::channelsAroundChannel,
         loadForCategory = ::channelsInCategory,
         loadWindowAround = ::buildZapList,
@@ -1343,6 +1359,7 @@ class LiveViewModel(
      */
     private fun zapTo(channel: ChannelEntity) {
         _previewChannel.value = channel
+        followHeld(channel)
         pendingZapTuneJob?.cancel()
         pendingZapTuneJob = viewModelScope.launch {
             delay(ZAP_TUNE_DELAY_MS)
@@ -1567,6 +1584,7 @@ class LiveViewModel(
         val shown = if (custom.value.itemNames[CustomizeKeys.channel(channel)] != null) channel
             else ChannelVariants.displayName(channel.name).let { if (it == channel.name) channel else channel.copy(name = it) }
         _previewChannel.value = shown
+        followHeld(shown)
         clearTimeshift() // normal live = not timeshifted
         _catchupActive.value = false // tuning live ends any archive playback the HUD was showing
         // Kevin's copy: start on the channel's best visible version; the watch below steps down to a
@@ -1740,6 +1758,7 @@ class LiveViewModel(
             // needed when the HUD's engine toggle can't get a catch-up programme playing.
             Log.i(ENGINE_TAG, "catch-up '${ch.name}' prog='${programme.title}' -> ${tv.own.owntv.core.network.HttpClient.redactUrl(url)}")
             _previewChannel.value = ch
+            followHeld(ch)
             clearTimeshift()                 // a fixed programme replaces any live rewind in progress
             _catchupActive.value = true      // HUD: VOD engine toggle, not the live compatibility toggle
             playingCatchupProgramme = programme // …and the anchor auto-play continues from
