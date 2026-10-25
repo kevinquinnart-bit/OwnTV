@@ -21,6 +21,7 @@
 
 1	technical	app/src/main/java/tv/own/owntv/DefaultAutoRefresh.kt	empty_fill
 1	technical	app/src/main/java/tv/own/owntv/DefaultAutoRefresh.kt	off_screen_refresh
+1	protocol	app/src/main/java/tv/own/owntv/DefaultAutoRefresh.kt	on_open_refresh
 1	log	app/src/main/java/tv/own/owntv/MainActivity.kt	BgImage
 1	log	app/src/main/java/tv/own/owntv/MainActivity.kt	OwnTVHome
 1	compiler	app/src/main/java/tv/own/owntv/MainActivity.kt	RememberReturnType

@@ -22,4 +22,7 @@
     <string name="kevin_update_waiting"><xliff:g id="version">%1$s</xliff:g> downloaded; the Install screen opens when OwnTV is next on screen</string>
     <string name="kevin_update_cancelled">install of <xliff:g id="version">%1$s</xliff:g> was cancelled</string>
     <string name="kevin_update_failed">failed: <xliff:g id="reason">%1$s</xliff:g></string>
+    <!-- More › About (Kevin's copy): when channels and guide last finished downloading. -->
+    <string name="kevin_refresh_last">Channels updated <xliff:g id="channels">%1$s</xliff:g> · Guide updated <xliff:g id="guide">%2$s</xliff:g></string>
+    <string name="kevin_refresh_never">never</string>
 </resources>

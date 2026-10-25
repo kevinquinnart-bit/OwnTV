@@ -689,6 +689,27 @@ internal fun AboutPage(vm: MoreCountsViewModel, entry: FocusRequester, onOpenLan
                     style = stageText(17, 500), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 6.mpx),
                 )
+                // Kevin's copy: when the channels and the TV Guide last finished downloading (newest playlist,
+                // newest guide), so a refresh on opening can be seen to have happened.
+                val synced by androidx.compose.runtime.produceState<Pair<Long?, Long?>>(null to null) {
+                    val koin = org.koin.core.context.GlobalContext.get()
+                    value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        runCatching {
+                            koin.get<tv.own.owntv.core.database.dao.SourceDao>().getAllOnce().mapNotNull { it.lastSyncAt }.maxOrNull() to
+                                koin.get<tv.own.owntv.core.epg.EpgSourceStore>().getAll().mapNotNull { it.lastSyncAt }.maxOrNull()
+                        }.getOrDefault(null to null)
+                    }
+                }
+                val never = stringResource(R.string.kevin_refresh_never)
+                Text(
+                    stringResource(
+                        R.string.kevin_refresh_last,
+                        synced.first?.let { recordingWhen(it) } ?: never,
+                        synced.second?.let { recordingWhen(it) } ?: never,
+                    ),
+                    style = stageText(17, 500), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 6.mpx),
+                )
                 // Kevin's copy: what the automatic update last did, step by step.
                 val updateEntry = remember { tv.own.owntv.features.update.UpdateRecord.read(context) }
                 updateEntry?.let { entry ->

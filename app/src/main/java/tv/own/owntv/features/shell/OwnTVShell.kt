@@ -562,7 +562,7 @@ fun OwnTVShell(
         resumeVideo() // restore mpv `vid=auto` before stop so the next played item isn't left video-less
         // Kevin's copy: a live channel (not a catch-up) carries on in the small screen, with its sound,
         // while the list or guide is browsed. Read before playerMode is reset below.
-        if (playerMode != PlayerMode.NONE && zapSource == MainSection.LIVE_TV && !catchupActive) liveVm.holdPlaying()
+        if (playerMode == PlayerMode.FULLSCREEN && zapSource == MainSection.LIVE_TV && !catchupActive) liveVm.holdPlaying()
         playerMode = PlayerMode.NONE
         showChannelList = false
         showHistoryList = false
@@ -639,6 +639,15 @@ fun OwnTVShell(
         restoreFocus = true
         focusRail()
         Unit
+    }
+    // Kevin's copy: Back from a live channel full screen shrinks it to the mini player instead of closing
+    // it. The channel keeps playing there, picture and sound, on whichever engine it is on (the small
+    // preview screen in the list can only play through one of the two, which left some channels showing
+    // just their logo). Browsing the list does not change it; OK on a channel plays that one in the mini
+    // player. A catch-up programme, Multiview and anything that is not live close as before.
+    val leaveFullscreen = {
+        if (zapSource == MainSection.LIVE_TV && !catchupActive && multiview == null && !liveVm.externalPlayerOn.value) dockPlayer()
+        else exitPlayer()
     }
     // Switch the current stream to audio-only and surface the now-playing bar in the top bar. Stop the
     // video decoder FIRST (plan §5 ordering rule), then drop the video surface by leaving FULLSCREEN/MINI.
@@ -878,7 +887,7 @@ fun OwnTVShell(
 
     BackHandler {
         when {
-            playerMode == PlayerMode.FULLSCREEN -> exitPlayer()
+            playerMode == PlayerMode.FULLSCREEN -> leaveFullscreen()
             showAvatarPicker -> showAvatarPicker = false
             showPlaylistPicker -> showPlaylistPicker = false
             showExit -> showExit = false
@@ -1646,7 +1655,7 @@ fun OwnTVShell(
                 val isTunedLive = isLiveChannel && !catchupActive
                 PlayerHud(
                     player = if (liveOnExo) liveVm.previewEngine else mpvEngine, // HUD drives the active engine
-                    onBack = exitPlayer,
+                    onBack = leaveFullscreen,
                     onPip = dockPlayer, // PiP/dock works for live on either engine now
                     onAudioMode = toAudioMode,
                     // The channel-list overlay draws ABOVE the HUD; while it's open the HUD goes inert so

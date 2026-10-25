@@ -74,7 +74,23 @@ private const val EMPTY_FILL = "empty_fill"
  * keeps its own Auto refresh choice; Off is respected, and a playlist or guide with nothing saved uses
  * the 12-hour default.
  */
-internal suspend fun refreshStaleWhileOffScreen() {
+internal suspend fun refreshStaleWhileOffScreen() =
+    refreshOlderThan(maxAgeMs = null, reason = OFF_SCREEN, policy = androidx.work.ExistingWorkPolicy.KEEP)
+
+/**
+ * Kevin's copy: every time OwnTV is opened — a fresh start, or coming back to the screen — each playlist
+ * and TV Guide refreshes, unless it was refreshed in the last [ON_OPEN_MIN_GAP_MS] (so closing and
+ * reopening a few times does not download everything again each time). A playlist or guide set to Off
+ * is left alone. These refreshes start at once: they do not wait for the channel to stop playing.
+ */
+internal suspend fun refreshOnOpen() =
+    // REPLACE, not KEEP: core's own timed refresh queues its job with KEEP and then holds it until the
+    // channel stops playing — and OwnTV reopens straight into the channel. Kept, that waiting job would
+    // swallow this one and nothing would download while the channel is on.
+    refreshOlderThan(maxAgeMs = ON_OPEN_MIN_GAP_MS, reason = ON_OPEN, policy = androidx.work.ExistingWorkPolicy.REPLACE)
+
+/** [maxAgeMs] null: each source's own Auto refresh time (12 hours when nothing is saved). */
+private suspend fun refreshOlderThan(maxAgeMs: Long?, reason: String, policy: androidx.work.ExistingWorkPolicy) {
     val koin = org.koin.core.context.GlobalContext.get()
     val settings = koin.get<SettingsRepository>()
     val now = System.currentTimeMillis()
@@ -86,9 +102,9 @@ internal suspend fun refreshStaleWhileOffScreen() {
         koin.get<EpgSourceStore>().getAll().forEach { src ->
             val mode = modes[src.id]
             if (mode?.mode == EpgAutoRefresh.OFF) return@forEach
-            val threshold = mode?.thresholdMs ?: twelveHours
+            val threshold = maxAgeMs ?: mode?.thresholdMs ?: twelveHours
             if (now - (src.lastSyncAt ?: 0L) >= threshold) {
-                epgSync.enqueueSync(src.id, OFF_SCREEN, epgDao.countForSources(listOf(src.id)), androidx.work.ExistingWorkPolicy.KEEP)
+                epgSync.enqueueSync(src.id, reason, epgDao.countForSources(listOf(src.id)), policy)
             }
         }
     }
@@ -98,13 +114,13 @@ internal suspend fun refreshStaleWhileOffScreen() {
         koin.get<SourceDao>().getAllOnce().forEach { source ->
             val mode = modes[source.id]
             if (mode?.mode == PlaylistAutoRefresh.OFF) return@forEach
-            val threshold = mode?.thresholdMs ?: twelveHours
+            val threshold = maxAgeMs ?: mode?.thresholdMs ?: twelveHours
             if (now - (source.lastSyncAt ?: 0L) >= threshold) {
                 catalog.enqueueSync(
                     source.id,
-                    reason = OFF_SCREEN,
+                    reason = reason,
                     contentTypes = tv.own.owntv.core.sync.SyncContentTypes.enabledOf(source),
-                    policy = androidx.work.ExistingWorkPolicy.KEEP,
+                    policy = policy,
                 )
             }
         }
@@ -112,3 +128,5 @@ internal suspend fun refreshStaleWhileOffScreen() {
 }
 
 private const val OFF_SCREEN = "off_screen_refresh"
+private const val ON_OPEN = "on_open_refresh"
+private const val ON_OPEN_MIN_GAP_MS = 10 * 60_000L

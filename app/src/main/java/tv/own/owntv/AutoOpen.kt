@@ -46,6 +46,8 @@ object AutoOpen {
             override fun onActivityStarted(activity: Activity) {
                 // Back on screen: the channel resumes, so mark it as being watched again.
                 if (startedActivities == 0) heldWhileOffScreen.forEach { watch().open(it) }
+                // Kevin's copy: opening OwnTV (first start or coming back) refreshes playlists and guides.
+                if (startedActivities == 0) background.launch { refreshOnOpen() }
                 heldWhileOffScreen = emptySet()
                 startedActivities++
             }
