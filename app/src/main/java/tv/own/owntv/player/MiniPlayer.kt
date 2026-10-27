@@ -62,7 +62,8 @@ fun MiniPlayer(
     onExpand: () -> Unit,
     onClose: () -> Unit,
     onCycleSize: () -> Unit = {},
-    onCyclePosition: () -> Unit = {},
+    /** Kevin's copy: null hides the move-window button (the mini player has one fixed place). */
+    onCyclePosition: (() -> Unit)? = null,
     onAudioMode: () -> Unit = {},
     /** Focus target for "enter the mini player" (the rail's Now Playing item, long-press Back). */
     entryFocusRequester: FocusRequester? = null,
@@ -163,7 +164,7 @@ fun MiniPlayer(
                     MiniBtn(OwnTVIcon.HEADPHONES, onClick = onAudioMode)
                     PillSeparator()
                     MiniBtn(OwnTVIcon.ZOOM, onClick = onCycleSize)
-                    MiniBtn(OwnTVIcon.PIP, onClick = onCyclePosition)
+                    onCyclePosition?.let { MiniBtn(OwnTVIcon.PIP, onClick = it) }
                     PillSeparator()
                     MiniBtn(OwnTVIcon.EXPAND, onClick = onExpand)
                     MiniBtn(OwnTVIcon.CLOSE, onClick = onClose)
@@ -172,7 +173,7 @@ fun MiniPlayer(
                     PillSeparator()
                     MiniBtn(OwnTVIcon.HEADPHONES, onClick = onAudioMode)
                     MiniBtn(OwnTVIcon.ZOOM, onClick = onCycleSize)
-                    MiniBtn(OwnTVIcon.PIP, onClick = onCyclePosition)
+                    onCyclePosition?.let { MiniBtn(OwnTVIcon.PIP, onClick = it) }
                     MiniBtn(OwnTVIcon.MORE, active = true) { windowCluster = false }
                 }
                 else -> {

@@ -29,9 +29,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.Key
-import tv.own.owntv.core.player.MiniPlayerPosition
 import tv.own.owntv.core.player.MiniPlayerSize
-import tv.own.owntv.player.labelRes
 import tv.own.owntv.ui.components.trapAllFocusExit
 
 /**
@@ -49,7 +47,6 @@ import tv.own.owntv.ui.components.trapAllFocusExit
 fun MiniPlayerSettingsDialog(onDismiss: () -> Unit) {
     val vm: SettingsViewModel = koinViewModel()
     val sizePct by vm.miniPlayerSizePct.collectAsStateWithLifecycle()
-    val position by vm.miniPlayerPosition.collectAsStateWithLifecycle()
     val form: @Composable () -> Unit = {
         val first = remember { FocusRequester() }
         LaunchedEffect(Unit) { kotlinx.coroutines.delay(80); runCatching { first.requestFocus() } }
@@ -74,19 +71,12 @@ fun MiniPlayerSettingsDialog(onDismiss: () -> Unit) {
                     tv.own.owntv.ui.components.OwnTVIcon(tv.own.owntv.ui.components.OwnTVIcon.CHEVRON, tv.own.owntv.ui.theme.StageColors.Muted, Modifier.size(24.mpx))
                 }
             }
-            // The position laid out as the screen it describes: the focused spot is where the player sits.
-            Text(stringResource(R.string.settings_position).uppercase(), style = label, color = tv.own.owntv.ui.theme.StageColors.Dim, modifier = Modifier.padding(start = 8.mpx, top = 18.mpx, bottom = 2.mpx))
-            listOf(MiniPlayerPosition.entries.take(3), MiniPlayerPosition.entries.drop(3)).forEach { row ->
-                tv.own.owntv.ui.stage.StageMenuChoice(
-                    options = row.map { stringResource(it.labelRes) },
-                    selected = row.indexOf(position),
-                    onSelect = { vm.setMiniPlayerPosition(row[it]) },
-                )
-            }
+            // Kevin's copy: no position choice. The mini player has one place, the band along the top
+            // beside the Last channel / playlist pills (or Live TV's own small screen); the size here is
+            // how big it opens while it holds focus.
             Row(Modifier.fillMaxWidth().padding(top = 12.mpx), horizontalArrangement = Arrangement.spacedBy(12.mpx, Alignment.End)) {
                 tv.own.owntv.ui.stage.StageButton(stringResource(R.string.common_reset), onClick = {
                     vm.setMiniPlayerSize(MiniPlayerSize.DEFAULT)
-                    vm.setMiniPlayerPosition(MiniPlayerPosition.DEFAULT)
                 }, height = 52.mpx, textSize = 18)
                 tv.own.owntv.ui.stage.StageButton(stringResource(R.string.common_done), onClick = onDismiss, height = 52.mpx, textSize = 18, tinted = true)
             }

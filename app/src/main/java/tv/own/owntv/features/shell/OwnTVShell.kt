@@ -213,11 +213,9 @@ fun OwnTVShell(
         initialValue = RemoteShortcutBindings.defaults,
     )
     val miniSizePct by settingsRepo.miniPlayerSizePct.collectAsStateWithLifecycle(initialValue = tv.own.owntv.core.player.MiniPlayerSize.DEFAULT)
-    val miniPosName by settingsRepo.miniPlayerPosition.collectAsStateWithLifecycle(initialValue = tv.own.owntv.core.player.MiniPlayerPosition.DEFAULT.name)
     val ambientGlowEnabled by settingsRepo.ambientGlowEnabled.collectAsStateWithLifecycle(initialValue = false)
     val ambientGlowPulse by settingsRepo.ambientGlowPulse.collectAsStateWithLifecycle(initialValue = true)
     val shellAnimationLevel by settingsRepo.animationLevel.collectAsStateWithLifecycle(initialValue = tv.own.owntv.core.theme.AnimationLevel.FULL)
-    val miniPos = tv.own.owntv.core.player.MiniPlayerPosition.fromName(miniPosName)
     // §8 "Reaching the mini player" — the mini window floats above the content panel, so D-pad focus
     // search has no spatial path into it from most screens. These are the three deliberate ways in:
     // the rail's Now Playing item, long-press Back, and the media keys.
@@ -250,6 +248,9 @@ fun OwnTVShell(
     // The playlist pill's place on screen, where the playlist menu redraws it above its scrim.
     var playlistPillBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var miniHasFocus by remember { mutableStateOf(false) }
+    // Kevin's copy: the left edge of the top-right pills (Last channel, playlist, clock), in screen
+    // coordinates. The docked mini player sits just left of it, in the band above the page.
+    var statusClusterLeft by remember { mutableStateOf<Float?>(null) }
     val subtitleController = koinInject<tv.own.owntv.core.subtitles.SubtitleController>()
     val subtitleContext by subtitleController.current.collectAsStateWithLifecycle()
     var showSubtitleSearch by remember { mutableStateOf(false) }
@@ -1457,7 +1458,10 @@ fun OwnTVShell(
                 clockColors = clockColors,
                 playlistDownFocusRequester = homeFirstRowFocus.takeIf { selectedSection == MainSection.HOME },
                 onPlaylistPillBounds = { playlistPillBounds = it },
-                modifier = Modifier.align(Alignment.TopEnd).onFocusChanged { clusterFocused = it.hasFocus }.focusGroup(),
+                modifier = Modifier.align(Alignment.TopEnd)
+                    // Kevin's copy: the mini player docks just left of these pills.
+                    .onGloballyPositioned { statusClusterLeft = it.positionInRoot().x }
+                    .onFocusChanged { clusterFocused = it.hasFocus }.focusGroup(),
             )
             tv.own.owntv.features.shell.components.StageRail(
                 state = railState,
@@ -1585,15 +1589,23 @@ fun OwnTVShell(
 
       if (multiview == null && (playerMode == PlayerMode.FULLSCREEN || playerMode == PlayerMode.MINI)) {
         val isFull = playerMode == PlayerMode.FULLSCREEN
-        // Kevin's copy: a live channel in the mini player sits in Live TV's (or the Guide's) own small
-        // screen while that screen is showing, instead of in a corner. Measured against this layer's own
-        // origin, so the two line up whatever lies around them.
+        // Kevin's copy: a live channel in the mini player sits in Live TV's own small screen while the
+        // Live TV list is showing. Everywhere else (the Guide, Settings, More, Home, films) it docks in
+        // the band along the top, just left of the Last channel / playlist pills, clear of the page
+        // below; it opens to the chosen mini size while it holds focus, so its buttons fit. Both are
+        // measured against this layer's own origin, so they line up whatever lies around them.
         val slot = tv.own.owntv.features.live.LiveVideoSlot.bounds
         val inSlot = !isFull && slot != null && zapSource == MainSection.LIVE_TV &&
-            (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.EPG)
+            selectedSection == MainSection.LIVE_TV
         var layerOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-        if (inSlot) {
-            Spacer(Modifier.matchParentSize().onGloballyPositioned { layerOrigin = it.positionInRoot() })
+        var layerWidth by remember { mutableStateOf(0) }
+        if (!isFull) {
+            Spacer(
+                Modifier.matchParentSize().onGloballyPositioned {
+                    layerOrigin = it.positionInRoot()
+                    layerWidth = it.size.width
+                },
+            )
         }
         val slotDensity = LocalDensity.current
         Box(
@@ -1607,11 +1619,24 @@ fun OwnTVShell(
                         .clip(RoundedCornerShape(28.mpx)).background(Color.Black)
                 }
             } else {
-                // Dynamic docked size/position: a screen-width fraction at the chosen corner/edge, so it
-                // scales with the panel + UI zoom (unlike the old fixed 340×191 dp box).
-                Modifier.align(miniPos.alignment).padding(24.dp)
-                    .fillMaxWidth(tv.own.owntv.core.player.MiniPlayerSize.fraction(miniSizePct)).aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(14.dp)).background(Color.Black)
+                with(slotDensity) {
+                    val top = MINI_DOCK_TOP_MPX.mpx.toPx()
+                    val gap = MINI_DOCK_GAP_MPX.mpx.toPx()
+                    // At rest it fits the top band; with focus it opens to the chosen mini size.
+                    val w = if (miniHasFocus && layerWidth > 0) {
+                        layerWidth * tv.own.owntv.core.player.MiniPlayerSize.fraction(miniSizePct)
+                    } else {
+                        MINI_DOCK_HEIGHT_MPX.mpx.toPx() * 16f / 9f
+                    }
+                    val h = w * 9f / 16f
+                    // No pills measured yet: where they always start, 64 in from the right edge.
+                    val right = (statusClusterLeft?.minus(layerOrigin.x) ?: (layerWidth - 64.mpx.toPx())) - gap
+                    val x = (right - w).coerceAtLeast(0f)
+                    Modifier
+                        .offset { androidx.compose.ui.unit.IntOffset(x.roundToInt(), top.roundToInt()) }
+                        .size(w.toDp(), h.toDp())
+                        .clip(RoundedCornerShape(14.dp)).background(Color.Black)
+                }
             },
         ) {
             // "Promote Preview": a Live channel playing on ExoPlayer renders the ExoPlayer surface — in BOTH
@@ -1935,7 +1960,6 @@ fun OwnTVShell(
                     onExpand = expandPlayer,
                     onClose = exitPlayer,
                     onCycleSize = { scope.launch { settingsRepo.setMiniPlayerSizePct(tv.own.owntv.core.player.MiniPlayerSize.next(miniSizePct)) } },
-                    onCyclePosition = { scope.launch { settingsRepo.setMiniPlayerPosition(miniPos.next().name) } },
                     onAudioMode = toAudioMode,
                     entryFocusRequester = miniEntryFocus,
                     onBack = { runCatching { shellContentFocus.requestFocus() } },
@@ -2228,3 +2252,8 @@ private fun railDetail(section: MainSection, d: RailDetails): String? = when (se
 
 /** How recently ◀ / ▶ or [focusRail] must have happened for a rail visit to open the rail. */
 private const val RAIL_KEY_WINDOW_MS = 400L
+
+/** Kevin's copy: the docked mini player at rest, in mockup pixels: its top, its height, its gap to the pills. */
+private const val MINI_DOCK_TOP_MPX = 22
+private const val MINI_DOCK_HEIGHT_MPX = 94
+private const val MINI_DOCK_GAP_MPX = 22
