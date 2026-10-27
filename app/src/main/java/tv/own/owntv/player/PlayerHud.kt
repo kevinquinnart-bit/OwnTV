@@ -44,6 +44,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -601,7 +602,8 @@ fun PlayerHud(
         // you can read live bitrate/buffer while watching. Toggled from the bottom bar's info button.
         if (showInfo) {
             // Sits clear of the taller unified top strip (logo + guide) rather than under the old title row.
-            StreamInfoOverlay(player, modifier = Modifier.align(Alignment.TopEnd).padding(top = 112.dp, end = 20.dp))
+            // Kevin's copy: the top strip now lives in the bottom box (unless an error is up), so this sits higher.
+            StreamInfoOverlay(player, modifier = Modifier.align(Alignment.TopEnd).padding(top = if (error == null) 72.dp else 112.dp, end = 20.dp))
         }
 
         // Top-left OSD stack: the channel card (briefly on a zap, or the freshly tuned channel) plus the
@@ -641,18 +643,24 @@ fun PlayerHud(
         RecordingBadge(modifier = Modifier.align(Alignment.TopEnd))
 
         if (controlsVisible) {
+            var dockHeight by remember { mutableStateOf(0.dp) }
+            val hudDensity = androidx.compose.ui.platform.LocalDensity.current
             // Scrims: a FLAT semi-transparent panel behind the controls, feathered to transparent only at
             // the inner edge. A pure gradient faded out exactly where the chips and the Now/Next text sit,
             // so those washed out on bright scenes; a hard-edged band would instead draw a visible seam
             // across the picture. The colour stops give the panel first, then the feather.
-            Box(Modifier.align(Alignment.TopStart).fillMaxWidth().height(210.dp)
-                .gradientWash(
-                    vertical = true,
-                    0.0f to hudShade(0.72f),
-                    0.5f to hudShade(0.68f),
-                    1.0f to Color.Transparent,
-                ))
-            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(260.dp)
+            // Kevin's copy: the top shade only while an error keeps the strip up there; the bottom shade is
+            // taller, as the bottom box now carries the channel and programme too.
+            if (error != null) {
+                Box(Modifier.align(Alignment.TopStart).fillMaxWidth().height(210.dp)
+                    .gradientWash(
+                        vertical = true,
+                        0.0f to hudShade(0.72f),
+                        0.5f to hudShade(0.68f),
+                        1.0f to Color.Transparent,
+                    ))
+            }
+            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(if (error == null) 360.dp else 260.dp)
                 .gradientWash(
                     vertical = true,
                     0.0f to Color.Transparent,
@@ -664,21 +672,21 @@ fun PlayerHud(
             // One unified strip: back · logo · chips-over-channel-name · Now/Next guide. The channel name
             // used to be drawn twice (here and in a floating card below), with the guide stranded on the
             // right edge — that space belongs to the history list now.
-            TopBar(
-                player, isLive, listOfNotNull(engineChip) + streamChips.ifEmpty { listOfNotNull(videoRes) }, duration, onBack,
-                modifier = Modifier.align(Alignment.TopStart),
-                trailing = if (error == null) liveEpgCard else null,
-                // Hidden behind an error overlay along with the rest of the chrome: a clock ticking
-                // over a failure message just draws the eye to the wrong thing.
-                centre = if (error == null) {
-                    { PlayerClock(watchingMs = watchingWallMs?.invoke()) }
-                } else null,
-            )
+            // Kevin's copy: with no error up, the strip (logo, chips, channel, clock, Live now card) sits at
+            // the top of the bottom box and only the back arrow stays up here. An error keeps the old
+            // strip at the top, as the bottom box is hidden then.
+            val topChips = listOfNotNull(engineChip) + streamChips.ifEmpty { listOfNotNull(videoRes) }
+            if (error != null) {
+                TopBar(player, isLive, topChips, duration, onBack, modifier = Modifier.align(Alignment.TopStart))
+            } else {
+                Box(Modifier.align(Alignment.TopStart).padding(20.dp)) { CircleButton(OwnTVIcon.BACK, size = 40, onClick = onBack) }
+            }
 
             // Hide the transport (play/seek/prev/next) and bottom bar while an error is up — the error
             // overlay owns the screen with its own Retry, so the play/rewind/forward must not show behind it.
             if (error == null) {
-                CenterControls(player, nav, isPlaying, isLive, onRewindLive, onForwardLive, timeshiftOffset, playFocus, modifier = Modifier.align(Alignment.Center))
+                // Centred in the space above the bottom box, which is taller now it carries the strip.
+                CenterControls(player, nav, isPlaying, isLive, onRewindLive, onForwardLive, timeshiftOffset, playFocus, modifier = Modifier.align(Alignment.Center).padding(bottom = dockHeight))
 
                 val reportDuration = duration.takeIf { it > 0 }?.let { formatTime(it) }
                 val reportSavedMessage = stringResource(R.string.player_report_saved)
@@ -722,7 +730,17 @@ fun PlayerHud(
                     favorite = favorite, onToggleFavorite = onToggleFavorite,
                     onOpenDialog = { dialog = it }, onPip = onPip, onAudioMode = onAudioMode,
                     onMultiview = onMultiview, onRecordThis = onRecordThis, recordingThis = recordingThis, onBack = onBack,
-                    modifier = Modifier.align(Alignment.BottomStart),
+                    modifier = Modifier.align(Alignment.BottomStart)
+                        .onSizeChanged { dockHeight = with(hudDensity) { it.height.toDp() } },
+                    header = {
+                        TopBar(
+                            player, isLive, topChips, duration, onBack,
+                            trailing = liveEpgCard,
+                            centre = { PlayerClock(watchingMs = watchingWallMs?.invoke()) },
+                            showBack = false,
+                            inset = 0.dp,
+                        )
+                    },
                 )
             }
         }

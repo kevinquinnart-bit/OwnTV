@@ -73,6 +73,10 @@ internal fun TopBar(
     // The clock. Rendered between two equal-weight halves so it lands on the true centre of the screen
     // whatever the channel name and guide card happen to be doing on either side of it.
     centre: (@Composable () -> Unit)? = null,
+    // Kevin's copy: false leaves the back arrow out (it stays at the top on its own) and [inset] 0 lets
+    // the strip sit inside the bottom box instead of along the top of the screen.
+    showBack: Boolean = true,
+    inset: androidx.compose.ui.unit.Dp = 20.dp,
 ) {
     // Reactive meta so the title row updates instantly on a channel zap (the plain vars aren't observed).
     val meta by player.currentMeta.collectAsStateWithLifecycle()
@@ -88,12 +92,14 @@ internal fun TopBar(
             meta.seasonNumber?.let { add(stringResource(R.string.player_season_number, it)) }
         }.joinToString(stringResource(R.string.content_metadata_separator)).ifBlank { null }
     }
-    Row(modifier = modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.Top) {
+    Row(modifier = modifier.fillMaxWidth().padding(inset), verticalAlignment = Alignment.Top) {
       // Left half. Equal weight to the right half, so [centre] sits on the real midpoint of the screen
       // rather than the midpoint of whatever space the title happened to leave over.
       Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-        CircleButton(OwnTVIcon.BACK, size = 40, onClick = onBack)
-        Spacer(Modifier.width(14.dp))
+        if (showBack) {
+            CircleButton(OwnTVIcon.BACK, size = 40, onClick = onBack)
+            Spacer(Modifier.width(14.dp))
+        }
         // Live: the channel logo sits with the channel NAME (identity), not with the programme — so the
         // whole "which channel am I on" group reads as one unit however wide the TV is.
         if (isLive) {
@@ -333,6 +339,8 @@ internal fun BottomBar(
     /** Given to whichever timeline is drawn, so Left/Right with the controls hidden can land on it (N6). */
     seekFocus: FocusRequester? = null,
     onBack: () -> Unit, modifier: Modifier = Modifier,
+    /** Kevin's copy: the channel and programme strip, drawn at the top of this box. */
+    header: (@Composable () -> Unit)? = null,
 ) {
     // Changes only while rewound into the archive. The film position is read lower still, by
     // [VodTimeline], so the tool buttons do not redraw every second (T14).
@@ -341,6 +349,19 @@ internal fun BottomBar(
     val sleepLeft = org.koin.compose.koinInject<SleepTimer>().remainingMs.collectAsStateWithLifecycle()
     val sleepRunning by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { sleepLeft.value != null } }
     Dock(modifier = modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 20.dp)) {
+        // Kevin's copy: the channel, clock and Live now card, at the top of this box. A live channel
+        // with no archive has only the LIVE badge for band A, so the badge joins this row instead.
+        val badgeInHeader = header != null && isLive && onScrubLive == null
+        if (header != null) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Box(Modifier.weight(1f)) { header() }
+                if (badgeInHeader) {
+                    Spacer(Modifier.width(12.dp))
+                    LiveStateBadge(timeshiftOffsetSec)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
         // Band A — the instrument. The times are the bar's own end caps now; the separate time row is
         // gone, and on live the right cap is the state badge instead of a clock.
         when {
@@ -369,7 +390,7 @@ internal fun BottomBar(
             }
             // A live channel with no archive has no timeline to scrub, but it still has a state to
             // report — and the badge no longer lives in the top bar.
-            isLive -> {
+            isLive && !badgeInHeader -> {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { LiveStateBadge(timeshiftOffsetSec) }
                 Spacer(Modifier.height(10.dp))
             }
