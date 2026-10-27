@@ -57,6 +57,9 @@ fun LiveEpgCard(
     variant: EpgCardVariant = EpgCardVariant.LIVE,
     // ARCHIVE only: the wall-clock instant on screen, which drives the progress bar and "x min left".
     atMs: Long? = null,
+    // Kevin's copy: true stretches the Now column across the width it is given (the player's bottom
+    // box), with Next kept at the far end.
+    wide: Boolean = false,
 ) {
     if (epg == null || (epg.now == null && epg.next == null)) return
     val archive = variant == EpgCardVariant.ARCHIVE
@@ -79,7 +82,7 @@ fun LiveEpgCard(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         epg.now?.let { entry ->
-            Column(Modifier.widthIn(max = 300.dp)) {
+            Column(if (wide) Modifier.weight(1f) else Modifier.widthIn(max = 300.dp)) {
                 SlotLabel(stringResource(if (archive) R.string.content_archive_playing else R.string.content_live_now), colors.primary)
                 Text(
                     entry.title,

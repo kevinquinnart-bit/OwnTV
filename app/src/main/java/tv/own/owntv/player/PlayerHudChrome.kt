@@ -160,8 +160,11 @@ internal fun TopBar(
           Spacer(Modifier.width(20.dp))
       }
       // Right half, pushed to the far edge. Same weight as the left, hence the true centring above.
-      Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.Top) {
-          if (trailing != null) trailing()
+      // Kevin's copy: with nothing to put there, the left half keeps the full width.
+      if (trailing != null || centre != null) {
+          Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.Top) {
+              if (trailing != null) trailing()
+          }
       }
     }
 }

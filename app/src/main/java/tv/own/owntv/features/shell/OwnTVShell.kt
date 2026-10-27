@@ -1816,8 +1816,10 @@ fun OwnTVShell(
                             // Stacked: what was on air at the replayed moment, then what is on air now.
                             // The live row is dimmed while an archive plays — it is context, not the
                             // thing being watched — and returns to full strength back at the live edge.
+                            // Kevin's copy: full width, left-aligned, in the player's bottom box.
                             androidx.compose.foundation.layout.Column(
-                                horizontalAlignment = androidx.compose.ui.Alignment.End,
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = androidx.compose.ui.Alignment.Start,
                                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(7.dp),
                             ) {
                                 if (watching != null) {
@@ -1825,11 +1827,14 @@ fun OwnTVShell(
                                         epg = archiveEpg,
                                         variant = tv.own.owntv.features.shell.components.EpgCardVariant.ARCHIVE,
                                         atMs = watching,
+                                        wide = true,
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
                                 tv.own.owntv.features.shell.components.LiveEpgCard(
                                     epg = epg,
-                                    modifier = if (watching == null) Modifier else Modifier.alpha(0.55f),
+                                    wide = true,
+                                    modifier = if (watching == null) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().alpha(0.55f),
                                 )
                             }
                         }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -679,7 +680,12 @@ fun PlayerHud(
             if (error != null) {
                 TopBar(player, isLive, topChips, duration, onBack, modifier = Modifier.align(Alignment.TopStart))
             } else {
-                Box(Modifier.align(Alignment.TopStart).padding(20.dp)) { CircleButton(OwnTVIcon.BACK, size = 40, onClick = onBack) }
+                // Kevin's copy: the clock sits at the top left, beside the back arrow.
+                Row(Modifier.align(Alignment.TopStart).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircleButton(OwnTVIcon.BACK, size = 40, onClick = onBack)
+                    Spacer(Modifier.width(14.dp))
+                    PlayerClock(watchingMs = watchingWallMs?.invoke())
+                }
             }
 
             // Hide the transport (play/seek/prev/next) and bottom bar while an error is up — the error
@@ -732,14 +738,16 @@ fun PlayerHud(
                     onMultiview = onMultiview, onRecordThis = onRecordThis, recordingThis = recordingThis, onBack = onBack,
                     modifier = Modifier.align(Alignment.BottomStart)
                         .onSizeChanged { dockHeight = with(hudDensity) { it.height.toDp() } },
+                    // Kevin's copy: the channel row across the full width, and under it the Live now card,
+                    // also full width, sitting just above the buttons.
                     header = {
-                        TopBar(
-                            player, isLive, topChips, duration, onBack,
-                            trailing = liveEpgCard,
-                            centre = { PlayerClock(watchingMs = watchingWallMs?.invoke()) },
-                            showBack = false,
-                            inset = 0.dp,
-                        )
+                        Column(Modifier.fillMaxWidth()) {
+                            TopBar(player, isLive, topChips, duration, onBack, showBack = false, inset = 0.dp)
+                            liveEpgCard?.let {
+                                Spacer(Modifier.height(10.dp))
+                                it()
+                            }
+                        }
                     },
                 )
             }
