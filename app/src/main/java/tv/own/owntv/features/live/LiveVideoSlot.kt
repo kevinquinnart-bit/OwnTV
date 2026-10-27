@@ -13,4 +13,9 @@ import androidx.compose.ui.geometry.Rect
  */
 object LiveVideoSlot {
     var bounds by mutableStateOf<Rect?>(null)
+
+    /** The Guide's words for its box (channel line, programme now on), drawn over the mini player there. */
+    data class Label(val line: String, val nowTitle: String?)
+
+    var label by mutableStateOf<Label?>(null)
 }

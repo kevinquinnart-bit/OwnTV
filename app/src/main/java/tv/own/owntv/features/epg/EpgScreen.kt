@@ -443,6 +443,9 @@ fun EpgScreen(
             previewEngine = liveVm.previewEngine,
             showVideo = effectivePreview && (previewArmed || heldChannel != null),
             modifier = Modifier.width(640.mpx),
+            // Kevin's copy: over the mini player in this box, name the channel actually playing.
+            onAirLine = (previewChannel ?: videoChannel)?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(" · ") },
+            onAirNowTitle = (previewChannel ?: videoChannel)?.let { ch -> programmeAt(vm.cachedProgrammes(ch), liveNow)?.takeIf { liveNow < it.stopMs }?.title },
         )
         // … and the programme under the cursor, with what it can do.
         Box(Modifier.weight(1f).fillMaxHeight()) {

@@ -1589,14 +1589,15 @@ fun OwnTVShell(
 
       if (multiview == null && (playerMode == PlayerMode.FULLSCREEN || playerMode == PlayerMode.MINI)) {
         val isFull = playerMode == PlayerMode.FULLSCREEN
-        // Kevin's copy: a live channel in the mini player sits in Live TV's own small screen while the
-        // Live TV list is showing. Everywhere else (the Guide, Settings, More, Home, films) it docks in
-        // the band along the top, just left of the Last channel / playlist pills, clear of the page
-        // below; it opens to the chosen mini size while it holds focus, so its buttons fit. Both are
-        // measured against this layer's own origin, so they line up whatever lies around them.
+        // Kevin's copy: a live channel in the mini player fills Live TV's or the Guide's own video box
+        // while that screen is showing (in the Guide with its LIVE badge and channel line on top).
+        // Everywhere else (Settings, More, Home, films) it docks in the band along the top, just left of
+        // the Last channel / playlist pills, clear of the page below; it opens to the chosen mini size
+        // while it holds focus, so its buttons fit. Both are measured against this layer's own origin,
+        // so they line up whatever lies around them.
         val slot = tv.own.owntv.features.live.LiveVideoSlot.bounds
         val inSlot = !isFull && slot != null && zapSource == MainSection.LIVE_TV &&
-            selectedSection == MainSection.LIVE_TV
+            (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.EPG)
         var layerOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
         var layerWidth by remember { mutableStateOf(0) }
         if (!isFull) {
@@ -1676,6 +1677,12 @@ fun OwnTVShell(
                         (tv.own.owntv.core.player.MiniPlayerSize.fraction(miniSizePct) * 1.5f).coerceIn(0.35f, 0.7f)
                     },
                 )
+            }
+            // The Guide's LIVE badge and channel line stay on top of the picture in its box.
+            if (inSlot) {
+                tv.own.owntv.features.live.LiveVideoSlot.label?.let {
+                    tv.own.owntv.features.epg.GuideVideoOverlay(channelLine = it.line, nowTitle = it.nowTitle)
+                }
             }
             if (isFull && !autoFrameRate && !afrPrompted) {
                 // Frame rate of whichever engine is on screen. On the mpv side this is what the direct

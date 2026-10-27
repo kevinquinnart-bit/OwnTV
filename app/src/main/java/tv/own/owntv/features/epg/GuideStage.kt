@@ -1,5 +1,7 @@
 package tv.own.owntv.features.epg
 
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import tv.own.owntv.ui.theme.stageTone
 import tv.own.owntv.ui.theme.stageShadow
 import tv.own.owntv.ui.theme.LocalStagePalette
@@ -112,16 +114,30 @@ internal fun GuideVideo(
     previewEngine: tv.own.owntv.player.LivePreviewEngine,
     showVideo: Boolean,
     modifier: Modifier = Modifier,
+    /** Kevin's copy: the line for the channel on air, shown over the mini player when it plays here. */
+    onAirLine: String? = channelLine,
+    onAirNowTitle: String? = nowTitle,
 ) {
     val previewState by previewEngine.state.collectAsStateWithLifecycle()
     val playing = showVideo && previewState != tv.own.owntv.player.LivePreviewEngine.State.ERROR &&
         previewState != tv.own.owntv.player.LivePreviewEngine.State.IDLE
     val r = 28.mpx
     val videoShadow = tv.own.owntv.ui.theme.stageShadow(0.55f)
-    // Kevin's copy: the mini player no longer sits over this screen; it docks in the top band beside the pills.
+    // Kevin's copy: the mini player plays in this box while the Guide is open, with the LIVE badge and
+    // the channel line drawn over it (the shell draws them, as the player sits above this screen).
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            tv.own.owntv.features.live.LiveVideoSlot.bounds = null
+            tv.own.owntv.features.live.LiveVideoSlot.label = null
+        }
+    }
+    androidx.compose.runtime.SideEffect {
+        tv.own.owntv.features.live.LiveVideoSlot.label = onAirLine?.let { tv.own.owntv.features.live.LiveVideoSlot.Label(it, onAirNowTitle) }
+    }
     Box(
         modifier
             .aspectRatio(16f / 9f)
+            .onGloballyPositioned { tv.own.owntv.features.live.LiveVideoSlot.bounds = it.boundsInRoot() }
             .drawBehind { drawBoxShadow(videoShadow, 80.mpx.toPx(), r.toPx(), dy = 30.mpx.toPx()) }
             .clip(RoundedCornerShape(r))
             .background(Color.Black),
@@ -134,13 +150,26 @@ internal fun GuideVideo(
         }
         if (playing) tv.own.owntv.player.ExoPreviewSurface(engine = previewEngine, modifier = Modifier.fillMaxSize())
         if (showVideo && previewState == tv.own.owntv.player.LivePreviewEngine.State.LOADING) OwnTVSpinner(sizeDp = 24)
+        GuideVideoOverlay(channelLine = if (channel != null) channelLine.orEmpty() else null, nowTitle = nowTitle)
+    }
+}
+
+/**
+ * The shade, the rim, the LIVE badge and the channel line that sit over the Guide's video. Kevin's copy:
+ * its own piece so the shell can draw the same thing over the mini player when it plays in this box.
+ * A null [channelLine] draws the shade and rim only.
+ */
+@Composable
+internal fun GuideVideoOverlay(channelLine: String?, nowTitle: String?) {
+    val r = 28.mpx
+    Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.58f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.72f))))
         Box(Modifier.fillMaxSize().drawBehind { drawInnerRing(Color.White.copy(alpha = 0.08f), 1.mpx.toPx(), r.toPx()) })
-        if (channel != null) {
+        if (channelLine != null) {
             Box(Modifier.align(Alignment.TopStart).padding(start = 20.mpx, top = 18.mpx)) { StageLiveBadge(stringResource(R.string.player_live)) }
             Text(
                 buildAnnotatedString {
-                    append(channelLine.orEmpty())
+                    append(channelLine)
                     if (!nowTitle.isNullOrBlank()) withStyle(SpanStyle(color = StageColors.Muted, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)) { append(" · $nowTitle") }
                 },
                 style = stageText(19, 700), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
