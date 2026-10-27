@@ -2186,8 +2186,10 @@ class LiveViewModel(
 
     // ---- Kevin's copy: step down to a lighter version of the channel when it keeps buffering ----
     // Three stalls of a second or more within two minutes, or one stall of eight seconds, moves to the
-    // channel's next version down (FHD → HD → the unlabelled one → SD). Only full-screen live playback;
-    // a rewind or a catch-up programme is left alone. Opening a channel starts again from its best.
+    // channel's next version down (FHD → HD → the unlabelled one → SD). So does a version that has not
+    // started playing 12 seconds after it was opened. Only full-screen live playback; a rewind or a
+    // catch-up programme is left alone. Opening a channel starts again from its best. Every switch is
+    // written to More › Error log, so it can be checked afterwards.
     private var variantVersions: List<ChannelEntity> = emptyList()
     private var variantAt = 0
     private var variantShownName = ""
@@ -2195,17 +2197,35 @@ class LiveViewModel(
     private var variantHasPlayed = false
     private var variantBufferingSince = 0L
     private var variantLongStall: Job? = null
+    private var variantStartTimer: Job? = null
 
     private fun armVariantWatch(versions: List<ChannelEntity>, shownName: String) {
         variantVersions = if (versions.size > 1) versions else emptyList()
         variantAt = 0
         variantShownName = shownName
         resetVariantStalls()
+        armVariantStart()
     }
 
     private fun disarmVariantWatch() {
         variantVersions = emptyList()
         resetVariantStalls()
+        variantStartTimer?.cancel()
+        variantStartTimer = null
+    }
+
+    /** A version that has not played [VARIANT_START_MS] after it was opened gives way to the next. */
+    private fun armVariantStart() {
+        variantStartTimer?.cancel()
+        variantStartTimer = null
+        if (variantVersions.isEmpty()) return
+        variantStartTimer = viewModelScope.launch {
+            delay(VARIANT_START_MS)
+            // A channel promoted from a preview that was already playing never reports a fresh start,
+            // so the engines are asked directly before calling it a version that did not start.
+            if (previewEngine.isPlaying.value || player.isPlaying.value) variantHasPlayed = true
+            if (!variantHasPlayed) stepDownVariant(tv.own.owntv.R.string.kevin_variant_reason_no_start)
+        }
     }
 
     private fun resetVariantStalls() {
@@ -2220,34 +2240,51 @@ class LiveViewModel(
         if (variantVersions.isEmpty()) return
         val now = android.os.SystemClock.elapsedRealtime()
         if (playing && !buffering) {
-            if (variantBufferingSince > 0L && now - variantBufferingSince >= VARIANT_STALL_MS) {
+            // Only a stall after the picture has played counts; the first load is not a stall.
+            if (variantHasPlayed && variantBufferingSince > 0L && now - variantBufferingSince >= VARIANT_STALL_MS) {
                 variantStalls.addLast(now)
                 while (variantStalls.isNotEmpty() && now - variantStalls.first() > VARIANT_STALL_WINDOW_MS) variantStalls.removeFirst()
             }
             variantHasPlayed = true
+            variantStartTimer?.cancel()
             variantBufferingSince = 0L
             variantLongStall?.cancel()
-            if (variantStalls.size >= VARIANT_STALLS_TO_STEP) stepDownVariant()
+            if (variantStalls.size >= VARIANT_STALLS_TO_STEP) stepDownVariant(tv.own.owntv.R.string.kevin_variant_reason_buffering)
             return
         }
-        if (buffering && variantHasPlayed && variantBufferingSince == 0L) {
+        // Eight seconds of buffering moves on, whether or not the picture has played yet: a channel
+        // opened from a preview that was already playing never reports a fresh start, and that is the
+        // usual way in, so waiting for one let the first long stall go unnoticed.
+        if (buffering && variantBufferingSince == 0L) {
             variantBufferingSince = now
             variantLongStall?.cancel()
             variantLongStall = viewModelScope.launch {
                 delay(VARIANT_LONG_STALL_MS)
-                if (variantBufferingSince > 0L) stepDownVariant()
+                if (variantBufferingSince > 0L) stepDownVariant(tv.own.owntv.R.string.kevin_variant_reason_buffering)
             }
         }
     }
 
-    private fun stepDownVariant() {
+    private fun stepDownVariant(@androidx.annotation.StringRes reason: Int) {
         if (_catchupActive.value || timeshift.isRewound) { resetVariantStalls(); return }
         if (variantAt + 1 >= variantVersions.size) { resetVariantStalls(); return }
+        val from = variantVersions[variantAt]
         variantAt++
         val next = variantVersions[variantAt]
         resetVariantStalls()
         Log.i(ENGINE_TAG, "variant step down to ${next.id} (${variantAt + 1} of ${variantVersions.size})")
+        // Into More › Error log, so a switch can be seen after the fact: which version, to which, and why.
+        runCatching {
+            tv.own.owntv.player.PlaybackErrorLog.event(
+                appContext,
+                engine = if (previewEngine.isPlaying.value || previewEngine.buffering.value) ENGINE_EXO else ENGINE_MPV,
+                live = true,
+                reason = tv.own.owntv.player.PlayerFailureReason.LIVE_FALLBACK,
+                detail = appContext.getString(tv.own.owntv.R.string.kevin_variant_switched, from.name, next.name, appContext.getString(reason)),
+            )
+        }
         live.launch { live.start(next.copy(name = variantShownName), getSource(next.sourceId)) }
+        armVariantStart()
     }
 
     init {
@@ -2266,6 +2303,9 @@ class LiveViewModel(
         const val VARIANT_STALL_WINDOW_MS = 120_000L
         const val VARIANT_STALLS_TO_STEP = 3
         const val VARIANT_LONG_STALL_MS = 8_000L
+        const val VARIANT_START_MS = 12_000L
+        const val ENGINE_EXO = "exo"
+        const val ENGINE_MPV = "mpv"
         const val ENGINE_TAG = "LiveEngine"
 
         /** How long a channel must stay tuned before it counts as watched — see [recordLiveHistory]. */

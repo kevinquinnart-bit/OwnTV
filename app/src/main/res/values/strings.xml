@@ -25,4 +25,8 @@
     <!-- More › About (Kevin's copy): when channels and guide last finished downloading. -->
     <string name="kevin_refresh_last">Channels updated <xliff:g id="channels">%1$s</xliff:g> · Guide updated <xliff:g id="guide">%2$s</xliff:g></string>
     <string name="kevin_refresh_never">never</string>
+    <!-- More › Error log (Kevin's copy): the player moved to another version of the same channel. %1$s = the version it left, %2$s = the version it moved to, %3$s = why. -->
+    <string name="kevin_variant_switched"><xliff:g id="from">%1$s</xliff:g> to <xliff:g id="to">%2$s</xliff:g>: <xliff:g id="why">%3$s</xliff:g></string>
+    <string name="kevin_variant_reason_buffering">kept buffering</string>
+    <string name="kevin_variant_reason_no_start">did not start within 12 seconds</string>
 </resources>
