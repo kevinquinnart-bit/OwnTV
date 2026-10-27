@@ -200,6 +200,9 @@ fun EpgScreen(
     val playlistMarks by liveVm.playlistMarks.collectAsStateWithLifecycle()
     val livePreviewSetting by liveVm.livePreviewEnabled.collectAsStateWithLifecycle()
     val previewChannel by liveVm.previewChannel.collectAsStateWithLifecycle()
+    // Kevin's copy: the Guide follows Settings › Channel numbers like the Live TV list and the player.
+    val showChannelNumbers by liveVm.showChannelNumbers.collectAsStateWithLifecycle()
+    androidx.compose.runtime.SideEffect { GuideNumbers.show = showChannelNumbers }
     val heldChannel by liveVm.heldChannel.collectAsStateWithLifecycle()
     val previewArmed by liveVm.previewArmed.collectAsStateWithLifecycle()
     val guidePreview by vm.guidePreview.collectAsStateWithLifecycle()
@@ -433,22 +436,28 @@ fun EpgScreen(
         val shown = full ?: topProgramme
 
         Column(Modifier.fillMaxSize()) {
-        // Top (44 → 404): the video, and beside it the programme under the cursor.
-        Row(Modifier.padding(start = fx(64), end = fx(64), top = 44.mpx).fillMaxWidth().height(360.mpx)) {
+        // Top: the video, and beside it the programme under the cursor. Kevin's copy: the video is
+        // smaller (480 wide, was 640) and the area grows to fit the programme's whole description, so
+        // everything on the right is readable and the grid below gets more rows.
+        Row(
+            Modifier.padding(start = fx(64), end = fx(64), top = 44.mpx).fillMaxWidth()
+                // As tall as the video, or the programme text when that is taller.
+                .height(androidx.compose.foundation.layout.IntrinsicSize.Min),
+        ) {
         val videoChannel = if (effectivePreview) heldChannel ?: previewChannel ?: topChannel else topChannel
         GuideVideo(
             channel = videoChannel,
-            channelLine = videoChannel?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(" · ") },
+            channelLine = videoChannel?.let { listOfNotNull(it.guideNumber(), ProviderTags.parse(it.name).name).joinToString(" · ") },
             nowTitle = videoChannel?.let { ch -> programmeAt(vm.cachedProgrammes(ch), liveNow)?.takeIf { liveNow < it.stopMs }?.title },
             previewEngine = liveVm.previewEngine,
             showVideo = effectivePreview && (previewArmed || heldChannel != null),
-            modifier = Modifier.width(640.mpx),
+            modifier = Modifier.width(GUIDE_VIDEO_W.mpx),
             // Kevin's copy: over the mini player in this box, name the channel actually playing.
-            onAirLine = (previewChannel ?: videoChannel)?.let { listOfNotNull(it.number?.toString(), ProviderTags.parse(it.name).name).joinToString(" · ") },
+            onAirLine = (previewChannel ?: videoChannel)?.let { listOfNotNull(it.guideNumber(), ProviderTags.parse(it.name).name).joinToString(" · ") },
             onAirNowTitle = (previewChannel ?: videoChannel)?.let { ch -> programmeAt(vm.cachedProgrammes(ch), liveNow)?.takeIf { liveNow < it.stopMs }?.title },
         )
         // … and the programme under the cursor, with what it can do.
-        Box(Modifier.weight(1f).fillMaxHeight()) {
+        Column(Modifier.weight(1f).fillMaxHeight()) {
             if (topChannel != null) {
                 val chName = ProviderTags.parse(topChannel.name).name
                 GuideProgrammeBlock(
@@ -456,11 +465,13 @@ fun EpgScreen(
                     title = shown?.title ?: chName,
                     details = if (shown == null) stringResource(R.string.content_epg_no_programme) else programmeDetailsLine(shown),
                     synopsis = shown?.description,
-                    modifier = Modifier.padding(start = 46.mpx, top = 76.mpx).widthIn(max = 1080.mpx),
+                    modifier = Modifier.padding(start = 46.mpx, top = 76.mpx),
                 )
             }
-            // The key hints at the bottom right of the top area, level with the video's bottom edge (owner, 2026-10-01).
-            Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus) }
+            // The key hints at the bottom right of the top area, level with the video's bottom edge (owner,
+            // 2026-10-01), or under the description when that runs longer.
+            Spacer(Modifier.weight(1f))
+            Box(Modifier.fillMaxWidth()) { Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus) } }
         }
 
         }
@@ -657,7 +668,7 @@ fun EpgScreen(
             title = p.title,
             subtitle = listOf(
                 stringResource(R.string.content_live_time_range_plain, formatTime(p.startMs), formatTime(p.stopMs)),
-                listOfNotNull(ch.number?.toString(), ProviderTags.parse(ch.name).name).joinToString(" "),
+                listOfNotNull(ch.guideNumber(), ProviderTags.parse(ch.name).name).joinToString(" "),
             ).joinToString(" · "),
             actions = actionsFor(ch, p),
             leadMinutes = leadMinutes,
@@ -894,3 +905,6 @@ private fun GuideKeyHints(cellMode: Boolean) {
     }
     tv.own.owntv.ui.stage.StageKeyHints(hints)
 }
+
+/** Kevin's copy: the Guide's top-left video width, in mockup pixels (was 640); 16:9, so 270 high. */
+private const val GUIDE_VIDEO_W = 480

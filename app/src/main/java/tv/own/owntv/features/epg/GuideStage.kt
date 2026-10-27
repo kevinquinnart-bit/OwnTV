@@ -216,22 +216,24 @@ internal fun GuideProgrammeBlock(
         if (eyebrow != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.mpx), verticalAlignment = Alignment.CenterVertically) {
                 OwnTVIcon(OwnTVIcon.CLOCK, a.accent, Modifier.size(18.mpx))
-                Text(eyebrow, style = stageText(18, 700, 0.02.em), color = a.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(eyebrow, style = stageText(18, 700, 0.02.em), color = a.accent, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
         if (title != null) {
             Text(
-                title, style = stageText(60, 800, (-1.5).mpxSp), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                title, style = stageText(60, 800, (-1.5).mpxSp), color = StageColors.Text, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 10.mpx, bottom = 6.mpx),
             )
         }
-        if (details != null) Text(details, style = stageText(19, 400), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(
-            synopsis.orEmpty(),
-            style = stageText(19, 400).copy(lineHeight = (19 * 1.5f).mpxSp), color = stageTone(Color(0xFFCCD6D2), StageColors.Body),
-            maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 1000.mpx).padding(top = 12.mpx, bottom = 20.mpx),
-        )
+        if (details != null) Text(details, style = stageText(19, 400), color = StageColors.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        // Kevin's copy: the whole description, across the full width, never cut short.
+        if (!synopsis.isNullOrBlank()) {
+            Text(
+                synopsis,
+                style = stageText(19, 400).copy(lineHeight = (19 * 1.5f).mpxSp), color = stageTone(Color(0xFFCCD6D2), StageColors.Body),
+                modifier = Modifier.padding(top = 12.mpx, bottom = 12.mpx),
+            )
+        }
     }
 }
 
@@ -284,6 +286,14 @@ internal fun GuideRuler(
     }
 }
 
+/** Kevin's copy: whether the Guide shows channel numbers (Settings › Channel numbers); set by EpgScreen. */
+internal object GuideNumbers {
+    var show by mutableStateOf(false)
+}
+
+/** The channel's number as the Guide writes it, or null while channel numbers are off. */
+internal fun ChannelEntity.guideNumber(): String? = number?.takeIf { GuideNumbers.show }?.toString()
+
 /**
  * A channel's label column (P4-01): the playlist's 7 px dot, the number (38 wide, 17/700 dim), the
  * logo on a 58×40 plate, the name 17/700. The row the focus is in has its number and name in accent.
@@ -297,12 +307,14 @@ internal fun GuideChannelLabel(channel: ChannelEntity, name: String, dot: Color?
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(7.mpx).background(dot ?: Color.Transparent, RoundedCornerShape(50)))
-        Text(
-            channel.number?.toString().orEmpty(),
-            style = stageText(17, 700).copy(fontFeatureSettings = Tabular), color = if (selected) a.accent else StageColors.Dim,
-            // Always whole (owner): the column fits the longest number in the list; only the name is cut.
-            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(numberWidth),
-        )
+        if (GuideNumbers.show) {
+            Text(
+                channel.number?.toString().orEmpty(),
+                style = stageText(17, 700).copy(fontFeatureSettings = Tabular), color = if (selected) a.accent else StageColors.Dim,
+                // Always whole (owner): the column fits the longest number in the list; only the name is cut.
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(numberWidth),
+            )
+        }
         LivePlate(channel.displayLogoUrl, 58.mpx, 40.mpx, radius = 10.mpx)
         Text(name, style = stageText(17, 700), color = if (selected) a.accent else StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
     }
@@ -597,7 +609,7 @@ internal fun GuideChannelMenu(
     val locale = androidx.compose.ui.text.intl.Locale.current.platformLocale
     GuideMenuHost(x = 1150f, top = 64.mpx, width = 560.mpx, onDismiss = onDismiss) {
         StageMenuHeader(
-            title = listOfNotNull(channel.number?.toString(), tv.own.owntv.features.live.ProviderTags.parse(channel.name).name).joinToString(" · "),
+            title = listOfNotNull(channel.guideNumber(), tv.own.owntv.features.live.ProviderTags.parse(channel.name).name).joinToString(" · "),
             subtitle = stringResource(R.string.content_epg_no_programme),
         )
         StageGroupLabel(stringResource(R.string.content_menu_group_watch).uppercase(locale))

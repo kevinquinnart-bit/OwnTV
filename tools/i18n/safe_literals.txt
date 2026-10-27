@@ -19,7 +19,9 @@
 # category protocol: Stable protocol or comparison identifier.
 # category technical: Reviewed non-user-facing technical literal.
 
+1	technical	app/src/main/java/tv/own/owntv/DefaultAutoRefresh.kt	channel_numbers_off_v1
 1	technical	app/src/main/java/tv/own/owntv/DefaultAutoRefresh.kt	empty_fill
+1	technical	app/src/main/java/tv/own/owntv/DefaultAutoRefresh.kt	kevin_one_time_defaults
 1	technical	app/src/main/java/tv/own/owntv/DefaultAutoRefresh.kt	off_screen_refresh
 1	protocol	app/src/main/java/tv/own/owntv/DefaultAutoRefresh.kt	on_open_refresh
 1	log	app/src/main/java/tv/own/owntv/MainActivity.kt	BgImage

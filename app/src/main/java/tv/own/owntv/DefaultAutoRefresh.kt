@@ -64,6 +64,24 @@ internal suspend fun downloadEmptySources() {
 
 private const val EMPTY_FILL = "empty_fill"
 
+private const val ONE_TIME_PREFS = "kevin_one_time_defaults"
+private const val NUMBERS_OFF = "channel_numbers_off_v1"
+
+/**
+ * Kevin's copy: settings changed once, on the first start of a build that carries them, and never
+ * again, so a later choice in Settings always stands. Channel numbers start off.
+ */
+internal suspend fun applyOneTimeDefaults(settings: SettingsRepository) {
+    runCatching {
+        val ctx = org.koin.core.context.GlobalContext.get().get<android.content.Context>()
+        val prefs = ctx.getSharedPreferences(ONE_TIME_PREFS, android.content.Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(NUMBERS_OFF, false)) {
+            settings.setDirectTune(false)
+            prefs.edit().putBoolean(NUMBERS_OFF, true).apply()
+        }
+    }
+}
+
 /**
  * Kevin's copy: refresh anything past its refresh time the moment the app leaves the screen (Home,
  * another app, or the TV going to standby).
