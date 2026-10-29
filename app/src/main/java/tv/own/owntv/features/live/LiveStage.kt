@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -70,6 +71,9 @@ import tv.own.owntv.ui.components.ChannelLogoTile
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.components.OwnTVSpinner
 import tv.own.owntv.ui.components.trapVerticalFocusExit
+import tv.own.owntv.ui.components.FitText
+import tv.own.owntv.ui.components.ticker
+import tv.own.owntv.ui.theme.animationsOn
 import tv.own.owntv.ui.format.rememberSystemTimeFormatter
 import tv.own.owntv.ui.stage.shownColor
 import tv.own.owntv.ui.stage.PlaylistMark
@@ -175,6 +179,8 @@ internal fun LiveStageRow(
                     },
                     style = stageText(17, 400), color = if (focused) StageColors.FxLine else StageColors.Muted,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    // Kevin's copy: a programme name too long for the row rolls sideways.
+                    modifier = Modifier.ticker(animationsOn),
                 )
             }
             if (now != null) {
@@ -251,6 +257,8 @@ internal fun LiveStagePane(
     onOpenProgramme: (XtEpgEntry) -> Unit,
     onBackToList: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Kevin's copy: room kept clear at the bottom (Live TV's key hints sit there). */
+    bottomReserve: androidx.compose.ui.unit.Dp = 0.mpx,
 ) {
     val previewState by previewEngine.state.collectAsStateWithLifecycle()
     val streamChips by previewEngine.streamChips.collectAsStateWithLifecycle()
@@ -261,10 +269,13 @@ internal fun LiveStagePane(
     val videoShadow = tv.own.owntv.ui.theme.stageShadow(0.55f)
     // Kevin's copy: tell the mini player where this screen is, and forget it when the screen goes.
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { tv.own.owntv.features.live.LiveVideoSlot.bounds = null } }
-    Column(modifier) {
+    // Kevin's copy: the video is a little smaller (78% of the pane, at its right edge) so the programme
+    // text below gets the room to show its whole description.
+    Column(modifier.fillMaxHeight()) {
         Box(
             Modifier
-                .fillMaxWidth()
+                .align(Alignment.End)
+                .fillMaxWidth(0.78f)
                 .aspectRatio(16f / 9f)
                 .onGloballyPositioned { tv.own.owntv.features.live.LiveVideoSlot.bounds = it.boundsInRoot() }
                 .drawBehind {
@@ -316,23 +327,25 @@ internal fun LiveStagePane(
             }
         }
         val now = nowNext?.now
-        Column(Modifier.fillMaxWidth().padding(start = 4.mpx, end = 4.mpx, top = 34.mpx)) {
+        val ticking = animationsOn
+        Column(Modifier.fillMaxWidth().weight(1f).padding(start = 4.mpx, end = 4.mpx, top = 26.mpx, bottom = bottomReserve)) {
             if (now != null) {
                 Text(now.title, style = stageText(42, 800, (-0.5).mpxSp), color = StageColors.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     detailsLine(now, nowNext.nowDetails),
                     style = stageText(19, 400), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 8.mpx, bottom = 16.mpx),
+                    modifier = Modifier.padding(top = 8.mpx, bottom = 16.mpx).ticker(ticking),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.mpx)) {
                     StageProgress(progressOf(now), Modifier.weight(1f))
                     Text(timeLeftText(minutesLeft(now)), style = stageText(17, 400).copy(fontFeatureSettings = Tabular), color = StageColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                // Kevin's copy: the whole description, in all the room down to what is on next; a long one
+                // steps its type down to fit rather than being cut at three lines.
                 now.description?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        it, style = stageText(19, 400).copy(lineHeight = (19 * 1.55f).mpxSp), color = stageTone(Color(0xFFCCD6D2), StageColors.Body),
-                        maxLines = 3, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 18.mpx),
+                    FitText(
+                        it, style = stageText(19, 400).copy(lineHeight = (19 * 1.5f).mpxSp), color = stageTone(Color(0xFFCCD6D2), StageColors.Body),
+                        modifier = Modifier.padding(top = 16.mpx).weight(1f, fill = false),
                     )
                 }
             }
@@ -341,7 +354,7 @@ internal fun LiveStagePane(
             if (next != null) {
                 Row(
                     Modifier
-                        .padding(top = 22.mpx)
+                        .padding(top = 16.mpx)
                         .offset(x = (-12).mpx)
                         .focusGroup(),
                     // 30 between the two, less the 12 + 12 each entry pads itself with for its focus fill.
@@ -350,11 +363,13 @@ internal fun LiveStagePane(
                     // ◀ from next goes back to the channel it belongs to, not to whatever lies to the left.
                     LiveScheduleItem(
                         next, accentTime = true, onClick = { onOpenProgramme(next) },
-                        modifier = Modifier.focusRequester(scheduleFocus).onPreviewKeyEvent { e ->
+                        // Kevin's copy: half the line each at most, so a long first title cannot push the
+                        // second off; either one rolls when it does not fit.
+                        modifier = Modifier.weight(1f, fill = false).focusRequester(scheduleFocus).onPreviewKeyEvent { e ->
                             if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft) { onBackToList(); true } else false
                         },
                     )
-                    if (later != null) LiveScheduleItem(later, accentTime = false, onClick = { onOpenProgramme(later) })
+                    if (later != null) LiveScheduleItem(later, accentTime = false, onClick = { onOpenProgramme(later) }, modifier = Modifier.weight(1f, fill = false))
                 }
             }
         }
@@ -380,7 +395,7 @@ private fun LiveScheduleItem(p: XtEpgEntry, accentTime: Boolean, onClick: () -> 
             },
             style = stageText(18, 400), color = if (focused) a.onAccent else if (accentTime) StageColors.Text else StageColors.Muted,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 12.mpx, vertical = 6.mpx),
+            modifier = Modifier.padding(horizontal = 12.mpx, vertical = 6.mpx).ticker(animationsOn),
         )
     }
 }

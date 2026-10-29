@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -231,6 +230,15 @@ fun EpgScreen(
     val rowListState = rememberLazyListState()
     LaunchedEffect(rowListState.firstVisibleItemIndex > 0) { onContentScrolled(rowListState.firstVisibleItemIndex > 0) }
 
+    // Kevin's copy: one clock for every cut-off cell in the grid to roll by (Animations Off = none).
+    val tickerOn = tv.own.owntv.ui.theme.animationsOn
+    val tickerClock = remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    LaunchedEffect(tickerOn) {
+        if (!tickerOn) return@LaunchedEffect
+        val start = androidx.compose.runtime.withFrameMillis { it }
+        while (true) androidx.compose.runtime.withFrameMillis { tickerClock.longValue = it - start }
+    }
+
     // --- The time axis: one scroll position shared by the ruler, the now-line and every row. ----------
     val ppm = with(density) { GuideGridDefaults.PxPerMin.toPx() }
     var timelinePx by remember { mutableIntStateOf(0) }
@@ -435,45 +443,49 @@ fun EpgScreen(
         }
         val shown = full ?: topProgramme
 
-        Column(Modifier.fillMaxSize()) {
-        // Top: the video, and beside it the programme under the cursor. Kevin's copy: the video is
-        // smaller (480 wide, was 640) and the area grows to fit the programme's whole description, so
-        // everything on the right is readable and the grid below gets more rows.
-        Row(
-            Modifier.padding(start = fx(64), end = fx(64), top = 44.mpx).fillMaxWidth()
-                // As tall as the video, or the programme text when that is taller.
-                .height(androidx.compose.foundation.layout.IntrinsicSize.Min),
-        ) {
-        val videoChannel = if (effectivePreview) heldChannel ?: previewChannel ?: topChannel else topChannel
-        GuideVideo(
-            channel = videoChannel,
-            channelLine = videoChannel?.let { listOfNotNull(it.guideNumber(), ProviderTags.parse(it.name).name).joinToString(" · ") },
-            nowTitle = videoChannel?.let { ch -> programmeAt(vm.cachedProgrammes(ch), liveNow)?.takeIf { liveNow < it.stopMs }?.title },
-            previewEngine = liveVm.previewEngine,
-            showVideo = effectivePreview && (previewArmed || heldChannel != null),
-            modifier = Modifier.width(GUIDE_VIDEO_W.mpx),
-            // Kevin's copy: over the mini player in this box, name the channel actually playing.
-            onAirLine = (previewChannel ?: videoChannel)?.let { listOfNotNull(it.guideNumber(), ProviderTags.parse(it.name).name).joinToString(" · ") },
-            onAirNowTitle = (previewChannel ?: videoChannel)?.let { ch -> programmeAt(vm.cachedProgrammes(ch), liveNow)?.takeIf { liveNow < it.stopMs }?.title },
-        )
-        // … and the programme under the cursor, with what it can do.
-        Column(Modifier.weight(1f).fillMaxHeight()) {
-            if (topChannel != null) {
-                val chName = ProviderTags.parse(topChannel.name).name
-                GuideProgrammeBlock(
-                    eyebrow = shown?.let { programmeEyebrow(it, chName, liveNow) },
-                    title = shown?.title ?: chName,
-                    details = if (shown == null) stringResource(R.string.content_epg_no_programme) else programmeDetailsLine(shown),
-                    synopsis = shown?.description,
-                    modifier = Modifier.padding(start = 46.mpx, top = 76.mpx),
-                )
-            }
-            // The key hints at the bottom right of the top area, level with the video's bottom edge (owner,
-            // 2026-10-01), or under the description when that runs longer.
-            Spacer(Modifier.weight(1f))
-            Box(Modifier.fillMaxWidth()) { Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus) } }
-        }
+        // Kevin's copy: the grid shows exactly GUIDE_ROWS channels, so ▲ ▼ always move a whole row and the
+        // list never stops on a half-cut one. Worked in px, as the rows are, so the two always agree.
+        val rowPx = with(density) { GuideGridDefaults.RowHeight.roundToPx() }
+        val gapPx = with(density) { GuideGridDefaults.RowGap.roundToPx() }
+        val listH = with(density) { (rowPx * GUIDE_ROWS + gapPx * (GUIDE_ROWS - 1)).toDp() }
+        val rowScrollSpec = remember(rowPx, gapPx) { guideRowScrollSpec((rowPx + gapPx).toFloat()) }
 
+        Column(Modifier.fillMaxSize()) {
+        // Top: the video, and beside it the programme under the cursor. Kevin's copy: the programme text
+        // starts at GUIDE_TEXT_X (the left edge of the pills above it) and runs to the right margin; the
+        // video sits just left of it, clear of the menu down the left side. The area takes whatever
+        // height the grid leaves, and the description steps its type down to fit in it.
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).padding(top = 44.mpx)) {
+            val textX = fx(GUIDE_TEXT_X)
+            val gap = fx(40)
+            // 480 wide, but never taller than this area and never past the left margin.
+            val videoW = minOf(GUIDE_VIDEO_W.mpx, maxHeight * (16f / 9f), (textX - gap - fx(64)).coerceAtLeast(1.mpx))
+            val videoChannel = if (effectivePreview) heldChannel ?: previewChannel ?: topChannel else topChannel
+            GuideVideo(
+                channel = videoChannel,
+                channelLine = videoChannel?.let { listOfNotNull(it.guideNumber(), ProviderTags.parse(it.name).name).joinToString(" · ") },
+                nowTitle = videoChannel?.let { ch -> programmeAt(vm.cachedProgrammes(ch), liveNow)?.takeIf { liveNow < it.stopMs }?.title },
+                previewEngine = liveVm.previewEngine,
+                showVideo = effectivePreview && (previewArmed || heldChannel != null),
+                modifier = Modifier.padding(start = textX - gap - videoW).width(videoW),
+                // Kevin's copy: over the mini player in this box, name the channel actually playing.
+                onAirLine = (previewChannel ?: videoChannel)?.let { listOfNotNull(it.guideNumber(), ProviderTags.parse(it.name).name).joinToString(" · ") },
+                onAirNowTitle = (previewChannel ?: videoChannel)?.let { ch -> programmeAt(vm.cachedProgrammes(ch), liveNow)?.takeIf { liveNow < it.stopMs }?.title },
+            )
+            // … and the programme under the cursor. The key hints keep the bottom right of this area.
+            Box(Modifier.padding(start = textX, end = fx(64)).fillMaxSize()) {
+                if (topChannel != null) {
+                    val chName = ProviderTags.parse(topChannel.name).name
+                    GuideProgrammeBlock(
+                        eyebrow = shown?.let { programmeEyebrow(it, chName, liveNow) },
+                        title = shown?.title ?: chName,
+                        details = if (shown == null) stringResource(R.string.content_epg_no_programme) else programmeDetailsLine(shown),
+                        synopsis = shown?.description,
+                        modifier = Modifier.fillMaxSize().padding(top = 76.mpx, bottom = 52.mpx),
+                    )
+                }
+                Box(Modifier.align(Alignment.BottomEnd)) { GuideKeyHints(cellMode = inCellMode && gridHasFocus) }
+            }
         }
 
         // The control line (452): one row, every header button of the old guide kept.
@@ -537,8 +549,9 @@ fun EpgScreen(
             }
         }
 
-        // The grid: ruler at 518, rows from 566.
-        Box(Modifier.fillMaxWidth().weight(1f).padding(top = 18.mpx)) {
+        // The grid: the ruler, then exactly GUIDE_ROWS rows (Kevin's copy: a fixed height, not the rest of
+        // the screen).
+        Box(Modifier.fillMaxWidth().padding(top = 18.mpx).height(48.mpx + listH + 24.mpx)) {
             when {
                 state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { OwnTVSpinner(sizeDp = 44) }
                 // No EPG feed added yet → a guide it can't fill. Point the user to EPG Sources.
@@ -556,17 +569,17 @@ fun EpgScreen(
                         windowStart = state.windowStart, windowEnd = state.windowEnd, now = liveNow, scrollPx = scrollPx,
                         modifier = Modifier.padding(start = gx).width(timelineW).height(40.mpx),
                     )
-                    CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides edgeScrollSpec) {
+                    CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides rowScrollSpec) {
                         LazyColumn(
                             state = rowListState,
                             modifier = Modifier
                                 .padding(start = fx(48), end = fx(64), top = 48.mpx)
-                                .fillMaxSize()
+                                .fillMaxWidth()
+                                .height(listH)
                                 .onFocusChanged { gridHasFocus = it.hasFocus }
                                 .focusProperties { onEnter = { runCatching { rowFocus(focusedRow.coerceIn(0, state.channels.size - 1)).requestFocus() } } }
                                 .focusGroup(),
                             verticalArrangement = Arrangement.spacedBy(GuideGridDefaults.RowGap),
-                            contentPadding = PaddingValues(bottom = 24.mpx),
                         ) {
                             itemsIndexed(state.channels, key = { _, ch -> ch.id }) { index, channel ->
                                 GuideRow(
@@ -605,6 +618,7 @@ fun EpgScreen(
                                     },
                                     onOk = { p -> onOk(channel, p) },
                                     onMenu = { p -> returnTo = null; if (p != null) menuFor = channel to p else channelMenuFor = channel },
+                                    tickerMs = if (tickerOn) tickerClock else null,
                                 )
                             }
                         }
@@ -791,6 +805,7 @@ private fun GuideRow(
     onStep: (Int) -> Boolean,
     onOk: (EpgProgrammeEntity?) -> Unit,
     onMenu: (EpgProgrammeEntity?) -> Unit,
+    tickerMs: androidx.compose.runtime.State<Long>? = null,
 ) {
     // Cache peek first, so a row scrolled back into view draws at once; a miss reads this one channel.
     val cacheRevision by vm.cacheRevision.collectAsStateWithLifecycle()
@@ -858,6 +873,7 @@ private fun GuideRow(
                     recordingStarts = recordingStarts,
                     reminderStarts = reminderStarts,
                     scrollPx = scrollPx,
+                    tickerMs = tickerMs,
                 )
             }
         }
@@ -908,3 +924,23 @@ private fun GuideKeyHints(cellMode: Boolean) {
 
 /** Kevin's copy: the Guide's top-left video width, in mockup pixels (was 640); 16:9, so 270 high. */
 private const val GUIDE_VIDEO_W = 480
+
+/** Kevin's copy: where the programme text above the grid starts, of the screen's 1920 (the pills' left edge). */
+private const val GUIDE_TEXT_X = 860
+
+/** Kevin's copy: how many channel rows the grid shows. */
+private const val GUIDE_ROWS = 6
+
+/**
+ * Kevin's copy: the grid's scrolling, in whole rows. Live TV's edge rule (scroll only at the edge, one
+ * row of room kept) rounded out to a whole number of rows, so the top row is never left half cut.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun guideRowScrollSpec(pitchPx: Float) = object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val d = edgeScrollSpec.calculateScrollDistance(offset, size, containerSize)
+        if (d == 0f || pitchPx <= 0f) return d
+        val rows = kotlin.math.ceil(kotlin.math.abs(d) / pitchPx - 0.01f)
+        return kotlin.math.sign(d) * rows * pitchPx
+    }
+}

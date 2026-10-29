@@ -104,6 +104,11 @@ internal fun ProgrammeStripCanvas(
     reminderStarts: Set<Long>,
     /** How far the timeline is scrolled, shared by every row and the ruler. */
     scrollPx: Int,
+    /**
+     * Kevin's copy: the guide's ticker clock (ms). A title or time too long for its cell rolls sideways
+     * by it; only a row with such a cell reads it, so only that row redraws as it rolls. Null = "…".
+     */
+    tickerMs: androidx.compose.runtime.State<Long>? = null,
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     val measurer = rememberTextMeasurer(cacheSize = 64)
@@ -140,6 +145,8 @@ internal fun ProgrammeStripCanvas(
         val viewW = size.width
         val h = size.height
         val r = CornerRadius(14 * px)
+        // The ticker's pace: 30 dp a second, as the app's other rolling lines.
+        val tickerPxPerMs = 30.dp.toPx() / 1000f
         // Feeds sometimes carry two programmes for the same time. Each one is drawn from where the one
         // before it ends, so they never sit on top of each other; one hidden completely is left out.
         var shownUntil = windowStart
@@ -187,8 +194,19 @@ internal fun ProgrammeStripCanvas(
             val titleColor = if (focused) a.onAccent else textColor.copy(alpha = fade)
             val smallColor = if (focused) Color.Black.copy(alpha = 0.6f) else dimColor.copy(alpha = fade)
             val iconColor = if (focused) a.onAccent else a.accent.copy(alpha = fade)
-            val title = measurer.measure(p.title, titleStyle.copy(color = titleColor), overflow = TextOverflow.Ellipsis, maxLines = 1, softWrap = false, constraints = Constraints(maxWidth = textW))
-            drawText(title, topLeft = Offset(tx + 14 * px, 8 * px))
+            // Kevin's copy: a title wider than its cell rolls along inside the cell instead of ending in "…".
+            val fullTitle = if (tickerMs != null) measurer.measure(p.title, titleStyle.copy(color = titleColor), maxLines = 1, softWrap = false) else null
+            val title = if (fullTitle != null && fullTitle.size.width > textW) {
+                val shift = tv.own.owntv.ui.components.tickerShift((fullTitle.size.width - textW).toFloat(), tickerMs!!.value, tickerPxPerMs)
+                clipRect(left = tx + 14 * px, top = 0f, right = tx + 14 * px + textW, bottom = h) {
+                    drawText(fullTitle, topLeft = Offset(tx + 14 * px - shift, 8 * px))
+                }
+                fullTitle
+            } else {
+                val t = fullTitle ?: measurer.measure(p.title, titleStyle.copy(color = titleColor), overflow = TextOverflow.Ellipsis, maxLines = 1, softWrap = false, constraints = Constraints(maxWidth = textW))
+                drawText(t, topLeft = Offset(tx + 14 * px, 8 * px))
+                t
+            }
             // The small line: icons first, 8 apart, then the time.
             var cx = tx + 14 * px
             val lineTop = 8 * px + title.size.height + 3 * px
@@ -203,8 +221,16 @@ internal fun ProgrammeStripCanvas(
             if (p.id in catchupIds) glyph(OwnTVIcon.REWIND, iconColor)
             val timeW = (x + w - 14 * px - cx).toInt()
             if (timeW > 4) {
-                val time = measurer.measure(labels[i], timeStyle.copy(color = smallColor), overflow = TextOverflow.Ellipsis, maxLines = 1, softWrap = false, constraints = Constraints(maxWidth = timeW))
-                drawText(time, topLeft = Offset(cx, lineTop))
+                val fullTime = if (tickerMs != null) measurer.measure(labels[i], timeStyle.copy(color = smallColor), maxLines = 1, softWrap = false) else null
+                if (fullTime != null && fullTime.size.width > timeW) {
+                    val shift = tv.own.owntv.ui.components.tickerShift((fullTime.size.width - timeW).toFloat(), tickerMs!!.value, tickerPxPerMs)
+                    clipRect(left = cx, top = 0f, right = cx + timeW, bottom = h) {
+                        drawText(fullTime, topLeft = Offset(cx - shift, lineTop))
+                    }
+                } else {
+                    val time = fullTime ?: measurer.measure(labels[i], timeStyle.copy(color = smallColor), overflow = TextOverflow.Ellipsis, maxLines = 1, softWrap = false, constraints = Constraints(maxWidth = timeW))
+                    drawText(time, topLeft = Offset(cx, lineTop))
+                }
             }
         }
         // Nothing on anywhere in view: say so, rather than a row that looks broken.

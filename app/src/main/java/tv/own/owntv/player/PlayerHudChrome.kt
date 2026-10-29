@@ -55,6 +55,7 @@ import tv.own.owntv.ui.components.OwnTVButton
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.theme.OwnTVTheme
 import tv.own.owntv.ui.theme.animationsOn
+import tv.own.owntv.ui.components.ticker
 
 /**
  * The HUD's chrome: the top strip, the channel/direct-tune OSD cards, the centre transport and the
@@ -77,6 +78,8 @@ internal fun TopBar(
     // the strip sit inside the bottom box instead of along the top of the screen.
     showBack: Boolean = true,
     inset: androidx.compose.ui.unit.Dp = 20.dp,
+    /** Kevin's copy: one line — a smaller logo, then the number, the name and the stream facts after it. */
+    compact: Boolean = false,
 ) {
     // Reactive meta so the title row updates instantly on a channel zap (the plain vars aren't observed).
     val meta by player.currentMeta.collectAsStateWithLifecycle()
@@ -103,8 +106,8 @@ internal fun TopBar(
         // Live: the channel logo sits with the channel NAME (identity), not with the programme — so the
         // whole "which channel am I on" group reads as one unit however wide the TV is.
         if (isLive) {
-            ChannelLogo(meta.logoUrl, displayTitle, size = 46)
-            Spacer(Modifier.width(14.dp))
+            ChannelLogo(meta.logoUrl, displayTitle, size = if (compact) 30 else 46)
+            Spacer(Modifier.width(if (compact) 10.dp else 14.dp))
         }
         Column(Modifier.weight(1f)) {
             val chipRow: @Composable () -> Unit = {
@@ -124,7 +127,27 @@ internal fun TopBar(
                 }
             }
             // Live stacks the technical chips ABOVE the channel name; VOD keeps title-then-chips.
-            if (isLive) {
+            // Kevin's copy: compact puts them all on the channel's own line, after its name.
+            if (compact) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isLive) meta.subtitle?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.titleSmall, color = hudInk.copy(alpha = 0.45f), fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(
+                        displayTitle, style = MaterialTheme.typography.titleSmall, color = hudInk, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false).ticker(animationsOn),
+                    )
+                    // Films and episodes keep their series / season line, after the title.
+                    if (!isLive) vodSubtitle?.let {
+                        Spacer(Modifier.width(10.dp))
+                        Text(it, style = MaterialTheme.typography.labelMedium, color = hudInk.copy(alpha = 0.45f), maxLines = 1)
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    chipRow()
+                }
+            } else if (isLive) {
                 chipRow()
                 Spacer(Modifier.height(2.dp))
                 // Channel number ahead of the name — this is where you look to learn the number of a

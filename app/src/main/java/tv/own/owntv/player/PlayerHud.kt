@@ -661,7 +661,7 @@ fun PlayerHud(
                         1.0f to Color.Transparent,
                     ))
             }
-            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(if (error == null) 360.dp else 260.dp)
+            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(if (error == null) 300.dp else 260.dp)
                 .gradientWash(
                     vertical = true,
                     0.0f to Color.Transparent,
@@ -736,15 +736,17 @@ fun PlayerHud(
                     // Kevin's copy: everything in this one box. The channel row across the width with the
                     // clock at its right end, and under it the Live now card, also full width, with the
                     // programme's whole description, just above the buttons.
+                    // Kevin's copy (1.0.28): kept short so the box stays in the lower part of the picture —
+                    // the channel, its stream facts and the clock on one line, then the programme.
                     header = {
                         Column(Modifier.fillMaxWidth()) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                                Box(Modifier.weight(1f)) { TopBar(player, isLive, topChips, duration, onBack, showBack = false, inset = 0.dp) }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.weight(1f)) { TopBar(player, isLive, topChips, duration, onBack, showBack = false, inset = 0.dp, compact = true) }
                                 Spacer(Modifier.width(16.dp))
-                                PlayerClock(watchingMs = watchingWallMs?.invoke())
+                                PlayerClock(watchingMs = watchingWallMs?.invoke(), compact = true)
                             }
                             liveEpgCard?.let {
-                                Spacer(Modifier.height(10.dp))
+                                Spacer(Modifier.height(6.dp))
                                 it()
                             }
                         }

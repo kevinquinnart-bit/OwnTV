@@ -73,6 +73,9 @@ import tv.own.owntv.ui.components.OwnTVPopup
 import tv.own.owntv.ui.components.OwnTVSpinner
 import tv.own.owntv.ui.components.longPressMenuGuard
 import tv.own.owntv.ui.components.trapAllFocusExit
+import tv.own.owntv.ui.components.FitText
+import tv.own.owntv.ui.components.ticker
+import tv.own.owntv.ui.theme.animationsOn
 import tv.own.owntv.ui.format.rememberSystemTimeFormatter
 import tv.own.owntv.ui.stage.StageButton
 import tv.own.owntv.ui.stage.StageFocus
@@ -173,7 +176,7 @@ internal fun GuideVideoOverlay(channelLine: String?, nowTitle: String?) {
                     if (!nowTitle.isNullOrBlank()) withStyle(SpanStyle(color = StageColors.Muted, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)) { append(" · $nowTitle") }
                 },
                 style = stageText(19, 700), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 22.mpx, end = 22.mpx, bottom = 18.mpx),
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 22.mpx, end = 22.mpx, bottom = 18.mpx).ticker(animationsOn),
             )
         }
     }
@@ -226,12 +229,13 @@ internal fun GuideProgrammeBlock(
             )
         }
         if (details != null) Text(details, style = stageText(19, 400), color = StageColors.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        // Kevin's copy: the whole description, across the full width, never cut short.
+        // Kevin's copy: the whole description, in all the room left above the grid; a long one steps its
+        // type down to fit rather than pushing the grid down.
         if (!synopsis.isNullOrBlank()) {
-            Text(
+            FitText(
                 synopsis,
                 style = stageText(19, 400).copy(lineHeight = (19 * 1.5f).mpxSp), color = stageTone(Color(0xFFCCD6D2), StageColors.Body),
-                modifier = Modifier.padding(top = 12.mpx, bottom = 12.mpx),
+                modifier = Modifier.padding(top = 12.mpx).weight(1f, fill = false),
             )
         }
     }
@@ -316,7 +320,7 @@ internal fun GuideChannelLabel(channel: ChannelEntity, name: String, dot: Color?
             )
         }
         LivePlate(channel.displayLogoUrl, 58.mpx, 40.mpx, radius = 10.mpx)
-        Text(name, style = stageText(17, 700), color = if (selected) a.accent else StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(name, style = stageText(17, 700), color = if (selected) a.accent else StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).ticker(animationsOn))
     }
 }
 

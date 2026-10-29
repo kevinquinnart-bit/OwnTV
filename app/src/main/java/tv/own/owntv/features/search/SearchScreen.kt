@@ -446,6 +446,7 @@ fun SearchScreen(
                     onOpenProgramme = { goTo(active) },
                     onBackToList = { runCatching { requesterFor(active.key).requestFocus() } },
                     modifier = panelModifier.onFocusChanged { scheduleHasFocus = it.hasFocus },
+                    bottomReserve = 40.mpx,
                 )
                 active is Entry.Movie -> PosterPanel(
                     movieTitleInfo(active.movie, focusedMeta?.takeIf { it.first == active.key }?.second, metadataMode.tmdbWins),

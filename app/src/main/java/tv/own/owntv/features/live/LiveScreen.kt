@@ -930,6 +930,8 @@ fun LiveScreen(
                     modifier = Modifier
                         .padding(start = screenW - margin - stageW, top = 120.mpx)
                         .width(stageW),
+                    // Kevin's copy: the key hints' line (40 up from the bottom) stays clear.
+                    bottomReserve = 96.mpx,
                 )
             }
         }

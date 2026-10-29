@@ -35,6 +35,8 @@ import tv.own.owntv.R
 import tv.own.owntv.core.parser.XtEpgEntry
 import tv.own.owntv.ui.format.rememberSystemTimeFormatter
 import tv.own.owntv.ui.theme.OwnTVTheme
+import tv.own.owntv.ui.theme.animationsOn
+import tv.own.owntv.ui.components.ticker
 import tv.own.owntv.core.live.EpgNowNext
 
 /** Which pair of slots a [LiveEpgCard] is describing: what is on air now, or what was on air
@@ -83,35 +85,56 @@ fun LiveEpgCard(
     ) {
         epg.now?.let { entry ->
             Column(if (wide) Modifier.weight(1f) else Modifier.widthIn(max = 300.dp)) {
+                val remaining = ((entry.stopMs - nowMs) / 60_000L).toInt()
+                val timeText = if (remaining in 1..600) {
+                    stringResource(
+                        R.string.content_live_time_remaining,
+                        formatTime(entry.stopMs),
+                        remaining,
+                    )
+                } else {
+                    stringResource(
+                        R.string.content_live_time_range,
+                        formatTime(entry.startMs),
+                        formatTime(entry.stopMs),
+                    )
+                }
+                if (wide) {
+                    // Kevin's copy: label, title and time on one line (the title rolls when it is too
+                    // long), so the player's bottom box stays low on the picture.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SlotLabel(stringResource(if (archive) R.string.content_archive_playing else R.string.content_live_now), colors.primary)
+                        Spacer(Modifier.widthIn(min = 8.dp, max = 8.dp))
+                        Text(
+                            entry.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = hudInk,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false).ticker(animationsOn),
+                        )
+                        Spacer(Modifier.widthIn(min = 10.dp, max = 10.dp))
+                        Text(timeText, style = MaterialTheme.typography.labelSmall, color = hudInk.copy(alpha = 0.5f), maxLines = 1)
+                    }
+                } else {
                 SlotLabel(stringResource(if (archive) R.string.content_archive_playing else R.string.content_live_now), colors.primary)
                 Text(
                     entry.title,
                     style = MaterialTheme.typography.titleSmall,
                     color = hudInk,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = if (wide) 2 else 1,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val remaining = ((entry.stopMs - nowMs) / 60_000L).toInt()
                 Text(
-                    if (remaining in 1..600) {
-                        stringResource(
-                            R.string.content_live_time_remaining,
-                            formatTime(entry.stopMs),
-                            remaining,
-                        )
-                    } else {
-                        stringResource(
-                            R.string.content_live_time_range,
-                            formatTime(entry.startMs),
-                            formatTime(entry.stopMs),
-                        )
-                    },
+                    timeText,
                     style = MaterialTheme.typography.labelSmall,
                     color = hudInk.copy(alpha = 0.5f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                }
                 // What the programme actually IS, not just what it is called. The guide carries this
                 // for both stored XMLTV rows and the providers' own short-EPG replies, and until now
                 // the only place it surfaced was the Guide screen — so anyone watching live could read
@@ -131,7 +154,7 @@ fun LiveEpgCard(
                 val span = (entry.stopMs - entry.startMs).toFloat()
                 if (span > 0f) {
                     val progress = ((nowMs - entry.startMs) / span).coerceIn(0f, 1f)
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(if (wide) 4.dp else 5.dp))
                     Box(
                         Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(1.dp))
                             .background(hudInk.copy(alpha = 0.18f)),
@@ -150,14 +173,31 @@ fun LiveEpgCard(
         }
         epg.next?.let { entry ->
             Column(Modifier.widthIn(max = 240.dp)) {
-                SlotLabel(stringResource(if (archive) R.string.content_archive_then else R.string.content_live_next), hudInk.copy(alpha = 0.45f))
-                Text(
-                    entry.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = hudInk.copy(alpha = 0.72f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                val nextLabel = stringResource(if (archive) R.string.content_archive_then else R.string.content_live_next)
+                if (wide) {
+                    // Kevin's copy: label and title on one line, the title rolling when it is too long.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SlotLabel(nextLabel, hudInk.copy(alpha = 0.45f))
+                        Spacer(Modifier.widthIn(min = 6.dp, max = 6.dp))
+                        Text(
+                            entry.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = hudInk.copy(alpha = 0.72f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.ticker(animationsOn),
+                        )
+                    }
+                } else {
+                    SlotLabel(nextLabel, hudInk.copy(alpha = 0.45f))
+                    Text(
+                        entry.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = hudInk.copy(alpha = 0.72f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     stringResource(
                         R.string.content_live_time_range,

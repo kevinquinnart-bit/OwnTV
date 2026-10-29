@@ -50,7 +50,12 @@ import tv.own.owntv.ui.theme.OwnTVTheme
  * "13:00" from being read as a broken device clock, and it costs one small line.
  */
 @Composable
-internal fun PlayerClock(watchingMs: Long?, modifier: Modifier = Modifier) {
+internal fun PlayerClock(
+    watchingMs: Long?,
+    modifier: Modifier = Modifier,
+    /** Kevin's copy: one line per clock ("12:54 AM  Thu 29 Oct"), to keep the player's bottom box short. */
+    compact: Boolean = false,
+) {
     val colors = OwnTVTheme.colors
     val formatTime = rememberSystemTimeFormatter()
     val formatDate = rememberBestDateFormatter("EEEdMMM")
@@ -59,6 +64,24 @@ internal fun PlayerClock(watchingMs: Long?, modifier: Modifier = Modifier) {
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(10_000); nowMs = System.currentTimeMillis() } }
 
+    if (compact) {
+        Row(
+            modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(hudShade(0.38f))
+                .border(1.dp, hudInk.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 10.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (watchingMs != null) {
+                ClockLine(stringResource(R.string.content_clock_programme), formatTime(watchingMs), formatDate(watchingMs), colors.primary, colors.primary)
+                Box(Modifier.height(16.dp).width(1.dp).background(hudInk.copy(alpha = 0.18f)))
+            }
+            ClockLine(null, formatTime(nowMs), formatDate(nowMs), hudInk, hudInk.copy(alpha = 0.55f))
+        }
+        return
+    }
     Row(
         modifier
             .clip(RoundedCornerShape(10.dp))
@@ -118,5 +141,17 @@ private fun ClockColumn(
             style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.8.sp),
             color = dateColor,
         )
+    }
+}
+
+/** Kevin's copy: one clock on one line — an optional label, the time, then the date. */
+@Composable
+private fun ClockLine(label: String?, time: String, date: String, timeColor: Color, dateColor: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        label?.let {
+            Text(it.uppercase(), style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp), color = timeColor, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+        Text(time, style = MaterialTheme.typography.titleSmall, color = timeColor, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(date, style = MaterialTheme.typography.labelSmall, color = dateColor, maxLines = 1)
     }
 }
