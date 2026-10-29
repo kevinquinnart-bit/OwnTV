@@ -716,6 +716,14 @@ fun OwnTVShell(
     // keeps the compact room, so nothing behind it moves).
     val widenDocked = navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED && navSize == tv.own.owntv.core.settings.SettingsRepository.NavSize.COMPACT && navWiden != null && railFocused
     val railSize = if (widenDocked) navWiden ?: navSize else navSize
+    // Kevin's copy: tell the screens how far the open rail reaches over them (the Guide's video keeps clear).
+    androidx.compose.runtime.SideEffect {
+        tv.own.owntv.features.shell.components.RailOverlap.width = tv.own.owntv.features.shell.components.railOverlapFor(
+            docked = navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED,
+            size = navSize,
+            widen = navWiden,
+        )
+    }
     val railState = when {
         widenDocked -> tv.own.owntv.features.shell.components.RailState.OPEN
         navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED -> tv.own.owntv.features.shell.components.RailState.PINNED

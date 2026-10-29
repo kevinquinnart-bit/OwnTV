@@ -110,6 +110,22 @@ fun railDockedReserve(size: NavSize) =
     if (size == NavSize.COMPACT) (28 + 84 + 16).mpx else (24 + size.openWidth + 16).mpx
 
 /**
+ * Kevin's copy: how far the rail reaches over the content's left edge when it is open (0 when a docked
+ * rail already has its own room). Set by the shell; the TV Guide keeps its video clear of it, so the
+ * video never sits under the menu, open or closed.
+ */
+object RailOverlap {
+    var width by androidx.compose.runtime.mutableStateOf(0.mpx)
+}
+
+/** The width [RailOverlap] should hold for these navigation settings. */
+fun railOverlapFor(docked: Boolean, size: NavSize, widen: NavSize?): androidx.compose.ui.unit.Dp = when {
+    !docked -> railDockedReserve(size)
+    size == NavSize.COMPACT && widen != null -> (railDockedReserve(widen) - railDockedReserve(NavSize.COMPACT)).coerceAtLeast(0.mpx)
+    else -> 0.mpx
+}
+
+/**
  * Where content starts below the top-right cluster (34 + its 68 height + a gap) on screens that have not
  * been redrawn for Stage yet. Each screen's own phase takes this away as it gets the full canvas.
  */

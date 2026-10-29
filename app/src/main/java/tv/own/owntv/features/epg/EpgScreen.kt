@@ -458,8 +458,10 @@ fun EpgScreen(
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).padding(top = 44.mpx)) {
             val textX = fx(GUIDE_TEXT_X)
             val gap = fx(40)
-            // 480 wide, but never taller than this area and never past the left margin.
-            val videoW = minOf(GUIDE_VIDEO_W.mpx, maxHeight * (16f / 9f), (textX - gap - fx(64)).coerceAtLeast(1.mpx))
+            // 480 wide, but never taller than this area, and never reaching left past the margin or under
+            // the menu down the left side when it opens (Kevin's copy, 1.0.30).
+            val leftLimit = maxOf(fx(64), tv.own.owntv.features.shell.components.RailOverlap.width)
+            val videoW = minOf(GUIDE_VIDEO_W.mpx, maxHeight * (16f / 9f), (textX - gap - leftLimit).coerceAtLeast(1.mpx))
             val videoChannel = if (effectivePreview) heldChannel ?: previewChannel ?: topChannel else topChannel
             GuideVideo(
                 channel = videoChannel,
