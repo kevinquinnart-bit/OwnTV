@@ -131,7 +131,7 @@ internal fun TopBar(
             if (compact) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (isLive) meta.subtitle?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, style = MaterialTheme.typography.titleSmall, color = hudInk.copy(alpha = 0.45f), fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(it, style = MaterialTheme.typography.titleSmall, color = hudInk.copy(alpha = 0.45f), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.width(8.dp))
                     }
                     Text(
@@ -142,7 +142,7 @@ internal fun TopBar(
                     // Films and episodes keep their series / season line, after the title.
                     if (!isLive) vodSubtitle?.let {
                         Spacer(Modifier.width(10.dp))
-                        Text(it, style = MaterialTheme.typography.labelMedium, color = hudInk.copy(alpha = 0.45f), maxLines = 1)
+                        Text(it, style = MaterialTheme.typography.labelMedium, color = hudInk.copy(alpha = 0.45f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(Modifier.width(14.dp))
                     chipRow()

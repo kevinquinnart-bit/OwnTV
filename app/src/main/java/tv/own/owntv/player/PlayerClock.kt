@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
@@ -149,9 +150,9 @@ private fun ClockColumn(
 private fun ClockLine(label: String?, time: String, date: String, timeColor: Color, dateColor: Color) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         label?.let {
-            Text(it.uppercase(), style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp), color = timeColor, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(it.uppercase(), style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp), color = timeColor, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(time, style = MaterialTheme.typography.titleSmall, color = timeColor, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        Text(date, style = MaterialTheme.typography.labelSmall, color = dateColor, maxLines = 1)
+        Text(time, style = MaterialTheme.typography.titleSmall, color = timeColor, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(date, style = MaterialTheme.typography.labelSmall, color = dateColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

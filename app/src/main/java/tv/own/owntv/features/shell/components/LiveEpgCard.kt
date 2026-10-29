@@ -115,7 +115,7 @@ fun LiveEpgCard(
                             modifier = Modifier.weight(1f, fill = false).ticker(animationsOn),
                         )
                         Spacer(Modifier.widthIn(min = 10.dp, max = 10.dp))
-                        Text(timeText, style = MaterialTheme.typography.labelSmall, color = hudInk.copy(alpha = 0.5f), maxLines = 1)
+                        Text(timeText, style = MaterialTheme.typography.labelSmall, color = hudInk.copy(alpha = 0.5f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 } else {
                 SlotLabel(stringResource(if (archive) R.string.content_archive_playing else R.string.content_live_now), colors.primary)
