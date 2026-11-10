@@ -163,6 +163,7 @@ fun LiveScreen(
     val previewArmed by vm.previewArmed.collectAsStateWithLifecycle()
     val previewBlockedSingleSession by vm.previewBlockedSingleSession.collectAsStateWithLifecycle()
     val nowNext by vm.nowNext.collectAsStateWithLifecycle()
+    val nowNextKeyed by vm.nowNextKeyed.collectAsStateWithLifecycle()
     val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
     val sortMode by vm.sortMode.collectAsStateWithLifecycle()
     val livePreviewSetting by vm.livePreviewEnabled.collectAsStateWithLifecycle()
@@ -845,7 +846,10 @@ fun LiveScreen(
                                     name = parsed,
                                     // The channel under the cursor answers from the preview itself, so the row
                                     // and the stage beside it can never disagree.
-                                    now = if (isPreviewed) nowNext?.now ?: nowProgrammes[channel.id] else nowProgrammes[channel.id],
+                                    // Kevin's copy: only once that answer is for this channel. Moving down the
+                                    // list, the preview still held the channel above for a moment, and the row
+                                    // showed that channel's programme until the lookup finished.
+                                    now = if (isPreviewed && nowNextKeyed.first == channel.id) nowNextKeyed.second?.now ?: nowProgrammes[channel.id] else nowProgrammes[channel.id],
                                     nowTitle = nowPlaying[channel.id],
                                     isFavorite = favoriteIds.contains(channel.id),
                                     showNumber = showChannelNumbers,

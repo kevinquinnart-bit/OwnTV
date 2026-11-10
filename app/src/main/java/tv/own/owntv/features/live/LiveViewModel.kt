@@ -429,6 +429,10 @@ class LiveViewModel(
     val nowNext: StateFlow<EpgNowNext?> = keyedNowNext.map { it.second }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Kevin's copy: [nowNext] with the id of the channel it belongs to, in one value, so a list row can
+     *  tell that the answer is still the previous channel's while the new one is being looked up. */
+    val nowNextKeyed: StateFlow<Pair<Long?, EpgNowNext?>> = keyedNowNext
+
     // Kevin's copy: the lookup above only ran again when a different channel was picked, so once a
     // programme ended the details pane, the player's Live now card and the Guide kept showing it until
     // the user moved to another channel and back. Just after each minute turns, a finished programme
