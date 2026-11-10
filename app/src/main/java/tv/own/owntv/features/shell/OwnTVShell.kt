@@ -1825,12 +1825,20 @@ fun OwnTVShell(
                             // The live row is dimmed while an archive plays — it is context, not the
                             // thing being watched — and returns to full strength back at the live edge.
                             // Kevin's copy: full width, left-aligned, in the player's bottom box.
+                            // Kevin's copy: a few seconds or minutes behind live is usually still the same
+                            // programme, and the two cards then said the same thing twice. The replayed
+                            // card shows only when it is a different programme from the one on air now.
+                            val replayed = archiveEpg?.now
+                            val onAir = epg?.now
+                            val sameProgramme = replayed != null && onAir != null &&
+                                replayed.title == onAir.title && replayed.startMs == onAir.startMs
+                            val showReplayed = watching != null && !sameProgramme
                             androidx.compose.foundation.layout.Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalAlignment = androidx.compose.ui.Alignment.Start,
                                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(7.dp),
                             ) {
-                                if (watching != null) {
+                                if (showReplayed) {
                                     tv.own.owntv.features.shell.components.LiveEpgCard(
                                         epg = archiveEpg,
                                         variant = tv.own.owntv.features.shell.components.EpgCardVariant.ARCHIVE,
@@ -1842,7 +1850,7 @@ fun OwnTVShell(
                                 tv.own.owntv.features.shell.components.LiveEpgCard(
                                     epg = epg,
                                     wide = true,
-                                    modifier = if (watching == null) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().alpha(0.55f),
+                                    modifier = if (!showReplayed) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().alpha(0.55f),
                                 )
                             }
                         }

@@ -71,4 +71,26 @@ class ChannelVariantsTest {
         val folder20: (ChannelEntity) -> Boolean = { it.categoryId == 20L }
         assertTrue(index.isShownIn(hd, folder20))
     }
+
+    @Test
+    fun skySportsNowCopiesJoinTheRegularChannel() {
+        assertEquals("Sky Sports Main Event", ChannelVariants.displayName("Sky Sports Main Event NOW"))
+        assertEquals("UK: Sky Sports F1", ChannelVariants.displayName("UK: Sky Sports F1 (NOW TV)"))
+        assertEquals("Sky Sports Premier League", ChannelVariants.displayName("NOWTV Sky Sports Premier League HD"))
+        val regular = ch(1, "UK: SKY SPORTS PREMIER LEAGUE HD")
+        val now = ch(2, "UK: SKY SPORTS PREMIER LEAGUE NOW")
+        val nowHd = ch(3, "UK: SKY SPORTS PREMIER LEAGUE NOW HD")
+        val fhd = ch(4, "UK: SKY SPORTS PREMIER LEAGUE FHD")
+        val index = VariantIndex(listOf(now, nowHd, regular, fhd))
+        assertEquals(listOf(4L, 1L, 3L, 2L), index.group(now).map { it.id })
+    }
+
+    @Test
+    fun nowOutsideSkySportsIsPartOfTheName() {
+        assertEquals("NOW 80s", ChannelVariants.displayName("NOW 80s"))
+        assertEquals("UK: NOW Rock", ChannelVariants.displayName("UK: NOW Rock HD"))
+        assertEquals(1, VariantIndex(listOf(ch(1, "NOW 80s"), ch(2, "80s"))).group(ch(1, "NOW 80s")).size)
+        assertFalse(ChannelVariants.isNowCopy("NOW 80s"))
+        assertFalse(ChannelVariants.isNowCopy("Sky Sports News"))
+    }
 }

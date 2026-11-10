@@ -13,6 +13,11 @@ import tv.own.owntv.core.database.entity.ChannelEntity
  *
  * Entries group only within one playlist, and only when their names match once the quality labels are
  * removed. Anything else in the name (country prefix, "+1", region) keeps channels apart.
+ *
+ * Sky Sports channels also come as NOW TV copies ("Sky Sports Main Event NOW", "NOW TV: Sky Sports F1").
+ * On a Sky Sports channel "NOW", "NOW TV" and "NOWTV" count as a label too, so the NOW copy is one more
+ * version of the channel, placed after the regular stream of the same quality. Only on Sky Sports, so
+ * channels such as "NOW 80s" keep their names.
  */
 object ChannelVariants {
 
@@ -36,6 +41,10 @@ object ChannelVariants {
         val SPACES = Regex("\\s+")
         val NOT_ALNUM = Regex("[^\\p{L}\\p{N}+]+")
 
+        // Kevin's copy: the NOW TV copies of Sky Sports channels.
+        val NOW_TV = Regex("${EDGE_BEFORE}NOW ?TV$EDGE_AFTER|${EDGE_BEFORE}NOW$EDGE_AFTER", RegexOption.IGNORE_CASE)
+        val SKY_SPORTS = Regex("${EDGE_BEFORE}SKY ?SPORTS?$EDGE_AFTER", RegexOption.IGNORE_CASE)
+
         val RANK_UHD = Regex("${EDGE_BEFORE}(?:UHD|4K)$EDGE_AFTER|ᵁᴴᴰ", RegexOption.IGNORE_CASE)
         val RANK_FHD = Regex("${EDGE_BEFORE}(?:FHD|FULL ?HD|1080[PI]?)$EDGE_AFTER|ᶠᴴᴰ", RegexOption.IGNORE_CASE)
         val RANK_HD = Regex("${EDGE_BEFORE}(?:HD|HDR|720P)$EDGE_AFTER|ᴴᴰ", RegexOption.IGNORE_CASE)
@@ -48,7 +57,8 @@ object ChannelVariants {
     fun displayName(name: String): String {
         val p = patterns ?: return name
         val stripped = runCatching {
-            name.replace(p.QUALITY, " ")
+            (if (p.SKY_SPORTS.containsMatchIn(name)) name.replace(p.NOW_TV, " ") else name)
+                .replace(p.QUALITY, " ")
                 .replace(p.EMPTY_BRACKETS, " ")
                 .replace(p.DOUBLED_SEPARATORS) { " ${it.groupValues[1]} " }
                 .replace(p.SPACES, " ")
@@ -70,6 +80,12 @@ object ChannelVariants {
         }
     }
 
+    /** True for the NOW TV copy of a Sky Sports channel. */
+    fun isNowCopy(name: String): Boolean {
+        val p = patterns ?: return false
+        return runCatching { p.SKY_SPORTS.containsMatchIn(name) && p.NOW_TV.containsMatchIn(name) }.getOrDefault(false)
+    }
+
     /** Entries with the same key are the same channel. Without the patterns, nothing groups. */
     fun groupKey(ch: ChannelEntity): String {
         val p = patterns ?: return "id|${ch.id}"
@@ -85,8 +101,12 @@ class VariantIndex(channels: List<ChannelEntity>) {
     init {
         channels.groupBy(ChannelVariants::groupKey).forEach { (key, list) ->
             if (list.size > 1) {
-                // Best picture first; equal quality keeps the provider's order.
-                val sorted = list.sortedByDescending { ChannelVariants.rank(it.name) }
+                // Best picture first; at equal quality the regular stream comes before a NOW TV copy,
+                // then the provider's order.
+                val sorted = list.sortedWith(
+                    compareByDescending<ChannelEntity> { ChannelVariants.rank(it.name) }
+                        .thenBy { ChannelVariants.isNowCopy(it.name) },
+                )
                 members[key] = sorted
                 sorted.forEach { keyOf[it.id] = key }
             }

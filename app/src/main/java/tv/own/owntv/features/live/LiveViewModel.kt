@@ -380,6 +380,10 @@ class LiveViewModel(
     /** Bumped when a channel's EPG mapping changes so [nowNext] reloads for the same focused channel. */
     private val epgRefresh = MutableStateFlow(0)
 
+    /** Kevin's copy: bumped when the programme on [nowNext] has finished, so the same channel is
+     *  looked up again instead of keeping the old programme until another channel is picked. */
+    private val nowNextTurnover = MutableStateFlow(0)
+
     // ---- Live rewind / timeshift -------------------------------------------------------------------
     // Watch a catch-up-capable live channel a few minutes behind the live edge (a missed goal, etc.) using
     // the provider's rolling archive (Xtream timeshift / M3U catchup), then jump back to live. The archive
@@ -415,14 +419,35 @@ class LiveViewModel(
 
     /** Now/next for the focused channel, fetched (debounced) — each answer with the id of the channel it
      *  was looked up for, so [zapGuide] can tell a stale one. [nowNext] is the answer alone. */
-    private val keyedNowNext: StateFlow<Pair<Long?, EpgNowNext?>> = combine(_previewChannel, epgRefresh) { ch, tick -> ch to tick }
-        .debounce(350)
-        .distinctUntilChanged { a, b -> a.first?.id == b.first?.id && a.second == b.second }
-        .mapLatest { (ch, _) -> ch?.id to ch?.let { epgReader.nowNext(it, custom.value, epgOffset.value) } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null to null)
+    private val keyedNowNext: StateFlow<Pair<Long?, EpgNowNext?>> =
+        combine(_previewChannel, epgRefresh, nowNextTurnover) { ch, tick, turn -> Triple(ch, tick, turn) }
+            .debounce(350)
+            .distinctUntilChanged { a, b -> a.first?.id == b.first?.id && a.second == b.second && a.third == b.third }
+            .mapLatest { (ch, _, _) -> ch?.id to ch?.let { epgReader.nowNext(it, custom.value, epgOffset.value) } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null to null)
 
     val nowNext: StateFlow<EpgNowNext?> = keyedNowNext.map { it.second }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    // Kevin's copy: the lookup above only ran again when a different channel was picked, so once a
+    // programme ended the details pane, the player's Live now card and the Guide kept showing it until
+    // the user moved to another channel and back. Just after each minute turns, a finished programme
+    // drops the channel's cached guide and asks again.
+    init {
+        viewModelScope.launch {
+            while (true) {
+                delay(MINUTE_MS - System.currentTimeMillis() % MINUTE_MS + TURNOVER_GRACE_MS)
+                val (id, epg) = keyedNowNext.value
+                if (id == null || epg == null) continue
+                val now = System.currentTimeMillis()
+                val finished = epg.now?.let { it.stopMs <= now } ?: (epg.next?.let { it.startMs <= now } ?: false)
+                if (finished) {
+                    epgReader.invalidate(id)
+                    nowNextTurnover.value++
+                }
+            }
+        }
+    }
 
     /**
      * N3 — now/next for the channel-change banner. Null until the answer is for the channel actually on
@@ -1982,8 +2007,12 @@ class LiveViewModel(
      * guide simply has no entry here, and the row shows no second line. Returns only channels that
      * actually have something airing right now.
      */
-    suspend fun nowPlayingFor(channels: List<ChannelEntity>): Map<Long, tv.own.owntv.core.parser.XtEpgEntry> =
-        epgReader.nowProgrammesFor(channels, custom.value, epgOffset.value)
+    suspend fun nowPlayingFor(channels: List<ChannelEntity>): Map<Long, tv.own.owntv.core.parser.XtEpgEntry> {
+        // Kevin's copy: the guide reader can answer from a copy kept for five minutes, which may hold
+        // a programme that has already finished. A finished one is left out rather than shown as on now.
+        val now = System.currentTimeMillis()
+        return epgReader.nowProgrammesFor(channels, custom.value, epgOffset.value).filterValues { it.stopMs > now }
+    }
 
     /**
      * Current programme title per channel id, shared by the Live list and the in-player overlays.
@@ -2041,8 +2070,11 @@ class LiveViewModel(
      */
     fun ensureNowPlaying(loaded: List<ChannelEntity>) {
         if (loaded.isEmpty()) return
+        rememberNowPlayingChannels(loaded)
         val known = cachedNowPlaying()
-        val missing = loaded.filter { it.id !in known }
+        val now = System.currentTimeMillis()
+        // Kevin's copy: a programme that has finished counts as missing, so it is never shown again.
+        val missing = loaded.filter { it.id !in known || known[it.id]?.let { p -> p.stopMs <= now } == true }
         if (missing.isEmpty()) return
         nowPlayingJob?.cancel()
         nowPlayingJob = viewModelScope.launch {
@@ -2062,10 +2094,42 @@ class LiveViewModel(
      */
     fun refreshNowPlaying(loaded: List<ChannelEntity>) {
         if (loaded.isEmpty()) return
+        rememberNowPlayingChannels(loaded)
         nowPlayingJob?.cancel()
         nowPlayingJob = viewModelScope.launch {
             val found = runCatching { nowPlayingFor(loaded) }.getOrDefault(emptyMap())
             publishNowPlaying(found + loaded.filter { it.id !in found }.associate { it.id to null })
+        }
+    }
+
+    /** Kevin's copy: the channels behind [nowPlayingCache], so a finished programme can be looked up again
+     *  for any screen showing it — the player's channel list, History and Search as well as Live TV. */
+    private val nowPlayingChannels = object : LinkedHashMap<Long, ChannelEntity>(256, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, ChannelEntity>?) = size > MAX_NOW_PLAYING
+    }
+
+    private fun rememberNowPlayingChannels(channels: List<ChannelEntity>) {
+        synchronized(nowPlayingChannels) { channels.forEach { nowPlayingChannels[it.id] = it } }
+    }
+
+    // Kevin's copy: only Live TV re-read its rows each minute, and only the rows it had loaded, so the
+    // player's channel list and History kept a finished programme until the row was scrolled to again.
+    // Just after each minute turns, every row whose programme has finished is looked up again.
+    init {
+        viewModelScope.launch {
+            while (true) {
+                delay(MINUTE_MS - System.currentTimeMillis() % MINUTE_MS + TURNOVER_GRACE_MS)
+                val now = System.currentTimeMillis()
+                val finished = cachedNowPlaying().filterValues { it != null && it.stopMs <= now }.keys
+                if (finished.isEmpty()) continue
+                val channels = synchronized(nowPlayingChannels) { finished.mapNotNull { nowPlayingChannels[it] } }
+                // A failed lookup leaves the rows as they are and tries again next minute.
+                val found = runCatching { nowPlayingFor(channels) }.getOrNull() ?: continue
+                // A row with nothing new yet is dropped, not marked "no guide", so the next screen to
+                // show it asks again; the same for any channel no screen has asked about lately.
+                synchronized(nowPlayingCache) { finished.filter { it !in found }.forEach { nowPlayingCache.remove(it) } }
+                publishNowPlaying(found)
+            }
         }
     }
 
@@ -2360,6 +2424,10 @@ class LiveViewModel(
         /** Resolved "now playing" titles kept at once. Big enough for a large category plus the
          *  overlays that share the map, small enough that it cannot grow with the catalogue. */
         const val MAX_NOW_PLAYING = 2_000
+
+        /** Kevin's copy: programme turnover is checked once a minute, a second after the minute turns. */
+        const val MINUTE_MS = 60_000L
+        const val TURNOVER_GRACE_MS = 1_000L
 
     }
 }

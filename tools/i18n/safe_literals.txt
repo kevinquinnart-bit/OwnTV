@@ -113,12 +113,14 @@
 1	technical	app/src/main/java/tv/own/owntv/features/live/CatchupJumpDialog.kt	exact
 1	technical	app/src/main/java/tv/own/owntv/features/live/CatchupManualTimeDialog.kt	:
 1	technical	app/src/main/java/tv/own/owntv/features/live/CatchupManualTimeDialog.kt	EEEMMMd
-5	technical	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	\0
+6	technical	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	\0
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	$EDGE_BEFORE(?:$LABELS)$EDGE_AFTER|ᵁᴴᴰ|ᶠᴴᴰ|ᴴᴰ|ˢᴰ|ᴿᴬᵂ|ᴴᴱⱽᶜ
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	${EDGE_BEFORE}(?:FHD|FULL ?HD|1080[PI]?)$EDGE_AFTER|ᶠᴴᴰ
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	${EDGE_BEFORE}(?:HD|HDR|720P)$EDGE_AFTER|ᴴᴰ
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	${EDGE_BEFORE}(?:SD|LQ|576P|540P)$EDGE_AFTER|ˢᴰ
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	${EDGE_BEFORE}(?:UHD|4K)$EDGE_AFTER|ᵁᴴᴰ
+1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	${EDGE_BEFORE}NOW ?TV$EDGE_AFTER|${EDGE_BEFORE}NOW$EDGE_AFTER
+1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	${EDGE_BEFORE}SKY ?SPORTS?$EDGE_AFTER
 1	technical	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	${it.groupValues[1]}
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	(?![\\p{L}\\p{N}])
 1	regex	app/src/main/java/tv/own/owntv/features/live/ChannelVariants.kt	(?<![\\p{L}\\p{N}])

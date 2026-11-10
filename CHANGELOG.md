@@ -25,6 +25,9 @@
 - **☀️ Light theme across the whole app (Theme: System / Dark / Light)**
 
 ### 🐛 Fixes
+- **📺 Sky Sports NOW TV copies count as versions of the regular channel**
+- **🕐 The programme on now updates when the last one ends, without moving to the channel**
+- **🗒️ The player shows the programme once when a few seconds behind live**
 - **⚡ Opening a channel from its preview goes straight to full screen, no black gap** (community PR #242 by @tvdev-android)
 - **Customize no longer keeps a removed item's actions on screen**
 - **🎞️ Catch-up plays on the hardware decoder and freezes on its first frame less often (#229)**
