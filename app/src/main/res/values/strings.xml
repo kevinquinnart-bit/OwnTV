@@ -64,7 +64,10 @@
     <string name="kevin_drive_recordings_line">Each finished recording is copied. When Drive is full, the oldest recordings there are deleted to make room. This box keeps its own copy.</string>
     <string name="kevin_drive_rec_copying">Copying “<xliff:g id="title">%1$s</xliff:g>” · <xliff:g id="percent">%2$d</xliff:g>%%</string>
     <string name="kevin_drive_rec_copied">Last copied: “<xliff:g id="title">%1$s</xliff:g>”</string>
-    <string name="kevin_drive_rec_copied_removed">Last copied: “<xliff:g id="title">%1$s</xliff:g>”, after deleting <xliff:g id="count">%2$d</xliff:g> older recording(s) on Drive to make room</string>
+    <plurals name="kevin_drive_rec_copied_removed">
+        <item quantity="one">Last copied: “<xliff:g id="title">%1$s</xliff:g>”, after deleting <xliff:g id="count">%2$d</xliff:g> older recording on Drive to make room</item>
+        <item quantity="other">Last copied: “<xliff:g id="title">%1$s</xliff:g>”, after deleting <xliff:g id="count">%2$d</xliff:g> older recordings on Drive to make room</item>
+    </plurals>
     <string name="kevin_drive_rec_failed">Couldn\'t copy “<xliff:g id="title">%1$s</xliff:g>”. It will be tried again after the next recording.</string>
     <string name="kevin_drive_rec_full">Couldn\'t copy “<xliff:g id="title">%1$s</xliff:g>”: not enough room on Google Drive.</string>
 </resources>

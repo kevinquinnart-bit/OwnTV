@@ -136,7 +136,7 @@ internal fun DriveRestorePopup(
                     DriveRecordings.Last.None -> stringResource(R.string.kevin_drive_recordings_line)
                     is DriveRecordings.Last.Copying -> stringResource(R.string.kevin_drive_rec_copying, l.title, l.percent)
                     is DriveRecordings.Last.Copied ->
-                        if (l.removedOld > 0) stringResource(R.string.kevin_drive_rec_copied_removed, l.title, l.removedOld)
+                        if (l.removedOld > 0) androidx.compose.ui.res.pluralStringResource(R.plurals.kevin_drive_rec_copied_removed, l.removedOld, l.title, l.removedOld)
                         else stringResource(R.string.kevin_drive_rec_copied, l.title)
                     is DriveRecordings.Last.Failed -> when {
                         l.signedOut -> stringResource(R.string.kevin_drive_error_signed_out)
