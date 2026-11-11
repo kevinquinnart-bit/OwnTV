@@ -155,6 +155,8 @@ class SettingsSearchCoverageTest {
         "settings_sources_test_title", "player_subtitles_sign_in_title", "settings_open_subtitles_setup_title",
         "settings_panel_width_dialog_title", "settings_panel_width_disable_preview_title",
         "settings_record_watching_warning_title",
+        // Kevin's copy: the Free guides picker's own title (its row is on the Add EPG form).
+        "kevin_free_guides",
     )
 
     @Test

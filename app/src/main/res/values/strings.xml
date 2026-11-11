@@ -35,4 +35,10 @@
     <string name="kevin_free_guide_uk">UK: Sky, Freeview and more</string>
     <string name="kevin_free_guide_freeview">UK: Freeview, every region</string>
     <string name="kevin_free_guide_ireland">Ireland: RTÉ, TG4, Virgin Media</string>
+    <!-- Movies / Series › title options (Kevin's copy): titles like this one, and an actor's other titles, from the library. -->
+    <string name="kevin_more_like_this">More like this</string>
+    <string name="kevin_more_like_none">Nothing similar found in your library yet.</string>
+    <string name="kevin_with_actor">With an actor…</string>
+    <string name="kevin_with_person">With <xliff:g id="person">%1$s</xliff:g></string>
+    <string name="kevin_with_person_none">Nothing else with <xliff:g id="person">%1$s</xliff:g> found yet. A title is found once its details have been loaded, so this list grows as you browse.</string>
 </resources>

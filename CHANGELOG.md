@@ -11,6 +11,7 @@
 
 ### ✨ New features
 - **📅 Free UK and Irish guides in Add EPG (one press fills it in)**
+- **✨ More like this and With an actor… on films and shows (title options)**
 - **↩️ Restore a category, or the playlists shown, to the playlist default** (community PR #235 by @tvdev-android)
 - **🔄 "Stream interrupted. Reconnecting…" while a live channel recovers** (community PR #237 by @tvdev-android)
 - **🖼️ Title art in Home's trending banner**

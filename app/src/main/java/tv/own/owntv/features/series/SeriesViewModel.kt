@@ -560,6 +560,32 @@ class SeriesViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** Whether "Remove from history" has anything to remove for [series]. */
+    /** Kevin's copy: shows like [series] from the library — see [tv.own.owntv.features.shell.components.LibraryLinks]. */
+    suspend fun moreLikeThis(
+        series: tv.own.owntv.core.database.entity.SeriesEntity,
+        meta: tv.own.owntv.core.database.entity.MetadataCacheEntity?,
+    ): List<tv.own.owntv.core.database.entity.SeriesEntity> = seriesInOrder(
+        tv.own.owntv.features.shell.components.LibraryLinks.moreLikeThis(
+            tv.own.owntv.features.shell.components.LibraryLinks.Kind.SERIES, series.id, series.categoryId, meta?.genresJson, ctx.value.sourceIds,
+        ),
+    )
+
+    /** Kevin's copy: other shows in the library with [person] in the cast. */
+    suspend fun withPerson(
+        series: tv.own.owntv.core.database.entity.SeriesEntity,
+        person: String,
+    ): List<tv.own.owntv.core.database.entity.SeriesEntity> = seriesInOrder(
+        tv.own.owntv.features.shell.components.LibraryLinks.withPerson(
+            tv.own.owntv.features.shell.components.LibraryLinks.Kind.SERIES, person, series.id, ctx.value.sourceIds,
+        ),
+    )
+
+    private suspend fun seriesInOrder(ids: List<Long>): List<tv.own.owntv.core.database.entity.SeriesEntity> {
+        if (ids.isEmpty()) return emptyList()
+        val byId = seriesDao.getSeriesByIds(ids).associateBy { it.id }
+        return ids.mapNotNull { byId[it] }
+    }
+
     suspend fun isInHistory(series: SeriesEntity): Boolean {
         val pid = currentProfileId() ?: return false
         return historyDao.exists(pid, MediaType.SERIES, series.id)

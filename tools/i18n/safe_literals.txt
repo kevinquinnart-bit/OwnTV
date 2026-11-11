@@ -207,6 +207,7 @@
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	favourite
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	hide
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	mark_watched
+1	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	more_like_this
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	move
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	move_to_category
 3	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	movie
@@ -217,6 +218,7 @@
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	set_tmdb_name
 2	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	tmdb_details
 1	url	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	w1280
+2	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	with_actor
 1	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	·
 1	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	◀
 4	empty	app/src/main/java/tv/own/owntv/features/profiles/ProfileComponents.kt	\0
@@ -249,6 +251,7 @@
 2	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	favourite
 1	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	hide
 1	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	mark_watched
+1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	more_like_this
 1	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	move
 1	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	move_to_category
 1	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	play_external
@@ -262,6 +265,7 @@
 1	url	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	w1280
 2	url	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	w300
 1	url	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	w780
+2	technical	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	with_actor
 6	technical	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	·
 1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	◀
 3	empty	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	\0
@@ -724,6 +728,23 @@
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/GlassEffectPage.kt	$l — $d
 2	technical	app/src/main/java/tv/own/owntv/features/shell/components/GlassEffectPage.kt	—
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/GlassEffectPage.kt	◀ ▶
+4	technical	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	%
+1	technical	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	:
+1	technical	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	:kids
+2	sql	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	JOIN metadata_match mm ON mm.tmdbId = mc.tmdbId AND mm.type = ?
+1	technical	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	OR
+1	sql	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	ORDER BY rating IS NULL, rating DESC, id DESC LIMIT $LIMIT
+1	sql	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	SELECT DISTINCT mm.localKey, mc.genresJson, mc.rating FROM metadata_cache mc
+1	sql	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	SELECT DISTINCT mm.localKey, mc.rating FROM metadata_cache mc
+1	sql	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	SELECT id FROM ${kind.table} WHERE categoryId = ? AND id != ?
+1	sql	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	SELECT id FROM ${kind.table} WHERE sourceId = ? AND (remoteId = ? OR (remoteId IS NULL AND name = ?)) LIMIT 1
+1	sql	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	WHERE mc.type = ? AND ($where) LIMIT $SCAN_LIMIT
+1	sql	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	WHERE mc.type = ? AND mc.castJson LIKE ? LIMIT $SCAN_LIMIT
+1	sql	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	mc.genresJson LIKE ?
+1	technical	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	movie
+1	technical	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	movies
+1	technical	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	series
+1	technical	app/src/main/java/tv/own/owntv/features/shell/components/LibraryLinks.kt	tv
 1	empty	app/src/main/java/tv/own/owntv/features/shell/components/MediaDetailsScreen.kt	\0
 21	empty	app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt	\0
 2	technical	app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt	#%06X

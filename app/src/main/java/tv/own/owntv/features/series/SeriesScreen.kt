@@ -281,6 +281,10 @@ private fun SeriesGrid(
     var trailerTitle by remember { mutableStateOf<String?>(null) }
     // Fullscreen TMDB details window (§11.1); null = closed.
     var detailsSeries by remember { mutableStateOf<tv.own.owntv.core.database.entity.SeriesEntity?>(null) }
+    // Kevin's copy: More like this / With an actor… and the actor's other shows.
+    var likeSeries by remember { mutableStateOf<Pair<tv.own.owntv.core.database.entity.SeriesEntity, tv.own.owntv.core.database.entity.MetadataCacheEntity?>?>(null) }
+    var castSeries by remember { mutableStateOf<Pair<tv.own.owntv.core.database.entity.SeriesEntity, List<String>>?>(null) }
+    var personSeries by remember { mutableStateOf<Pair<tv.own.owntv.core.database.entity.SeriesEntity, String>?>(null) }
     // Id + list position of the series the context menu was opened on. The id re-focuses the same item
     // when it survives (Favourite/Download/Cancel); when the item is REMOVED (Remove from history, or
     // un-Favourite while on the Favorites category), it's gone from the paged list, so we re-focus the
@@ -958,6 +962,13 @@ private fun SeriesGrid(
             add(MenuAction("tmdb_details", stringResource(R.string.content_series_details), OwnTVIcon.INFO, group = VodGroupDetails) {
                 if (cacheForS != null) { contextSeries = null; detailsSeries = s }
             })
+            add(MenuAction("more_like_this", stringResource(R.string.kevin_more_like_this), OwnTVIcon.SPARKLE, group = VodGroupDetails) {
+                contextSeries = null; likeSeries = s to cacheForS
+            })
+            add(MenuAction("with_actor", stringResource(R.string.kevin_with_actor), OwnTVIcon.PERSON, group = VodGroupDetails) {
+                val names = tv.own.owntv.core.metadata.MetadataCast.parse(cacheForS?.castJson).map { it.name }
+                if (names.isNotEmpty()) { contextSeries = null; castSeries = s to names }
+            })
             // Update details (§11.2 U5a) and Set TMDB name (U5b): only while enrichment is on.
             if (metadataMode.enrich) {
                 add(MenuAction("refetch_tmdb", stringResource(R.string.content_refetch_tmdb), OwnTVIcon.REFRESH, group = VodGroupDetails) {
@@ -984,6 +995,7 @@ private fun SeriesGrid(
                 "play_trailer".takeIf { trailerKey == null },
                 "remove_history".takeIf { !inHistory },
                 "tmdb_details".takeIf { !(metadataMode.enrich && cacheForS != null) },
+                "with_actor".takeIf { tv.own.owntv.core.metadata.MetadataCast.parse(cacheForS?.castJson).isEmpty() },
             ),
             onDismiss = { contextSeries = null },
         )
@@ -1030,6 +1042,50 @@ private fun SeriesGrid(
         tv.own.owntv.features.shell.components.MediaDetailsScreen(
             details = buildSeriesDetails(s, cache, metadataMode.tmdbWins),
             onExit = { detailsSeries = null },
+        )
+    }
+
+    // Kevin's copy: focus goes back to the show the lists were opened from.
+    LaunchedEffect(likeSeries, castSeries, personSeries) {
+        if (likeSeries == null && castSeries == null && personSeries == null && contextSeriesId != null) {
+            withFrameNanos { }
+            runCatching { contextFocus.requestFocus() }
+        }
+    }
+    likeSeries?.let { (src, meta) ->
+        val found by androidx.compose.runtime.produceState<List<tv.own.owntv.core.database.entity.SeriesEntity>?>(null, src.id) {
+            value = runCatching { vm.moreLikeThis(src, meta) }.getOrDefault(emptyList())
+        }
+        tv.own.owntv.features.shell.components.LibraryLinksPopup(
+            title = stringResource(R.string.kevin_more_like_this),
+            rows = found?.map { tv.own.owntv.features.shell.components.LibraryLinkRow(it.name, it.year?.toString()) },
+            emptyText = stringResource(R.string.kevin_more_like_none),
+            icon = OwnTVIcon.SERIES,
+            onPick = { i -> found?.getOrNull(i)?.let { pick -> likeSeries = null; vm.openSeries(pick) } },
+            onDismiss = { likeSeries = null },
+        )
+    }
+    castSeries?.let { (src, names) ->
+        tv.own.owntv.features.shell.components.LibraryLinksPopup(
+            title = stringResource(R.string.kevin_with_actor),
+            rows = names.map { tv.own.owntv.features.shell.components.LibraryLinkRow(it, null) },
+            emptyText = stringResource(R.string.kevin_more_like_none),
+            icon = OwnTVIcon.PERSON,
+            onPick = { i -> names.getOrNull(i)?.let { person -> personSeries = src to person; castSeries = null } },
+            onDismiss = { castSeries = null },
+        )
+    }
+    personSeries?.let { (src, person) ->
+        val found by androidx.compose.runtime.produceState<List<tv.own.owntv.core.database.entity.SeriesEntity>?>(null, src.id, person) {
+            value = runCatching { vm.withPerson(src, person) }.getOrDefault(emptyList())
+        }
+        tv.own.owntv.features.shell.components.LibraryLinksPopup(
+            title = stringResource(R.string.kevin_with_person, person),
+            rows = found?.map { tv.own.owntv.features.shell.components.LibraryLinkRow(it.name, it.year?.toString()) },
+            emptyText = stringResource(R.string.kevin_with_person_none, person),
+            icon = OwnTVIcon.SERIES,
+            onPick = { i -> found?.getOrNull(i)?.let { pick -> personSeries = null; vm.openSeries(pick) } },
+            onDismiss = { personSeries = null },
         )
     }
 

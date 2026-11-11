@@ -472,6 +472,26 @@ class MovieViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** Whether "Remove from history" has anything to remove for [movie]. */
+    /** Kevin's copy: films like [movie] from the library — see [tv.own.owntv.features.shell.components.LibraryLinks]. */
+    suspend fun moreLikeThis(movie: MovieEntity, meta: tv.own.owntv.core.database.entity.MetadataCacheEntity?): List<MovieEntity> {
+        val ids = tv.own.owntv.features.shell.components.LibraryLinks.moreLikeThis(
+            tv.own.owntv.features.shell.components.LibraryLinks.Kind.MOVIE, movie.id, movie.categoryId, meta?.genresJson, ctx.value.sourceIds,
+        )
+        return inOrder(ids)
+    }
+
+    /** Kevin's copy: other films in the library with [person] in the cast. */
+    suspend fun withPerson(movie: MovieEntity, person: String): List<MovieEntity> =
+        inOrder(tv.own.owntv.features.shell.components.LibraryLinks.withPerson(
+            tv.own.owntv.features.shell.components.LibraryLinks.Kind.MOVIE, person, movie.id, ctx.value.sourceIds,
+        ))
+
+    private suspend fun inOrder(ids: List<Long>): List<MovieEntity> {
+        if (ids.isEmpty()) return emptyList()
+        val byId = movieDao.getByIds(ids).associateBy { it.id }
+        return ids.mapNotNull { byId[it] }
+    }
+
     suspend fun isInHistory(movie: MovieEntity): Boolean {
         val pid = currentProfileId() ?: return false
         return historyDao.exists(pid, MediaType.MOVIE, movie.id)

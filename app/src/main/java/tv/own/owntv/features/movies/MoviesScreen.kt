@@ -191,6 +191,10 @@ fun MoviesScreen(
     var creatingCategory by remember { mutableStateOf(false) }
     // Fullscreen TMDB details window (§11.1); null = closed.
     var detailsMovie by remember { mutableStateOf<MovieEntity?>(null) }
+    // Kevin's copy: More like this / With an actor… and the actor's other films.
+    var likeMovie by remember { mutableStateOf<Pair<MovieEntity, tv.own.owntv.core.database.entity.MetadataCacheEntity?>?>(null) }
+    var castMovie by remember { mutableStateOf<Pair<MovieEntity, List<String>>?>(null) }
+    var personMovie by remember { mutableStateOf<Pair<MovieEntity, String>?>(null) }
     // "Set TMDB name" dialog target (§11.2 U5b); null = closed.
     var setTmdbNameMovie by remember { mutableStateOf<MovieEntity?>(null) }
     // In-app trailer playback (§7.3 U4); non-null = fullscreen player open with this YouTube key.
@@ -953,6 +957,13 @@ fun MoviesScreen(
             add(MenuAction("tmdb_details", stringResource(R.string.content_movie_details), OwnTVIcon.INFO, group = VodGroupDetails) {
                 if (cacheForM != null) { contextMovie = null; detailsMovie = m }
             })
+            add(MenuAction("more_like_this", stringResource(R.string.kevin_more_like_this), OwnTVIcon.SPARKLE, group = VodGroupDetails) {
+                contextMovie = null; likeMovie = m to cacheForM
+            })
+            add(MenuAction("with_actor", stringResource(R.string.kevin_with_actor), OwnTVIcon.PERSON, group = VodGroupDetails) {
+                val names = tv.own.owntv.core.metadata.MetadataCast.parse(cacheForM?.castJson).map { it.name }
+                if (names.isNotEmpty()) { contextMovie = null; castMovie = m to names }
+            })
             // Update details (§11.2 U5a) and Set TMDB name (U5b): only while enrichment is on.
             if (metadataMode.enrich) {
                 add(MenuAction("refetch_tmdb", stringResource(R.string.content_refetch_tmdb), OwnTVIcon.REFRESH, group = VodGroupDetails) {
@@ -982,6 +993,7 @@ fun MoviesScreen(
                 "play_trailer".takeIf { trailerKey == null },
                 "remove_history".takeIf { !inHistory },
                 "tmdb_details".takeIf { !(metadataMode.enrich && cacheForM != null) },
+                "with_actor".takeIf { tv.own.owntv.core.metadata.MetadataCast.parse(cacheForM?.castJson).isEmpty() },
                 "delete_subtitles".takeIf { contextMovieSubs.isEmpty() },
             ),
             onDismiss = { contextMovie = null },
@@ -1045,6 +1057,50 @@ fun MoviesScreen(
             withFrameNanos { }
             runCatching { contextFocus.requestFocus() }
         }
+    }
+
+    // Kevin's copy: focus goes back to the film the lists were opened from.
+    LaunchedEffect(likeMovie, castMovie, personMovie) {
+        if (likeMovie == null && castMovie == null && personMovie == null && contextMovieId != null) {
+            withFrameNanos { }
+            runCatching { contextFocus.requestFocus() }
+        }
+    }
+    likeMovie?.let { (src, meta) ->
+        val found by androidx.compose.runtime.produceState<List<MovieEntity>?>(null, src.id) {
+            value = runCatching { vm.moreLikeThis(src, meta) }.getOrDefault(emptyList())
+        }
+        tv.own.owntv.features.shell.components.LibraryLinksPopup(
+            title = stringResource(R.string.kevin_more_like_this),
+            rows = found?.map { tv.own.owntv.features.shell.components.LibraryLinkRow(it.name, it.year?.toString()) },
+            emptyText = stringResource(R.string.kevin_more_like_none),
+            icon = OwnTVIcon.MOVIES,
+            onPick = { i -> found?.getOrNull(i)?.let { pick -> likeMovie = null; startMovie(pick) } },
+            onDismiss = { likeMovie = null },
+        )
+    }
+    castMovie?.let { (src, names) ->
+        tv.own.owntv.features.shell.components.LibraryLinksPopup(
+            title = stringResource(R.string.kevin_with_actor),
+            rows = names.map { tv.own.owntv.features.shell.components.LibraryLinkRow(it, null) },
+            emptyText = stringResource(R.string.kevin_more_like_none),
+            icon = OwnTVIcon.PERSON,
+            onPick = { i -> names.getOrNull(i)?.let { person -> personMovie = src to person; castMovie = null } },
+            onDismiss = { castMovie = null },
+        )
+    }
+    personMovie?.let { (src, person) ->
+        val found by androidx.compose.runtime.produceState<List<MovieEntity>?>(null, src.id, person) {
+            value = runCatching { vm.withPerson(src, person) }.getOrDefault(emptyList())
+        }
+        tv.own.owntv.features.shell.components.LibraryLinksPopup(
+            title = stringResource(R.string.kevin_with_person, person),
+            rows = found?.map { tv.own.owntv.features.shell.components.LibraryLinkRow(it.name, it.year?.toString()) },
+            emptyText = stringResource(R.string.kevin_with_person_none, person),
+            icon = OwnTVIcon.MOVIES,
+            onPick = { i -> found?.getOrNull(i)?.let { pick -> personMovie = null; startMovie(pick) } },
+            onDismiss = { personMovie = null },
+        )
     }
 
     // Windowed TMDB details popup (§11.1) — read-only, Back exits.
