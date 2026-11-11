@@ -306,6 +306,9 @@
 1	technical	app/src/main/java/tv/own/owntv/features/settings/DeveloperScreen.kt	Rebuild Now Trending
 1	technical	app/src/main/java/tv/own/owntv/features/settings/DeveloperScreen.kt	Stage specimen
 6	empty	app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt	\0
+1	url	app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt	https://epgshare01.online/epgshare01/epg_ripper_IE1.xml.gz
+1	url	app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt	https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz
+1	url	app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt	https://raw.githubusercontent.com/dp247/Freeview-EPG/master/epg.xml
 2	technical	app/src/main/java/tv/own/owntv/features/settings/EpgSourcesScreen.kt	▶
 1	technical	app/src/main/java/tv/own/owntv/features/settings/EpgSourcesViewModel.kt	add
 1	technical	app/src/main/java/tv/own/owntv/features/settings/EpgSourcesViewModel.kt	manual_resync

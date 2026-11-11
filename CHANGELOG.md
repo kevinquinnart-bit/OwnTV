@@ -10,6 +10,7 @@
 ## Unreleased
 
 ### ✨ New features
+- **📅 Free UK and Irish guides in Add EPG (one press fills it in)**
 - **↩️ Restore a category, or the playlists shown, to the playlist default** (community PR #235 by @tvdev-android)
 - **🔄 "Stream interrupted. Reconnecting…" while a live channel recovers** (community PR #237 by @tvdev-android)
 - **🖼️ Title art in Home's trending banner**
@@ -25,6 +26,7 @@
 - **☀️ Light theme across the whole app (Theme: System / Dark / Light)**
 
 ### 🐛 Fixes
+- **🔁 When the last version of a channel fails, it goes back to the best and tries again**
 - **📺 Sky Sports NOW TV copies count as versions of the regular channel**
 - **🕐 The programme on now updates when the last one ends, without moving to the channel**
 - **🗒️ The player shows the programme once when a few seconds behind live**

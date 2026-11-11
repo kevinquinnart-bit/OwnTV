@@ -333,15 +333,17 @@ internal fun EpgSourceForm(
     var autoRefresh by remember { mutableStateOf(initialAutoRefresh) }
     var useLogos by remember { mutableStateOf(initialUseLogos) }
     var showPlaylistPicker by remember { mutableStateOf(false) }
+    var showFreeGuides by remember { mutableStateOf(false) }
     var showAutoRefreshPicker by remember { mutableStateOf(false) }
     var showManualDays by remember { mutableStateOf(false) }
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { firstFocus.requestFocus() } }
     // Both pickers open from rows further down the form; closing one returns focus to its row.
     val scrollState = rememberScrollState()
-    val dialogFocus = rememberDialogFocusRestore(showPlaylistPicker || showAutoRefreshPicker, scrollState)
+    val dialogFocus = rememberDialogFocusRestore(showPlaylistPicker || showFreeGuides || showAutoRefreshPicker, scrollState)
     val autoRefreshRowFocus = remember { FocusRequester() }
     val fillFocus = remember { FocusRequester() }
+    val freeFocus = remember { FocusRequester() }
     val submitFocus = remember { FocusRequester() }
 
     // P10B-12: the fields as rows, Add & sync in the panel (▶ from any row).
@@ -393,6 +395,18 @@ internal fun EpgSourceForm(
             modifier = Modifier.focusRequester(fillFocus).then(toSubmit),
             help = SettingHelp(fillTitle, fillLine, hints = keys(ok to stringResource(R.string.settings_key_open), back to parent), extra = submitButton),
         )
+        // Kevin's copy: free guides, filled in with one press instead of typing the address.
+        val freeTitle = stringResource(R.string.kevin_free_guides)
+        val freeLine = stringResource(R.string.kevin_free_guides_line)
+        StageSettingRow(
+            icon = OwnTVIcon.EPG,
+            title = freeTitle,
+            desc = freeLine,
+            value = SettingValue.Opens(null),
+            onClick = { dialogFocus.value = freeFocus; showFreeGuides = true },
+            modifier = Modifier.focusRequester(freeFocus).then(toSubmit),
+            help = SettingHelp(freeTitle, freeLine, hints = keys(ok to stringResource(R.string.settings_key_open), back to parent), extra = submitButton),
+        )
         val uaLabel = stringResource(R.string.settings_epg_sources_user_agent)
         StageFieldRow(
             OwnTVIcon.PENCIL, uaLabel, ua, { ua = it },
@@ -443,6 +457,16 @@ internal fun EpgSourceForm(
                 }
             },
             onDismiss = { showPlaylistPicker = false },
+        )
+    }
+    if (showFreeGuides) {
+        FreeGuidePicker(
+            onPick = { guide, label ->
+                showFreeGuides = false
+                name = label
+                url = guide.url
+            },
+            onDismiss = { showFreeGuides = false },
         )
     }
     if (showAutoRefreshPicker) {
@@ -503,4 +527,32 @@ private fun PlaylistEpgPicker(
     }
     if (panelEditor(onDismiss) { list() }) return
     tv.own.owntv.ui.stage.StagePopup(onDismiss = onDismiss, title = stringResource(R.string.settings_epg_sources_fill_playlist)) { list() }
+}
+
+/** Kevin's copy: free XMLTV guides for the channels Kevin watches. Each one is matched to the playlist's
+ *  channels by name, the same as any guide added here. */
+internal enum class FreeGuide(@androidx.annotation.StringRes val label: Int, val url: String) {
+    UK(R.string.kevin_free_guide_uk, "https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz"),
+    FREEVIEW(R.string.kevin_free_guide_freeview, "https://raw.githubusercontent.com/dp247/Freeview-EPG/master/epg.xml"),
+    IRELAND(R.string.kevin_free_guide_ireland, "https://epgshare01.online/epgshare01/epg_ripper_IE1.xml.gz"),
+}
+
+@Composable
+private fun FreeGuidePicker(onPick: (FreeGuide, String) -> Unit, onDismiss: () -> Unit) {
+    val list: @Composable () -> Unit = {
+        val firstFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { firstFocus.requestFocus() } }
+        Column(Modifier.trapAllFocusExit().focusGroup()) {
+            FreeGuide.entries.forEach { guide ->
+                val label = stringResource(guide.label)
+                tv.own.owntv.ui.stage.StagePopupOption(
+                    title = label, subtitle = guide.url, onClick = { onPick(guide, label) },
+                    modifier = if (guide == FreeGuide.entries.first()) Modifier.focusRequester(firstFocus) else Modifier,
+                    leading = { tv.own.owntv.ui.stage.StagePopupIcon(OwnTVIcon.EPG) },
+                )
+            }
+        }
+    }
+    if (panelEditor(onDismiss) { list() }) return
+    tv.own.owntv.ui.stage.StagePopup(onDismiss = onDismiss, title = stringResource(R.string.kevin_free_guides)) { list() }
 }

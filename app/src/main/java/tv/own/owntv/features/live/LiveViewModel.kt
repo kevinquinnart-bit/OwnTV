@@ -2256,8 +2256,9 @@ class LiveViewModel(
     // Three stalls of a second or more within two minutes, or one stall of eight seconds, moves to the
     // channel's next version down (FHD → HD → the unlabelled one → SD). So does a version that has not
     // started playing 12 seconds after it was opened. Only full-screen live playback; a rewind or a
-    // catch-up programme is left alone. Opening a channel starts again from its best. Every switch is
-    // written to More › Error log, so it can be checked afterwards.
+    // catch-up programme is left alone. Opening a channel starts again from its best. When the last
+    // version fails too, it goes back round to the best and works down again, for as long as the
+    // channel stays on. Every switch is written to More › Error log, so it can be checked afterwards.
     private var variantVersions: List<ChannelEntity> = emptyList()
     private var variantAt = 0
     private var variantShownName = ""
@@ -2335,9 +2336,10 @@ class LiveViewModel(
 
     private fun stepDownVariant(@androidx.annotation.StringRes reason: Int) {
         if (_catchupActive.value || timeshift.isRewound) { resetVariantStalls(); return }
-        if (variantAt + 1 >= variantVersions.size) { resetVariantStalls(); return }
+        if (variantVersions.size < 2) { resetVariantStalls(); return }
         val from = variantVersions[variantAt]
-        variantAt++
+        // Kevin's copy: past the last version it goes back to the best rather than stopping there.
+        variantAt = (variantAt + 1) % variantVersions.size
         val next = variantVersions[variantAt]
         resetVariantStalls()
         Log.i(ENGINE_TAG, "variant step down to ${next.id} (${variantAt + 1} of ${variantVersions.size})")
