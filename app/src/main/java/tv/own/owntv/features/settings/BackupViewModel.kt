@@ -12,14 +12,136 @@ import java.io.File
 
 /** Phase 12 — drives Backup & Restore (selective export/import to a JSON file). */
 enum class DoneKind { EXPORTED, RESTORED }
-enum class BackupError { EXPORT, READ, IMPORT }
+enum class BackupError { EXPORT, READ, IMPORT, DRIVE, DRIVE_SIGNED_OUT, DRIVE_FULL }
 
 class BackupViewModel(
     private val backup: BackupManager,
     private val profileDao: tv.own.owntv.core.database.dao.ProfileDao,
     private val settings: tv.own.owntv.core.settings.SettingsRepository,
     private val companion: tv.own.owntv.core.companion.CompanionController,
+    private val drive: tv.own.owntv.features.drive.GoogleDrive,
+    private val appContext: android.content.Context,
+    private val driveRecordings: tv.own.owntv.features.drive.DriveRecordings,
 ) : ViewModel() {
+
+    /** Kevin's copy: finished recordings copied to Drive, and what the last copy did. */
+    val recordingsToDrive: StateFlow<Boolean> get() = driveRecordings.enabled
+    val driveRecordingLast: StateFlow<tv.own.owntv.features.drive.DriveRecordings.Last> get() = driveRecordings.last
+    fun setRecordingsToDrive(on: Boolean) = driveRecordings.setEnabled(on)
+
+    // ---- Kevin's copy: Google Drive ----
+
+    data class DriveUi(val configured: Boolean, val signedIn: Boolean, val account: String)
+
+    private val _drive = MutableStateFlow(driveUi())
+    val driveState: StateFlow<DriveUi> = _drive.asStateFlow()
+    private fun driveUi() = DriveUi(drive.configured, drive.signedIn, drive.account)
+
+    /** The TV sign-in in progress: the code to enter on the phone, and how it is going. */
+    data class DriveSignIn(
+        val code: tv.own.owntv.features.drive.GoogleDrive.DeviceCode? = null,
+        val failed: String? = null,
+        val denied: Boolean = false,
+        val expired: Boolean = false,
+    )
+
+    private val _driveSignIn = MutableStateFlow<DriveSignIn?>(null)
+    val driveSignIn: StateFlow<DriveSignIn?> = _driveSignIn.asStateFlow()
+    private var signInJob: kotlinx.coroutines.Job? = null
+
+    fun startDriveSignIn() {
+        signInJob?.cancel()
+        _driveSignIn.value = DriveSignIn()
+        signInJob = viewModelScope.launch {
+            val code = runCatching { drive.startSignIn() }.getOrElse {
+                _driveSignIn.value = DriveSignIn(failed = it.message ?: it.javaClass.simpleName)
+                return@launch
+            }
+            _driveSignIn.value = DriveSignIn(code)
+            var interval = code.intervalMs
+            while (true) {
+                kotlinx.coroutines.delay(interval)
+                when (val r = drive.pollSignIn(code)) {
+                    tv.own.owntv.features.drive.GoogleDrive.Poll.Waiting -> Unit
+                    tv.own.owntv.features.drive.GoogleDrive.Poll.SlowDown -> interval += 5_000
+                    tv.own.owntv.features.drive.GoogleDrive.Poll.Done -> {
+                        _drive.value = driveUi()
+                        _driveSignIn.value = null
+                        return@launch
+                    }
+                    tv.own.owntv.features.drive.GoogleDrive.Poll.Denied -> { _driveSignIn.value = DriveSignIn(code, denied = true); return@launch }
+                    tv.own.owntv.features.drive.GoogleDrive.Poll.Expired -> { _driveSignIn.value = DriveSignIn(code, expired = true); return@launch }
+                    is tv.own.owntv.features.drive.GoogleDrive.Poll.Failed -> { _driveSignIn.value = DriveSignIn(code, failed = r.message); return@launch }
+                }
+            }
+        }
+    }
+
+    fun cancelDriveSignIn() {
+        signInJob?.cancel()
+        signInJob = null
+        _driveSignIn.value = null
+    }
+
+    fun signOutOfDrive() {
+        drive.signOut()
+        _drive.value = driveUi()
+    }
+
+    private fun driveError(e: Throwable): BackupError {
+        _drive.value = driveUi()
+        return when ((e as? tv.own.owntv.features.drive.GoogleDrive.DriveException)?.kind) {
+            tv.own.owntv.features.drive.GoogleDrive.DriveException.Kind.SIGNED_OUT -> BackupError.DRIVE_SIGNED_OUT
+            tv.own.owntv.features.drive.GoogleDrive.DriveException.Kind.FULL -> BackupError.DRIVE_FULL
+            null -> BackupError.DRIVE
+        }
+    }
+
+    private val driveCache: File get() = File(appContext.cacheDir, "drive_backup").apply { mkdirs() }
+
+    /** Back up to a file here, send it to Drive › OwnTV › Backups, then remove the local copy. */
+    fun exportToDrive(sections: Set<BackupManager.Section>, backupPassword: String?, profileIds: Set<Long>) {
+        viewModelScope.launch {
+            _state.value = State.Working
+            driveCache.listFiles()?.forEach { it.delete() }
+            val path = backup.export(driveCache, sections, backupPassword, profileIds).getOrElse {
+                _state.value = State.Error(BackupError.EXPORT)
+                return@launch
+            }
+            val file = File(path)
+            runCatching {
+                drive.upload(file, tv.own.owntv.features.drive.GoogleDrive.Folder.BACKUPS, file.name, BACKUP_MIME)
+            }.fold(
+                onSuccess = {
+                    _state.value = State.Done(
+                        DoneKind.EXPORTED,
+                        path = appContext.getString(tv.own.owntv.R.string.kevin_drive_backup_place, file.name),
+                        passwordsOmitted = backupPassword.isNullOrBlank(),
+                    )
+                },
+                onFailure = { _state.value = State.Error(driveError(it)) },
+            )
+            file.delete()
+        }
+    }
+
+    /** The backups on Drive, newest first; null when Drive could not be read (the error is shown). */
+    suspend fun driveBackups(): List<tv.own.owntv.features.drive.GoogleDrive.DriveFile>? =
+        runCatching { drive.list(tv.own.owntv.features.drive.GoogleDrive.Folder.BACKUPS).sortedByDescending { it.createdMs } }
+            .getOrElse { _state.value = State.Error(driveError(it)); null }
+
+    /** Fetch a backup from Drive, then the normal restore steps (password, what to restore). */
+    fun restoreFromDrive(file: tv.own.owntv.features.drive.GoogleDrive.DriveFile) {
+        viewModelScope.launch {
+            _state.value = State.Working
+            driveCache.listFiles()?.forEach { it.delete() }
+            val local = File(driveCache, file.name.ifBlank { "backup.own" })
+            runCatching { drive.download(file.id, local) }.fold(
+                onSuccess = { inspect(local) },
+                onFailure = { _state.value = State.Error(driveError(it)) },
+            )
+        }
+    }
 
     // ---- Remote restore: another device uploads a backup JSON to the TV over the LAN companion server. ----
     /** Server lifecycle (Idle / Starting / Listening with PIN+QR / Failed) for the remote-restore panel. */
@@ -217,4 +339,8 @@ class BackupViewModel(
     }
 
     fun reset() { _state.value = State.Idle }
+
+    private companion object {
+        const val BACKUP_MIME = "application/octet-stream"
+    }
 }

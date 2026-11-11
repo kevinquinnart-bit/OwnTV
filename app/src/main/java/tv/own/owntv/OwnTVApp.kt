@@ -119,6 +119,8 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         // not open while the app was off screen (see UpdateRecord).
         tv.own.owntv.features.update.UpdateRecord.isOnScreen = { AutoOpen.isOnScreen }
         tv.own.owntv.features.update.UpdateRecord.install(this)
+        // Kevin's copy: finished recordings are copied to Google Drive when that is switched on.
+        runCatching { GlobalContext.get().get<tv.own.owntv.features.drive.DriveRecordings>().start() }
         // A chosen icon colour ("Later", the first-run pick, a restore) reaches the launcher when the app
         // is next in the background, never while it is on screen.
         tv.own.owntv.core.brand.AppIconSwitcher.start(this, GlobalContext.get().get())

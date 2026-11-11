@@ -57,6 +57,9 @@ val appModule = module {
     singleOf(::SearchReader)
     singleOf(::HomeFeedReader)
     // Process-long scope for work that must outlive the screen that started it (a first-run restore).
+    // Kevin's copy: Google Drive for backups and recordings.
+    single { tv.own.owntv.features.drive.GoogleDrive(get<android.content.Context>(), get()) }
+    single { tv.own.owntv.features.drive.DriveRecordings(get<android.content.Context>(), get(), get(), get(), get()) }
     single<kotlinx.coroutines.CoroutineScope> {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
     }

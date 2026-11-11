@@ -41,4 +41,30 @@
     <string name="kevin_with_actor">With an actor…</string>
     <string name="kevin_with_person">With <xliff:g id="person">%1$s</xliff:g></string>
     <string name="kevin_with_person_none">Nothing else with <xliff:g id="person">%1$s</xliff:g> found yet. A title is found once its details have been loaded, so this list grows as you browse.</string>
+    <!-- More › Backup & Restore (Kevin's copy): Google Drive. -->
+    <string name="kevin_drive">Google Drive</string>
+    <string name="kevin_drive_backup_place">Google Drive › OwnTV › Backups › <xliff:g id="file">%1$s</xliff:g></string>
+    <string name="kevin_drive_not_set_up">Google Drive isn\'t set up in this copy of the app yet.</string>
+    <string name="kevin_drive_sign_in_title">Sign in to Google Drive</string>
+    <string name="kevin_drive_sign_in_steps">On your phone, open <xliff:g id="url">%1$s</xliff:g> (or scan the code) and enter:</string>
+    <string name="kevin_drive_sign_in_waiting">Waiting for you to finish on the phone…</string>
+    <string name="kevin_drive_sign_in_denied">Sign-in was cancelled on the phone.</string>
+    <string name="kevin_drive_sign_in_expired">The code ran out. Try again for a new one.</string>
+    <string name="kevin_drive_sign_in_failed">Couldn\'t reach Google: <xliff:g id="reason">%1$s</xliff:g></string>
+    <string name="kevin_drive_try_again">Try again</string>
+    <string name="kevin_drive_signed_in_as">Signed in as <xliff:g id="account">%1$s</xliff:g></string>
+    <string name="kevin_drive_signed_in">Signed in</string>
+    <string name="kevin_drive_sign_out">Sign out of Google Drive</string>
+    <string name="kevin_drive_restore_title">Restore from Google Drive</string>
+    <string name="kevin_drive_no_backups">No backups on Google Drive yet.</string>
+    <string name="kevin_drive_error">Google Drive didn\'t answer. Check the connection and try again.</string>
+    <string name="kevin_drive_error_signed_out">Google Drive needs you to sign in again.</string>
+    <string name="kevin_drive_error_full">Google Drive is full.</string>
+    <string name="kevin_drive_recordings">Copy recordings to Google Drive</string>
+    <string name="kevin_drive_recordings_line">Each finished recording is copied. When Drive is full, the oldest recordings there are deleted to make room. This box keeps its own copy.</string>
+    <string name="kevin_drive_rec_copying">Copying “<xliff:g id="title">%1$s</xliff:g>” · <xliff:g id="percent">%2$d</xliff:g>%%</string>
+    <string name="kevin_drive_rec_copied">Last copied: “<xliff:g id="title">%1$s</xliff:g>”</string>
+    <string name="kevin_drive_rec_copied_removed">Last copied: “<xliff:g id="title">%1$s</xliff:g>”, after deleting <xliff:g id="count">%2$d</xliff:g> older recording(s) on Drive to make room</string>
+    <string name="kevin_drive_rec_failed">Couldn\'t copy “<xliff:g id="title">%1$s</xliff:g>”. It will be tried again after the next recording.</string>
+    <string name="kevin_drive_rec_full">Couldn\'t copy “<xliff:g id="title">%1$s</xliff:g>”: not enough room on Google Drive.</string>
 </resources>

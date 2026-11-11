@@ -67,6 +67,116 @@
 1	technical	app/src/main/java/tv/own/owntv/features/downloads/DownloadsScreen.kt	jm
 1	technical	app/src/main/java/tv/own/owntv/features/downloads/DownloadsScreen.kt	primary
 1	empty	app/src/main/java/tv/own/owntv/features/downloads/DownloadsViewModel.kt	\0
+2	empty	app/src/main/java/tv/own/owntv/features/drive/DriveKeys.kt	\0
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DrivePopups.kt	dMMMyyyy
+3	empty	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	\0
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	$stamp $clean$ext
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	${row.title} - ${row.channelName}
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	.$it
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	.ts
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	KevinDriveRec
+1	sql	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	SELECT id FROM recordings WHERE status = 'COMPLETED' AND filePath IS NOT NULL AND bytes > 0 ORDER BY endedAt ASC
+1	regex	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	[\\\\/:*?"<>|]
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	copy to Drive failed id=${row.id}: ${e.message}
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	enabled
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	kevin_drive_recordings
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	m4v
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	mkv
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	mp4
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	no room on Drive
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	uploaded
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	video/mp2t
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	video/mp4
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	video/x-matroska
+1	technical	app/src/main/java/tv/own/owntv/features/drive/DriveRecordings.kt	yyyy-MM-dd HHmm
+4	empty	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	\0
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	$API/about?fields=storageQuota
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	$API/about?fields=user(emailAddress)
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	$API/files/$id
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	$API/files/$id?alt=media
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	$API/files?fields=id
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	$API/files?q=$q&fields=files(id)
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	$API/files?q=$q&orderBy=createdTime&pageSize=200&fields=nextPageToken,files(id,name,size,createdTime)
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	$UPLOAD/files?uploadType=resumable&fields=id
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	${parent ?: ""}/$name
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	${resp.code}:
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	&pageToken=
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	'$parent' in parents
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	'$parent' in parents and trashed = false
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Authorization
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Backups
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Bearer
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Content-Range
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Drive $code $reason
+1	log	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	KevinDrive
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Location
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	OwnTV
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Range
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Recordings
+3	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	UTF-8
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	X-Upload-Content-Length
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	X-Upload-Content-Type
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	access
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	access_denied
+2	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	access_token
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	account
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	and
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	application/json; charset=UTF-8
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	application/vnd.google-apps.folder
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	authorization_pending
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	bytes $sent-$end/$total
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	bytes */0
+3	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	client_id
+2	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	client_secret
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	createdTime
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	delete failed: ${resp.code}
+2	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	device_code
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	download failed: ${resp.code}
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	emailAddress
+6	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	error
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	error_description
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	errors
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	expired_token
+2	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	expires_in
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	expiry
+2	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	files
+2	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	grant_type
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	https://oauth2.googleapis.com/device/code
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	https://oauth2.googleapis.com/token
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	https://www.googleapis.com/auth/drive.file
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	https://www.googleapis.com/drive/v3
+1	url	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	https://www.googleapis.com/upload/drive/v3
+4	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	id
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	interval
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	invalid_grant
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	kevin_google_drive
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	limit
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	mimeType
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	mimeType = '$FOLDER_MIME'
+3	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	name
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	name = '$name'
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	nextPageToken
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	no upload address
+2	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	parents
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	reason
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	refresh
+3	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	refresh_token
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	scope
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	size
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	slow_down
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	storageQuota
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	storageQuotaExceeded
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	token refresh failed: ${resp.code} ${json.optString("error")}
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	trashed = false
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	upload ended without a file id
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	upload failed
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	upload piece failed, retrying (${e?.message})
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	urn:ietf:params:oauth:grant-type:device_code
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	usage
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	user
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	user_code
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	verification_uri
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	verification_url
 1	technical	app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt	$p
 3	technical	app/src/main/java/tv/own/owntv/features/epg/EpgScreen.kt	·
@@ -293,6 +403,9 @@
 1	technical	app/src/main/java/tv/own/owntv/features/settings/AccentPopup.kt	4E952A
 3	empty	app/src/main/java/tv/own/owntv/features/settings/BackupScreen.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/features/settings/BackupScreen.kt	dMMMyyyy
+1	technical	app/src/main/java/tv/own/owntv/features/settings/BackupViewModel.kt	application/octet-stream
+1	technical	app/src/main/java/tv/own/owntv/features/settings/BackupViewModel.kt	backup.own
+1	technical	app/src/main/java/tv/own/owntv/features/settings/BackupViewModel.kt	drive_backup
 1	empty	app/src/main/java/tv/own/owntv/features/settings/ChNavSettingsScreen.kt	\0
 3	technical	app/src/main/java/tv/own/owntv/features/settings/ChNavSettingsScreen.kt	false
 2	technical	app/src/main/java/tv/own/owntv/features/settings/ChNavSettingsScreen.kt	true

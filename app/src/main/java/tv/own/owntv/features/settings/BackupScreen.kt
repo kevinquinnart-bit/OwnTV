@@ -116,6 +116,13 @@ fun BackupScreen(
     // Export: Remote (serve the file for another device to download) or Local (save to a folder).
     var exportToRemote by remember { mutableStateOf(false) }
     var showRemoteExportPassword by remember { mutableStateOf(false) }
+    // Kevin's copy: Google Drive — the third way to back up and restore.
+    val driveState by vm.driveState.collectAsStateWithLifecycle()
+    val driveSignIn by vm.driveSignIn.collectAsStateWithLifecycle()
+    var exportToDrive by remember { mutableStateOf(false) }
+    var showDriveExportPassword by remember { mutableStateOf(false) }
+    var showDriveRestore by remember { mutableStateOf(false) }
+    var showDriveNotSetUp by remember { mutableStateOf(false) }
     var showRemoteExport by remember { mutableStateOf(false) }
     // If the remote export fails to prepare, drop the panel so the base screen shows the error.
     LaunchedEffect(state) {
@@ -136,6 +143,7 @@ fun BackupScreen(
     var dialogReturn by remember { mutableStateOf<FocusRequester?>(null) }
     val anyDialogOpen = showBrowser || showExportPicker || showProfilePicker || pendingFolderBrowser || exportFolder != null ||
         showRemoteRestore || showRemoteExportPassword || showRemoteExport ||
+        showDriveExportPassword || showDriveRestore || showDriveNotSetUp || driveSignIn != null ||
         state is BackupViewModel.State.ChooseRestore || state is BackupViewModel.State.NeedPassword
     LaunchedEffect(anyDialogOpen) {
         if (!anyDialogOpen) {
@@ -157,8 +165,21 @@ fun BackupScreen(
     val working = state == BackupViewModel.State.Working
     val phoneFocus = remember { FocusRequester() }
     val startExport: (Boolean, FocusRequester) -> Unit = { remote, from ->
-        if (!working) { dialogReturn = from; exportToRemote = remote; vm.loadProfiles(); showProfilePicker = true }
+        if (!working) { dialogReturn = from; exportToRemote = remote; exportToDrive = false; vm.loadProfiles(); showProfilePicker = true }
     }
+    // Kevin's copy: Drive needs the key built in and a sign-in before anything else.
+    val withDrive: (FocusRequester, () -> Unit) -> Unit = { from, go ->
+        if (!working) {
+            dialogReturn = from
+            when {
+                !driveState.configured -> showDriveNotSetUp = true
+                !driveState.signedIn -> vm.startDriveSignIn()
+                else -> go()
+            }
+        }
+    }
+    val backupDriveFocus = remember { FocusRequester() }
+    val restoreDriveFocus = remember { FocusRequester() }
 
     // P8-05: title, the last-backup card (amber "Never backed up" until there is one), Back up now and
     // Restore, and what a backup holds.
@@ -246,6 +267,9 @@ fun BackupScreen(
                 Row(Modifier.padding(top = 16.mpx), horizontalArrangement = Arrangement.spacedBy(8.mpx)) {
                     BackupTool(stringResource(R.string.more_backup_file_tv), OwnTVIcon.FOLDER, Modifier.focusRequester(firstFocus)) { startExport(false, firstFocus) }
                     BackupTool(stringResource(R.string.settings_backup_remote), OwnTVIcon.NETWORK, Modifier.focusRequester(phoneFocus)) { startExport(true, phoneFocus) }
+                    BackupTool(stringResource(R.string.kevin_drive), OwnTVIcon.BACKUP, Modifier.focusRequester(backupDriveFocus)) {
+                        withDrive(backupDriveFocus) { exportToRemote = false; exportToDrive = true; vm.loadProfiles(); showProfilePicker = true }
+                    }
                 }
             }
             // Restore: the same two ways as Back up now, as buttons on the card (owner, P12) — no chooser popup.
@@ -264,6 +288,9 @@ fun BackupScreen(
                     }
                     BackupTool(stringResource(R.string.settings_backup_remote), OwnTVIcon.NETWORK, Modifier.focusRequester(restoreRemoteFocus)) {
                         if (!working) { dialogReturn = restoreRemoteFocus; showRemoteRestore = true }
+                    }
+                    BackupTool(stringResource(R.string.kevin_drive), OwnTVIcon.BACKUP, Modifier.focusRequester(restoreDriveFocus)) {
+                        withDrive(restoreDriveFocus) { showDriveRestore = true }
                     }
                 }
             }
@@ -315,6 +342,9 @@ fun BackupScreen(
                         BackupError.EXPORT -> R.string.settings_backup_export_error
                         BackupError.READ -> R.string.settings_backup_read_error
                         BackupError.IMPORT -> R.string.settings_backup_import_error
+                        BackupError.DRIVE -> R.string.kevin_drive_error
+                        BackupError.DRIVE_SIGNED_OUT -> R.string.kevin_drive_error_signed_out
+                        BackupError.DRIVE_FULL -> R.string.kevin_drive_error_full
                     },
                 ),
                 StageColors.Danger,
@@ -347,11 +377,15 @@ fun BackupScreen(
             title = stringResource(R.string.settings_backup_what_backup),
             sections = BackupManager.Section.entries,
             initial = BackupManager.Section.entries.toSet(),
-            confirmLabel = if (exportToRemote) stringResource(R.string.settings_backup_continue) else stringResource(R.string.settings_backup_choose_folder_action),
+            confirmLabel = if (exportToRemote || exportToDrive) stringResource(R.string.settings_backup_continue) else stringResource(R.string.settings_backup_choose_folder_action),
             onConfirm = { chosen ->
                 exportSections = chosen
                 showExportPicker = false
-                if (exportToRemote) showRemoteExportPassword = true else pendingFolderBrowser = true
+                when {
+                    exportToDrive -> showDriveExportPassword = true
+                    exportToRemote -> showRemoteExportPassword = true
+                    else -> pendingFolderBrowser = true
+                }
             },
             onDismiss = { showExportPicker = false },
         )
@@ -429,6 +463,47 @@ fun BackupScreen(
             onConfirm = { pass -> showRemoteExportPassword = false; showRemoteExport = true; vm.exportRemote(exportSections, pass, exportProfiles) },
             onSkip = { showRemoteExportPassword = false; showRemoteExport = true; vm.exportRemote(exportSections, null, exportProfiles) },
             onDismiss = { showRemoteExportPassword = false },
+        )
+    }
+
+    // Kevin's copy: Drive export — the same password question, then the upload.
+    if (showDriveExportPassword) {
+        BackupPasswordDialog(
+            title = stringResource(R.string.settings_backup_encrypt_title),
+            message = stringResource(R.string.settings_backup_encrypt_message),
+            confirmLabel = stringResource(R.string.settings_backup_encrypt_export),
+            skipLabel = stringResource(R.string.settings_backup_export_unencrypted),
+            onConfirm = { pass -> showDriveExportPassword = false; vm.exportToDrive(exportSections, pass, exportProfiles) },
+            onSkip = { showDriveExportPassword = false; vm.exportToDrive(exportSections, null, exportProfiles) },
+            onDismiss = { showDriveExportPassword = false },
+        )
+    }
+    if (showDriveNotSetUp) {
+        tv.own.owntv.ui.stage.StagePopup(
+            onDismiss = { showDriveNotSetUp = false },
+            title = stringResource(R.string.kevin_drive),
+            body = stringResource(R.string.kevin_drive_not_set_up),
+        )
+    }
+    driveSignIn?.let { signIn ->
+        tv.own.owntv.features.drive.DriveSignInPopup(
+            state = signIn,
+            onRetry = { vm.startDriveSignIn() },
+            onDismiss = { vm.cancelDriveSignIn() },
+        )
+    }
+    if (showDriveRestore) {
+        val recordingsOn by vm.recordingsToDrive.collectAsStateWithLifecycle()
+        val recordingLast by vm.driveRecordingLast.collectAsStateWithLifecycle()
+        tv.own.owntv.features.drive.DriveRestorePopup(
+            account = driveState.account,
+            recordingsOn = recordingsOn,
+            recordingLast = recordingLast,
+            onToggleRecordings = { vm.setRecordingsToDrive(!recordingsOn) },
+            load = { vm.driveBackups() },
+            onPick = { file -> showDriveRestore = false; vm.restoreFromDrive(file) },
+            onSignOut = { showDriveRestore = false; vm.signOutOfDrive() },
+            onDismiss = { showDriveRestore = false },
         )
     }
 
