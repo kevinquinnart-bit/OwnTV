@@ -46,6 +46,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -218,7 +219,18 @@ fun SettingsScreen(
     /** More › Settings (until P10 redraws this screen): open at a root group, or with search open. */
     start: SettingsStart? = null,
     onStartConsumed: () -> Unit = {},
+    /**
+     * Kevin's copy (v3): drawn inside More, whose left panel lists the categories. This is the open one;
+     * the screen then draws no list of its own, keeps its rows right of More's panel and never takes
+     * focus by itself. Null: the full Settings screen with its own category list.
+     */
+    embeddedGroup: Int? = null,
+    /** Inside More: hands More what ▶ does — focus this page's first row. */
+    entryHook: ((() -> Boolean)?) -> Unit = {},
+    /** Inside More: true while a full page (a sub-screen) covers the screen, so More hides its panel. */
+    onSubPage: (Boolean) -> Unit = {},
 ) {
+    val embedded = embeddedGroup != null
     // A cross-script language change recreates the Activity so Android can apply the new script's
     // shaping and font fallback. Keep the open settings sub-screen across that configuration change
     // instead of dropping back to the Settings root/sidebar.
@@ -299,14 +311,19 @@ fun SettingsScreen(
     // These belong to the two-pane Settings root, but stay remembered while a detail screen replaces
     // it. Otherwise Back briefly rebuilds Quick at row zero before restoring the real group/row.
     // Start on the card More opened, not Quick: waiting for the start effect drew Quick for a few frames first.
-    var selectedGroup by rememberSaveable { mutableIntStateOf(start?.group ?: 0) }
-    var displayedGroup by rememberSaveable { mutableIntStateOf(start?.group ?: 0) }
+    var selectedGroup by rememberSaveable { mutableIntStateOf(embeddedGroup ?: start?.group ?: 0) }
+    var displayedGroup by rememberSaveable { mutableIntStateOf(embeddedGroup ?: start?.group ?: 0) }
     var savedScrollPx by remember { mutableIntStateOf(0) }
     val saveScroll = { savedScrollPx = pageScroll.value }
     // The rows column: a lost focus lands here, on the page's first row.
     val rowsFocus = remember { FocusRequester() }
     // Kevin's copy (v2): the category list's items; a fresh entry lands on the open category.
     val categoryFocus = remember { List(SettingsGroup.entries.size) { FocusRequester() } }
+    DisposableEffect(embedded) {
+        if (embedded) entryHook { runCatching { rowsFocus.requestFocus() }.isSuccess }
+        onDispose { if (embedded) entryHook(null) }
+    }
+    LaunchedEffect(tab) { onSubPage(tab != SettingsTab.ROOT) }
     LaunchedEffect(start) {
         if (start == null) return@LaunchedEffect
         tab = SettingsTab.ROOT
@@ -960,7 +977,8 @@ fun SettingsScreen(
     }
 
     // A fresh entry from More: the open category in the list (a search start focuses the field instead).
-    if (onBack != null) {
+    // Inside More, focus stays on More's panel until ▶.
+    if (onBack != null && !embedded) {
         LaunchedEffect(Unit) {
             if (returningRowFocus != null || start?.search == true) return@LaunchedEffect
             repeat(10) {
@@ -1190,11 +1208,11 @@ fun SettingsScreen(
         // Kevin's copy (v2): the categories as a plain list in the left panel (no cards); the picked one's
         // rows fill the space to its right. OK on a category opens it; Back from the rows returns to it.
         var listFocused by remember { mutableStateOf(false) }
-        BackHandler(enabled = !listFocused && !searching && deepReturnKey == null && menuRow == null && !anyDialogOpen) {
+        BackHandler(enabled = !embedded && !listFocused && !searching && deepReturnKey == null && menuRow == null && !anyDialogOpen) {
             runCatching { categoryFocus[selectedGroup.coerceIn(0, categoryFocus.size - 1)].requestFocus() }
         }
         Box(modifier.fillMaxSize()) {
-        SettingsCategoryList(
+        if (!embedded) SettingsCategoryList(
             selected = selectedGroup,
             onPick = { i ->
                 searchQuery = ""
@@ -1211,7 +1229,8 @@ fun SettingsScreen(
             modifier = Modifier.onFocusChanged { listFocused = it.hasFocus },
         )
         StageSettingsPage(
-            leftInset = 500.mpx,
+            // Inside More the rows start where More's pages do, right of its panel.
+            leftInset = if (embedded) 520.mpx else 500.mpx,
             panel = panel,
             group = if (searching) stringResource(R.string.common_nav_settings) else stringResource(group.titleRes),
             count = pageCount,
@@ -3408,7 +3427,7 @@ private fun serviceRowExtras(vm: SettingsViewModel): Map<String, RowExtra> {
 }
 
 /** Kevin's copy (v2): each category's icon, in [SettingsGroup] order (the ones More's cards used). */
-private val SettingsCategoryIcons = listOf(
+internal val SettingsCategoryIcons = listOf(
     OwnTVIcon.SPARKLE, OwnTVIcon.PERSON, OwnTVIcon.LIST, OwnTVIcon.PALETTE, OwnTVIcon.GRID, OwnTVIcon.MOVIES,
     OwnTVIcon.PLAY_CIRCLE, OwnTVIcon.EXPAND, OwnTVIcon.HEADPHONES, OwnTVIcon.LIVE_TV, OwnTVIcon.REC, OwnTVIcon.INFO,
 )

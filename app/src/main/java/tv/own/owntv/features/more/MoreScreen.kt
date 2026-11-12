@@ -27,6 +27,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -55,6 +57,8 @@ import tv.own.owntv.features.settings.DeveloperScreen
 import tv.own.owntv.features.settings.LocalSyncScreen
 import tv.own.owntv.features.settings.SettingsViewModel
 import tv.own.owntv.features.shell.components.RailAvatar
+import tv.own.owntv.features.shell.components.SettingsCategoryIcons
+import tv.own.owntv.features.shell.components.SettingsGroup
 import tv.own.owntv.player.PlaybackErrorLog
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.stage.StageGroupItem
@@ -85,6 +89,11 @@ fun MoreScreen(
     /** OK on the avatar: the avatar picker, with "Your own picture". */
     onPickAvatar: () -> Unit,
     onOpenSettings: (group: Int?, search: Boolean) -> Unit,
+    /**
+     * Kevin's copy (v3): a Settings category's page, drawn right of this panel — the shell's SettingsScreen
+     * for [group]. [setEntry] receives what ▶ does; [onSubPage] says when a full page covers the screen.
+     */
+    settingsPage: @Composable (group: Int, setEntry: ((() -> Boolean)?) -> Unit, onSubPage: (Boolean) -> Unit, modifier: Modifier) -> Unit,
     onPlayChannel: (Long) -> Unit,
     onPlayMovie: (Long, Long) -> Unit,
     onPlayEpisode: (seriesId: Long, episodeId: Long, positionMs: Long) -> Unit,
@@ -98,31 +107,37 @@ fun MoreScreen(
     vm: MoreCountsViewModel = koinViewModel(),
     settingsVm: SettingsViewModel = koinViewModel(),
 ) {
-    // Kevin's copy (v2): Settings opens straight to its own screen (its categories listed on the left), so
-    // the page shown here starts on Favourites.
-    var selected by rememberSaveable { mutableStateOf(MoreItem.FAVORITES) }
+    // Kevin's copy (v3): one panel — Settings' categories are listed here with the rest of More, and the
+    // chosen one's settings show on the right. [selected] SETTINGS means category [settingsGroup].
+    var selected by rememberSaveable { mutableStateOf(MoreItem.SETTINGS) }
+    var settingsGroup by rememberSaveable { mutableIntStateOf(0) }
     val itemFocus = remember { MoreItem.entries.associateWith { FocusRequester() } }
+    val groupFocus = remember { List(SettingsGroup.entries.size) { FocusRequester() } }
+    val focusOfSelected: () -> FocusRequester = {
+        if (selected == MoreItem.SETTINGS) groupFocus[settingsGroup.coerceIn(0, groupFocus.size - 1)] else itemFocus.getValue(selected)
+    }
+    // While a settings full page (a sub-screen) is open it covers everything, this panel included.
+    var subPage by remember { mutableStateOf(false) }
     // What OK / ▶ focuses on the page: a fixed target, or the page's own choice (its first row).
     val pageTarget = remember { FocusRequester() }
     var pageEntry by remember { mutableStateOf<(() -> Boolean)?>(null) }
     var pageFocused by remember { mutableStateOf(false) }
     val enterPage: () -> Boolean = { pageEntry?.invoke() ?: runCatching { pageTarget.requestFocus() }.isSuccess }
-    val backToSheet: () -> Unit = { runCatching { itemFocus.getValue(selected).requestFocus() } }
+    val backToSheet: () -> Unit = { runCatching { focusOfSelected().requestFocus() } }
     // Like the rail: ▲ ▼ move focus, OK selects the item (its page shows, focus stays on the item),
     // ▶ goes into the page that is shown (owner).
     val choose: (MoreItem) -> Unit = { item -> if (item != selected) { selected = item; pageEntry = null } }
 
     // The rail's ▶ lands on the item the sheet was last on.
     DisposableEffect(onEntryHook) {
-        onEntryHook?.invoke { runCatching { itemFocus.getValue(selected).requestFocus() }.isSuccess }
+        onEntryHook?.invoke { runCatching { focusOfSelected().requestFocus() }.isSuccess }
         onDispose { onEntryHook?.invoke(null) }
     }
     LaunchedEffect(restoreFocus) {
         if (!restoreFocus) return@LaunchedEffect
         withFrameNanos { }
         withFrameNanos { }
-        // Back from Settings: land on the Settings item it was opened from.
-        runCatching { itemFocus.getValue(MoreItem.SETTINGS).requestFocus() }
+        runCatching { focusOfSelected().requestFocus() }
         onRestored()
     }
     // Composed before the page, so a page's own Back (a step popup, a dialog) still wins over it.
@@ -138,6 +153,19 @@ fun MoreScreen(
     val logCount by produceState(0, logVersion) { value = withContext(Dispatchers.IO) { PlaybackErrorLog.read(context).size } }
 
     Box(modifier.fillMaxSize().onFocusChanged { if (it.hasFocus) onChildFocused() }) {
+        // A Settings category's page: full size, so its full pages can cover the screen; its rows sit
+        // right of the panel. Drawn first so the panel stays on top of it.
+        if (selected == MoreItem.SETTINGS) {
+            androidx.compose.runtime.key(settingsGroup) {
+                settingsPage(
+                    settingsGroup,
+                    { pageEntry = it },
+                    { subPage = it },
+                    Modifier.fillMaxSize().onFocusChanged { pageFocused = it.hasFocus },
+                )
+            }
+        }
+        if (!subPage) {
         // --- The sheet (`.gsheet`, 440 wide at 24 / 24 / 24): the full height (owner tried level with the page, kept this).
         Column(
             Modifier
@@ -147,7 +175,7 @@ fun MoreScreen(
                 .stageGlass(32.mpx, overContent = true)
                 .padding(horizontal = 16.mpx, vertical = 26.mpx)
                 // ◀ back from the page lands on the item that page belongs to.
-                .focusProperties { onEnter = { runCatching { itemFocus.getValue(selected).requestFocus() } } }
+                .focusProperties { onEnter = { runCatching { focusOfSelected().requestFocus() } } }
                 .onPreviewKeyEvent { e ->
                     e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight && enterPage()
                 }
@@ -162,11 +190,24 @@ fun MoreScreen(
                     modifier = Modifier.focusRequester(itemFocus.getValue(it)),
                 )
             }
-            StageGroupItem(
-                text = stringResource(R.string.common_nav_settings), icon = OwnTVIcon.SETTINGS,
-                onClick = { onOpenSettings(null, false) },
-                modifier = Modifier.focusRequester(itemFocus.getValue(MoreItem.SETTINGS)),
-            )
+            // The list scrolls under the profile; the key hints stay at the foot.
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            GroupLabel(stringResource(R.string.common_nav_settings))
+            SettingsGroup.entries.forEachIndexed { i, g ->
+                StageGroupItem(
+                    text = stringResource(g.titleRes),
+                    icon = SettingsCategoryIcons.getOrElse(i) { OwnTVIcon.SETTINGS },
+                    selected = selected == MoreItem.SETTINGS && settingsGroup == i,
+                    onClick = {
+                        if (selected != MoreItem.SETTINGS || settingsGroup != i) {
+                            selected = MoreItem.SETTINGS
+                            settingsGroup = i
+                            pageEntry = null
+                        }
+                    },
+                    modifier = Modifier.focusRequester(groupFocus[i]),
+                )
+            }
             GroupLabel(stringResource(R.string.more_group_your_things))
             item(MoreItem.FAVORITES, OwnTVIcon.FAVORITE, stringResource(R.string.content_category_favorites), favorites.total.toString(), false)
             item(MoreItem.HISTORY, OwnTVIcon.HISTORY, stringResource(R.string.content_category_history), history.total.toString(), false)
@@ -181,7 +222,7 @@ fun MoreScreen(
             item(MoreItem.ABOUT, OwnTVIcon.INFO, stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, false)
             // Maintainer-only; DEV_TOOLS is a compile-time constant, so R8 removes it from published APKs.
             if (BuildConfig.DEV_TOOLS) item(MoreItem.DEVELOPER, OwnTVIcon.GEAR, "Developer", "DEV", false)
-            Spacer(Modifier.weight(1f))
+            }
             StageKeyHints(
                 listOf(
                     stringResource(R.string.common_ok) to stringResource(R.string.content_key_select),
@@ -193,8 +234,10 @@ fun MoreScreen(
             )
         }
 
+        }
+
         // --- The page: everything right of the sheet, below the top-right cluster.
-        Box(
+        if (selected != MoreItem.SETTINGS) Box(
             Modifier
                 .padding(start = 520.mpx, top = 128.mpx, end = 64.mpx)
                 .fillMaxSize()
@@ -202,7 +245,7 @@ fun MoreScreen(
         ) {
             val setEntry: (() -> Boolean) -> Unit = { pageEntry = it }
             when (selected) {
-                // Never the page: OK on Settings opens the Settings screen itself.
+                // Drawn above, full size.
                 MoreItem.SETTINGS -> Unit
                 MoreItem.FAVORITES -> FavouritesPage(
                     vm = vm, setEntry = setEntry,

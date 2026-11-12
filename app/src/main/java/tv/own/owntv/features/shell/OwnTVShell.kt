@@ -1197,6 +1197,21 @@ fun OwnTVShell(
                                 settingsStart = tv.own.owntv.features.shell.components.SettingsStart(group, search)
                                 onSelectSection(MainSection.SETTINGS)
                             },
+                            // Kevin's copy (v3): a Settings category drawn inside More, right of its panel.
+                            settingsPage = { group, setEntry, onSubPage, pageModifier ->
+                                SettingsScreen(
+                                    themeMode = themeMode,
+                                    uiZoomPercent = uiZoomPercent,
+                                    onSetZoom = onSetZoom,
+                                    fontCustomization = fontCustomization,
+                                    onSetFontCustomization = onSetFontCustomization,
+                                    onOpenPlaylist = { },
+                                    embeddedGroup = group,
+                                    entryHook = setEntry,
+                                    onSubPage = onSubPage,
+                                    modifier = pageModifier,
+                                )
+                            },
                             // The same paths Home uses, so the engine ladder, resume and Continue all apply.
                             onPlayChannel = { id -> scope.launch { if (liveVm.ensurePlayingByIdAsync(id)) openFullscreen(MainSection.LIVE_TV) } },
                             onPlayMovie = { id, pos -> scope.launch { if (movieVm.playByIdAsync(id, pos) && !movieVm.externalPlayerOn.value) openFullscreen(MainSection.MOVIES) } },
