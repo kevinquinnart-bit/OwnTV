@@ -99,4 +99,6 @@
     <string name="kevin_stremio_page_send">Send to TV</string>
     <string name="kevin_stremio_page_sent">Sent to the TV. You can add another or close this page.</string>
     <string name="kevin_stremio_page_wrong">That code doesn\'t match the one on the TV.</string>
+    <!-- Kevin's copy: the label over the menu (Search, Home, Live TV…) at the top of More's panel. -->
+    <string name="kevin_more_menu">Menu</string>
 </resources>

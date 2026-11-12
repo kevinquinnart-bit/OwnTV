@@ -59,6 +59,7 @@ import tv.own.owntv.features.settings.SettingsViewModel
 import tv.own.owntv.features.shell.components.RailAvatar
 import tv.own.owntv.features.shell.components.SettingsCategoryIcons
 import tv.own.owntv.features.shell.components.SettingsGroup
+import tv.own.owntv.features.shell.components.stageIcon
 import tv.own.owntv.player.PlaybackErrorLog
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.stage.StageGroupItem
@@ -94,6 +95,11 @@ fun MoreScreen(
      * for [group]. [setEntry] receives what ▶ does; [onSubPage] says when a full page covers the screen.
      */
     settingsPage: @Composable (group: Int, setEntry: ((() -> Boolean)?) -> Unit, onSubPage: (Boolean) -> Unit, modifier: Modifier) -> Unit,
+    /** Kevin's copy (v3): the menu (Search, Home, Live TV…) — More shows it in place of the rail. */
+    menuSections: List<tv.own.owntv.core.nav.MainSection> = emptyList(),
+    onMenu: (tv.own.owntv.core.nav.MainSection) -> Unit = {},
+    /** The player's "Now playing" entry, while something plays. */
+    onNowPlaying: (() -> Unit)? = null,
     onPlayChannel: (Long) -> Unit,
     onPlayMovie: (Long, Long) -> Unit,
     onPlayEpisode: (seriesId: Long, episodeId: Long, positionMs: Long) -> Unit,
@@ -132,6 +138,12 @@ fun MoreScreen(
     DisposableEffect(onEntryHook) {
         onEntryHook?.invoke { runCatching { focusOfSelected().requestFocus() }.isSuccess }
         onDispose { onEntryHook?.invoke(null) }
+    }
+    // The rail is hidden while More is open, so focus starts on this panel's chosen item.
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        withFrameNanos { }
+        runCatching { focusOfSelected().requestFocus() }
     }
     LaunchedEffect(restoreFocus) {
         if (!restoreFocus) return@LaunchedEffect
@@ -192,6 +204,17 @@ fun MoreScreen(
             }
             // The list scrolls under the profile; the key hints stay at the foot.
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            if (menuSections.isNotEmpty()) GroupLabel(stringResource(R.string.kevin_more_menu))
+            onNowPlaying?.let { play ->
+                StageGroupItem(text = stringResource(R.string.shell_now_playing), icon = OwnTVIcon.PLAY_CIRCLE, onClick = play)
+            }
+            menuSections.forEach { section ->
+                StageGroupItem(
+                    text = stringResource(section.labelRes),
+                    icon = section.stageIcon,
+                    onClick = { onMenu(section) },
+                )
+            }
             GroupLabel(stringResource(R.string.common_nav_settings))
             SettingsGroup.entries.forEachIndexed { i, g ->
                 StageGroupItem(

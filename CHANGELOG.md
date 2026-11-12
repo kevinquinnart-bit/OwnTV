@@ -10,7 +10,7 @@
 ## Unreleased
 
 ### ✨ New features
-- **📋 More and Settings in one panel: the settings categories listed with Favourites, History and the rest; the chosen one shows on the right**
+- **📋 One left panel in More: the menu, every settings category, Favourites, History and the rest; the chosen one shows on the right**
 - **🔒 KueTV stands alone: no OwnTV name, links or Telegram/translate cards; builds use only this repo**
 - **🅺 K logo on its white tile, so it shows on dark screens; App icon and Accent-coloured logo settings removed**
 - **🅺 Now called KueTV, with the KayKue K logo (icon, banner, launch screen, menus)**

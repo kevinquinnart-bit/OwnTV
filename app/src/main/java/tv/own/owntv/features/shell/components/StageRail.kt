@@ -92,7 +92,7 @@ enum class RailState {
 data class NowPlayingRail(val logoUrl: String?, val audioMode: Boolean, val playing: Boolean)
 
 /** The mockup's rail order (`screens.js` `cRail`): Search first, the Guide right after Live TV, More last. */
-private val StageRailOrder = listOf(
+internal val StageRailOrder = listOf(
     MainSection.SEARCH, MainSection.HOME, MainSection.LIVE_TV, MainSection.EPG,
     MainSection.MOVIES, MainSection.SERIES, MainSection.DOWNLOADS,
 )
@@ -288,7 +288,7 @@ fun StageRail(
     }
 }
 
-private val MainSection.stageIcon: OwnTVIcon
+internal val MainSection.stageIcon: OwnTVIcon
     get() = when (this) {
         MainSection.SEARCH -> OwnTVIcon.SEARCH
         MainSection.HOME -> OwnTVIcon.HOME

@@ -174,6 +174,9 @@ fun OwnTVShell(
         runCatching { sidebarFocus.requestFocus() }
         Unit
     }
+    // Kevin's copy (v3): leaving More (which has no rail) by its menu or Back: the rail comes back, and
+    // focus goes to it once it is drawn, as if the section had been picked there.
+    var focusRailAfterMore by remember { mutableStateOf(false) }
     val contentFocusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val contentLtr = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Ltr
     val homeFirstRowFocus = remember { FocusRequester() }
@@ -908,6 +911,18 @@ fun OwnTVShell(
         if (openedSeries == null && searchReturn == MainSection.SERIES && selectedSection == MainSection.SERIES) returnToSearch()
     }
 
+    LaunchedEffect(focusRailAfterMore, selectedSection) {
+        if (!focusRailAfterMore || selectedSection == MainSection.MORE) return@LaunchedEffect
+        repeat(10) {
+            androidx.compose.runtime.withFrameNanos { }
+            if (runCatching { sidebarFocus.requestFocus() }.isSuccess) {
+                railKeyAt = android.os.SystemClock.uptimeMillis()
+                focusRailAfterMore = false
+                return@LaunchedEffect
+            }
+        }
+        focusRailAfterMore = false
+    }
     BackHandler {
         when {
             playerMode == PlayerMode.FULLSCREEN -> leaveFullscreen()
@@ -924,6 +939,8 @@ fun OwnTVShell(
             // Reached from a Search result: Back returns to Search once, its query, tab and row kept.
             searchReturn == selectedSection && focusedLayer != ShellLayer.SIDEBAR -> returnToSearch()
             focusedLayer == ShellLayer.SIDEBAR -> showExit = true
+            // Kevin's copy (v3): More has no rail to go back to; its panel's Back goes Home.
+            selectedSection == MainSection.MORE -> { focusRailAfterMore = true; onSelectSection(MainSection.HOME) }
             else -> focusRail()
         }
     }
@@ -1160,6 +1177,8 @@ fun OwnTVShell(
                             Modifier
                                 .padding(
                                     start = when {
+                                        // Kevin's copy (v3): More has no rail beside it — its panel is the menu.
+                                        selectedSection == MainSection.MORE -> 0.dp
                                         navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED ->
                                             tv.own.owntv.features.shell.components.railDockedReserve(navSize)
                                         stageScreen -> 0.dp
@@ -1197,6 +1216,10 @@ fun OwnTVShell(
                                 settingsStart = tv.own.owntv.features.shell.components.SettingsStart(group, search)
                                 onSelectSection(MainSection.SETTINGS)
                             },
+                            // Kevin's copy (v3): the menu, at the top of More's panel (the rail is hidden there).
+                            menuSections = tv.own.owntv.features.shell.components.StageRailOrder.filter { it == MainSection.SEARCH || it in visibleSections },
+                            onMenu = { section -> focusRailAfterMore = true; selectFromNav(section) },
+                            onNowPlaying = if (nowPlayingRail != null) enterNowPlaying else null,
                             // Kevin's copy (v3): a Settings category drawn inside More, right of its panel.
                             settingsPage = { group, setEntry, onSubPage, pageModifier ->
                                 SettingsScreen(
@@ -1486,7 +1509,8 @@ fun OwnTVShell(
                     .onGloballyPositioned { statusClusterLeft = it.positionInRoot().x }
                     .onFocusChanged { clusterFocused = it.hasFocus }.focusGroup(),
             )
-            tv.own.owntv.features.shell.components.StageRail(
+            // Kevin's copy (v3): in More the one left panel is More's own, which lists the menu too.
+            if (selectedSection != MainSection.MORE) tv.own.owntv.features.shell.components.StageRail(
                 state = railState,
                 size = railSize,
                 length = navLength,
