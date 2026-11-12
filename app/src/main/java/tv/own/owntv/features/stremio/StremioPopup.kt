@@ -141,11 +141,11 @@ private fun AddView(addons: StremioAddons, onDone: () -> Unit) {
     val msgNotManifest = stringResource(R.string.kevin_stremio_not_manifest)
     val msgNoStreams = stringResource(R.string.kevin_stremio_no_stream_resource)
     val msgUnreachable = stringResource(R.string.kevin_stremio_unreachable)
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val submit: (String) -> Unit = { address ->
         scope.launch {
             result = when (val r = addons.add(address)) {
-                is StremioAddons.AddResult.Added -> context.getString(R.string.kevin_stremio_added, r.name)
+                is StremioAddons.AddResult.Added -> resources.getString(R.string.kevin_stremio_added, r.name)
                 StremioAddons.AddResult.NotAManifest -> msgNotManifest
                 StremioAddons.AddResult.NoStreams -> msgNoStreams
                 StremioAddons.AddResult.Unreachable -> msgUnreachable
