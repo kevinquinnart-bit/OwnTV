@@ -133,6 +133,20 @@ fun MoreScreen(
     // Like the rail: ▲ ▼ move focus, OK selects the item (its page shows, focus stays on the item),
     // ▶ goes into the page that is shown (owner).
     val choose: (MoreItem) -> Unit = { item -> if (item != selected) { selected = item; pageEntry = null } }
+    // Kevin's copy (v3): moving down the panel shows each item's page as focus reaches it — after a short
+    // pause, so running through the list does not build every page on the way.
+    var focusTarget by remember { mutableStateOf<Pair<MoreItem, Int>?>(null) }
+    LaunchedEffect(focusTarget) {
+        val (item, group) = focusTarget ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(FOCUS_SELECT_MS)
+        if (item == MoreItem.SETTINGS) {
+            if (selected != MoreItem.SETTINGS || settingsGroup != group) {
+                selected = MoreItem.SETTINGS
+                settingsGroup = group
+                pageEntry = null
+            }
+        } else choose(item)
+    }
 
     // The rail's ▶ lands on the item the sheet was last on.
     DisposableEffect(onEntryHook) {
@@ -199,7 +213,8 @@ fun MoreScreen(
                     text = label, icon = icon, value = value, warn = warn,
                     selected = selected == it,
                     onClick = { choose(it) },
-                    modifier = Modifier.focusRequester(itemFocus.getValue(it)),
+                    modifier = Modifier.focusRequester(itemFocus.getValue(it))
+                        .onFocusChanged { f -> if (f.isFocused) focusTarget = it to 0 },
                 )
             }
             // The list scrolls under the profile; the key hints stay at the foot.
@@ -228,7 +243,8 @@ fun MoreScreen(
                             pageEntry = null
                         }
                     },
-                    modifier = Modifier.focusRequester(groupFocus[i]),
+                    modifier = Modifier.focusRequester(groupFocus[i])
+                        .onFocusChanged { f -> if (f.isFocused) focusTarget = MoreItem.SETTINGS to i },
                 )
             }
             GroupLabel(stringResource(R.string.more_group_your_things))
@@ -336,3 +352,6 @@ private fun relativeShort(at: Long): String =
     android.text.format.DateUtils.getRelativeTimeSpanString(
         at, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS,
     ).toString()
+
+/** How long focus rests on a panel item before its page is shown. */
+private const val FOCUS_SELECT_MS = 250L
