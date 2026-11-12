@@ -109,6 +109,7 @@
 1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Content-Range
 1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Drive $code $reason
 1	log	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	KevinDrive
+1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	KueTV
 1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Location
 1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Range
 1	technical	app/src/main/java/tv/own/owntv/features/drive/GoogleDrive.kt	Recordings
@@ -1135,6 +1136,7 @@
 1	file-path	app/src/main/java/tv/own/owntv/ui/components/BackgroundImageChooserDialog.kt	png
 1	log	app/src/main/java/tv/own/owntv/ui/components/BackgroundPicture.kt	BgImage
 1	log	app/src/main/java/tv/own/owntv/ui/components/BackgroundPicture.kt	background image load failed: ${it.result.throwable.message}
+1	technical	app/src/main/java/tv/own/owntv/ui/components/BrandLockup.kt	UNUSED_PARAMETER
 1	performance	app/src/main/java/tv/own/owntv/ui/components/FocusableSurface.kt	focusContainer
 1	performance	app/src/main/java/tv/own/owntv/ui/components/FocusableSurface.kt	focusScale
 1	protocol	app/src/main/java/tv/own/owntv/ui/components/GenreColor.kt	+18
