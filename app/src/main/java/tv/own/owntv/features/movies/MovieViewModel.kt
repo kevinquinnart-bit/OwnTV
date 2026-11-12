@@ -764,6 +764,24 @@ class MovieViewModel(
         }
     }
 
+    /**
+     * Kevin's copy: play a Stremio add-on's stream for [movie]. Nothing is saved against the provider's
+     * film — no resume position, no engine pin — since it is not the same file.
+     */
+    fun playAddonStream(movie: MovieEntity, stream: tv.own.owntv.features.stremio.StremioAddons.Stream) {
+        playingRef = null
+        _playingMovie.value = null
+        player.play(
+            stream.url,
+            title = movie.name,
+            subtitle = stream.title,
+            year = movie.year?.toString(),
+            isLive = false,
+            startPositionMs = 0,
+            httpHeaders = tv.own.owntv.core.network.StreamHeaders.encode(stream.headers),
+        )
+    }
+
     fun playById(movieId: Long, startPositionMs: Long = 0) {
         viewModelScope.launch {
             val movie = movieDao.getById(movieId) ?: return@launch

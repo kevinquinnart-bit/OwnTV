@@ -195,6 +195,8 @@ fun MoviesScreen(
     var likeMovie by remember { mutableStateOf<Pair<MovieEntity, tv.own.owntv.core.database.entity.MetadataCacheEntity?>?>(null) }
     var castMovie by remember { mutableStateOf<Pair<MovieEntity, List<String>>?>(null) }
     var personMovie by remember { mutableStateOf<Pair<MovieEntity, String>?>(null) }
+    // Kevin's copy: Stremio add-on streams for a film (the film and its IMDb id, if known).
+    var addonMovie by remember { mutableStateOf<Pair<MovieEntity, String?>?>(null) }
     // "Set TMDB name" dialog target (§11.2 U5b); null = closed.
     var setTmdbNameMovie by remember { mutableStateOf<MovieEntity?>(null) }
     // In-app trailer playback (§7.3 U4); non-null = fullscreen player open with this YouTube key.
@@ -917,6 +919,9 @@ fun MoviesScreen(
             add(MenuAction("play_trailer", stringResource(R.string.content_play_trailer), OwnTVIcon.PLAY_CIRCLE, group = VodGroupWatch) {
                 trailerKey?.let { contextMovie = null; trailerTitle = m.name; trailerVideoKey = it }
             })
+            add(MenuAction("addon_streams", stringResource(R.string.kevin_stremio_streams), OwnTVIcon.SPARKLE, group = VodGroupWatch) {
+                contextMovie = null; addonMovie = m to cacheForM?.imdbId?.takeIf { it.startsWith("tt") }
+            })
             // One-off external playback, independent of the global "External player" toggle.
             add(MenuAction("play_external", stringResource(R.string.content_play_external_short), OwnTVIcon.EXTERNAL, group = VodGroupWatch) {
                 contextMovie = null; vm.playExternal(m)
@@ -1060,11 +1065,19 @@ fun MoviesScreen(
     }
 
     // Kevin's copy: focus goes back to the film the lists were opened from.
-    LaunchedEffect(likeMovie, castMovie, personMovie) {
-        if (likeMovie == null && castMovie == null && personMovie == null && contextMovieId != null) {
+    LaunchedEffect(likeMovie, castMovie, personMovie, addonMovie) {
+        if (likeMovie == null && castMovie == null && personMovie == null && addonMovie == null && contextMovieId != null) {
             withFrameNanos { }
             runCatching { contextFocus.requestFocus() }
         }
+    }
+    addonMovie?.let { (src, imdb) ->
+        tv.own.owntv.features.stremio.StremioPopup(
+            type = "movie",
+            id = imdb,
+            onPlay = { stream -> addonMovie = null; vm.playAddonStream(src, stream); goFullscreen() },
+            onDismiss = { addonMovie = null },
+        )
     }
     likeMovie?.let { (src, meta) ->
         val found by androidx.compose.runtime.produceState<List<MovieEntity>?>(null, src.id) {

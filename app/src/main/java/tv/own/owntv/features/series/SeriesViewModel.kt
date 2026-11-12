@@ -1001,6 +1001,22 @@ class SeriesViewModel(
         }
     }
 
+    /** Kevin's copy: play a Stremio add-on's stream for [episode]; nothing is saved against the provider's episode. */
+    fun playAddonStream(series: SeriesEntity, episode: EpisodeEntity, stream: tv.own.owntv.features.stremio.StremioAddons.Stream) {
+        playingEpisodeRef = null
+        _playingSeries.value = null
+        player.play(
+            stream.url,
+            title = series.name,
+            subtitle = stream.title,
+            isLive = false,
+            startPositionMs = 0,
+            httpHeaders = tv.own.owntv.core.network.StreamHeaders.encode(stream.headers),
+            seasonNumber = episode.seasonNumber,
+            episodeNumber = episode.episodeNumber,
+        )
+    }
+
     fun playEpisode(episode: EpisodeEntity, startPositionMs: Long = 0) {
         val show = _openedSeries.value ?: return
         val seasonEpisodes = episodes.value

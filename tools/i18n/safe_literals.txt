@@ -312,6 +312,7 @@
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	saveProgressNow progress save failed movieId=${m.id} profile=$pid
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	stalker VOD reconnect resolve failed movieId=${movie.id}
 2	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	stalker resolve failed movieId=${movie.id}
+1	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	addon_streams
 2	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	delete_subtitles
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	download
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	favourite
@@ -320,13 +321,14 @@
 1	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	more_like_this
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	move
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	move_to_category
-3	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	movie
+4	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	movie
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	play_external
 2	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	play_trailer
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	refetch_tmdb
 2	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	remove_history
 1	preference-key	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	set_tmdb_name
 2	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	tmdb_details
+1	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	tt
 1	url	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	w1280
 2	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	with_actor
 1	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	·
@@ -355,7 +357,9 @@
 1	regex	app/src/main/java/tv/own/owntv/features/series/EpisodeTitles.kt	^(?:S\\d{1,3}\\s*E\\d{1,4}|\\d{1,3}x\\d{1,4})\\b
 1	regex	app/src/main/java/tv/own/owntv/features/series/EpisodeTitles.kt	^[\\s\\-–—:|.·]+
 1	empty	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	\0
+1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	$it:${ep.seasonNumber}:${ep.episodeNumber}
 1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	,
+1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	addon_streams
 2	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	delete_subtitles
 4	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	download
 2	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	favourite
@@ -369,9 +373,10 @@
 4	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	play_trailer
 3	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	refetch_tmdb
 4	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	remove_history
-3	technical	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	series
+4	technical	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	series
 2	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	set_tmdb_name
 6	preference-key	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	tmdb_details
+1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	tt
 1	url	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	w1280
 2	url	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	w300
 1	url	app/src/main/java/tv/own/owntv/features/series/SeriesScreen.kt	w780
@@ -994,6 +999,68 @@
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/WeatherConditionIcon.kt	snow
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/WeatherConditionIcon.kt	sunny
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/WeatherConditionIcon.kt	thunder
+2	empty	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	\0
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	&
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	&amp;
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	&gt;
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	&lt;
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	</button></form></body></html>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	</h2>
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	</label>
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	</p>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	</title>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<body><h2>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<button type=submit>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<form method=post><label>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<input name=code inputmode=numeric required>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<input name=url type=url required placeholder="https://…/manifest.json">
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<label>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<p class=bad>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<p class=ok>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<style>body{font-family:system-ui,sans-serif;margin:24px;max-width:560px}input,button{font-size:18px;width:90vw;max-width:560px;box-sizing:border-box;padding:12px;margin:8px 0 16px}button{background:#2563eb;color:#fff;border:0;border-radius:8px}.ok{color:#15803d}.bad{color:#b91c1c}</style></head>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	<title>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	>
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	Connection: close
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	Content-Length:
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	HTTP/1.1 200 OK Content-Type: text/html; charset=utf-8 Content-Length: ${bytes.size}
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	KevinAddonInbox
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	POST
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	UTF-8
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	code
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	request failed: ${it.message}
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	url
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	${a.base}/stream/$type/$id.json
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	/manifest.json
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	HTTP ${resp.code}
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	KevinStremio
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	[]
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	addons
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	behaviorHints
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	description
+2	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	http://
+3	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	https://
+1	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	https://$t
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	id
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	idPrefixes
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	infoHash
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	kevin_stremio
+5	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	name
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	not a manifest
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	prefixes
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	proxyHeaders
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	refused, not a manifest address
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	request
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	resources
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	stream
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	streams
+2	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	stremio://
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	title
+4	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	types
+3	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	url
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioPopup.kt	://
+1	url	app/src/main/java/tv/own/owntv/features/stremio/StremioPopup.kt	http://$it:${inbox.port}/
 1	json	app/src/main/java/tv/own/owntv/features/subtitles/SubtitleSearchViewModel.kt	ai_translated
 1	json	app/src/main/java/tv/own/owntv/features/subtitles/SubtitleSearchViewModel.kt	attributes
 1	json	app/src/main/java/tv/own/owntv/features/subtitles/SubtitleSearchViewModel.kt	data

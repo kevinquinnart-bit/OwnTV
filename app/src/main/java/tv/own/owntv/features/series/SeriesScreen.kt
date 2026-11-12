@@ -1317,6 +1317,8 @@ private fun EpisodeView(
     val moreFocus = remember { FocusRequester() }
     var initialFocused by remember { mutableStateOf(false) }
     var contextEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
+    // Kevin's copy: Stremio add-on streams for an episode.
+    var addonEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
     var detailsEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
     // Downloaded subtitles for the episode whose options menu is open (subtitle plan §11).
     var contextEpisodeSubs by remember { mutableStateOf<List<tv.own.owntv.core.database.dao.LinkedSubtitle>>(emptyList()) }
@@ -1732,12 +1734,24 @@ private fun EpisodeView(
     }
 
     // ☰ Episode options (P6-04): WATCH, LIBRARY, DETAILS, in the order of Settings › Long-press menus.
+    addonEpisode?.let { ep ->
+        val imdb = seriesMeta?.imdbId?.takeIf { it.startsWith("tt") }
+        tv.own.owntv.features.stremio.StremioPopup(
+            type = "series",
+            id = imdb?.let { "$it:${ep.seasonNumber}:${ep.episodeNumber}" },
+            onPlay = { stream -> addonEpisode = null; vm.playAddonStream(series, ep, stream); goFullscreen() },
+            onDismiss = { addonEpisode = null },
+        )
+    }
     contextEpisode?.takeIf { !showEpisodeDeleteSubs }?.let { ep ->
         val cacheForEp = selectedEpisodeMeta?.takeIf { it.episodeId == ep.id }?.cache
         val watched = ep.id in completedIds
         val actions = buildList {
             add(MenuAction("play_start", stringResource(R.string.content_play_from_start), OwnTVIcon.PLAY, group = VodGroupWatch) {
                 contextEpisode = null; vm.playEpisode(ep, 0); goFullscreen()
+            })
+            add(MenuAction("addon_streams", stringResource(R.string.kevin_stremio_streams), OwnTVIcon.SPARKLE, group = VodGroupWatch) {
+                contextEpisode = null; addonEpisode = ep
             })
             add(MenuAction("play_external", stringResource(R.string.content_play_external_short), OwnTVIcon.EXTERNAL, group = VodGroupWatch) {
                 contextEpisode = null; vm.playEpisodeExternal(ep)

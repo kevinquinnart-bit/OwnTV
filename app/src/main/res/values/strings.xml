@@ -70,4 +70,33 @@
     </plurals>
     <string name="kevin_drive_rec_failed">Couldn\'t copy “<xliff:g id="title">%1$s</xliff:g>”. It will be tried again after the next recording.</string>
     <string name="kevin_drive_rec_full">Couldn\'t copy “<xliff:g id="title">%1$s</xliff:g>”: not enough room on Google Drive.</string>
+    <!-- Movies / Series (Kevin's copy): Stremio add-ons. -->
+    <string name="kevin_stremio_streams">Add-on streams</string>
+    <string name="kevin_stremio_none_added">No add-ons yet. Add one to look for streams for this title.</string>
+    <string name="kevin_stremio_needs_imdb">Add-ons find a title by its IMDb number, which comes with the title\'s details. Open its details once (Menu › Details), then try again.</string>
+    <string name="kevin_stremio_no_streams">No playable streams found.</string>
+    <plurals name="kevin_stremio_torrents">
+        <item quantity="one"><xliff:g id="count">%1$d</xliff:g> more was a torrent link, which can\'t play here.</item>
+        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> more were torrent links, which can\'t play here.</item>
+    </plurals>
+    <plurals name="kevin_stremio_failed">
+        <item quantity="one"><xliff:g id="count">%1$d</xliff:g> add-on didn\'t answer.</item>
+        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> add-ons didn\'t answer.</item>
+    </plurals>
+    <string name="kevin_stremio_add">Add an add-on…</string>
+    <string name="kevin_stremio_remove">Remove an add-on…</string>
+    <string name="kevin_stremio_add_title">Add a Stremio add-on</string>
+    <string name="kevin_stremio_add_steps">On your phone, open <xliff:g id="url">%1$s</xliff:g> (or scan the code), paste the add-on\'s address and enter code <xliff:g id="code">%2$s</xliff:g>.</string>
+    <string name="kevin_stremio_type_here">Type it here instead</string>
+    <string name="kevin_stremio_address_label">Add-on address (ends in manifest.json)</string>
+    <string name="kevin_stremio_added">Added <xliff:g id="name">%1$s</xliff:g></string>
+    <string name="kevin_stremio_not_manifest">That isn\'t an add-on address. It should end in manifest.json.</string>
+    <string name="kevin_stremio_no_stream_resource">That add-on doesn\'t offer streams.</string>
+    <string name="kevin_stremio_unreachable">Couldn\'t reach that add-on.</string>
+    <string name="kevin_stremio_server_failed">Couldn\'t open the phone page on this TV.</string>
+    <string name="kevin_stremio_remove_title">Remove an add-on</string>
+    <string name="kevin_stremio_page_code">Code on the TV</string>
+    <string name="kevin_stremio_page_send">Send to TV</string>
+    <string name="kevin_stremio_page_sent">Sent to the TV. You can add another or close this page.</string>
+    <string name="kevin_stremio_page_wrong">That code doesn\'t match the one on the TV.</string>
 </resources>
