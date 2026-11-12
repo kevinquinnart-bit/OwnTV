@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kevin's copy (v2): the app is called KueTV. Core's text that names the app, with the new name;
+     the app's copy replaces core's. Generated from core's strings, one line per string. -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation,MissingTranslation">
+    <string name="local_sync_error_unreachable">This device could not be reached. On it, open KueTV → Settings → Data → Local sync and turn Sync mode on. Both devices must be on the same Wi-Fi.</string>
+    <string name="settings_app_icon_summary">Colour of the KueTV icon and logo</string>
+    <string name="app_icon_restart_title">Restart KueTV?</string>
+    <string name="app_icon_restart_message">You chose a new icon and logo. They take effect after KueTV restarts.</string>
+    <string name="settings_help_startup">What KueTV shows when it starts: Home, the channel you watched last, your favourites, or a channel you pick.</string>
+    <string name="settings_help_check_updates">Looks on GitHub for a newer KueTV now and offers to install it. Your playlists, favourites and settings stay as they are.</string>
+    <string name="settings_help_bg_background">Stage draws KueTV’s own soft colours. Picture shows a picture of yours behind every screen. Plain is a flat dark fill.</string>
+    <string name="settings_help_brand_accent">The KueTV logo in the menu, About and setup shows its play triangle in your accent colour. The icon on the home screen keeps its own colours.</string>
+    <string name="local_sync_browser_title">KueTV local sync</string>
+    <string name="local_sync_browser_body">This address is for the KueTV app on your other device. Open Local sync there and pick this device from the list.</string>
+</resources>

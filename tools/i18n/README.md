@@ -2,7 +2,7 @@
 
 **The strings themselves are not in this repository.** Every `strings*.xml`, the language catalogue
 that owns them, the Weblate integration and the translator guide live in the core library repo:
-<https://github.com/ahXN00/OwnTV_Core> (`tools/i18n/README.md` there). Add, change or translate a
+<https://github.com/kuetv-core> (`tools/i18n/README.md` there). Add, change or translate a
 string there, then bump `owntvCore` in `gradle/libs.versions.toml`.
 
 What still runs here, on the TV app's own Kotlin:

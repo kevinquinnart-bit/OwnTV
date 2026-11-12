@@ -29,22 +29,18 @@ dependencyResolutionManagement {
         }
         google()
         mavenCentral()
-        // OwnTV's own Maven repository — public, no login: tv.own.owntv:core and :player-core
-        // (built from https://github.com/ahXN00/OwnTV_Core) and tv.own.owntv:libmpv, the mpv engine
-        // (https://github.com/ahXN00/OwnTV_libmpv). Served from OwnTV_Core's gh-pages branch.
+        // Kevin's copy (KueTV): the mpv engine is kept in this repo (kuetv-maven), so a build reaches
+        // nothing of the original project's.
         maven {
-            name = "OwnTV"
-            url = uri("https://ahxn00.github.io/OwnTV_Core/maven")
+            name = "KueTV"
+            url = uri(file("kuetv-maven"))
             content { includeGroup("tv.own.owntv") }
         }
     }
 }
 
-// Local development: build against core's own source instead of the published artifact, so a core
-// edit reaches this app with no publish step. Gradle substitutes the dependency automatically
-// because OwnTV_Core publishes under the same group and artifact ids this app asks for. CI leaves
-// owntv.corePath unset and resolves the pinned version instead.
-// Set it in ~/.gradle/gradle.properties, never here:  owntv.corePath=E:/MEGA/CODE/AI/OwnTV_Core
+// Kevin's copy (KueTV): the shared code lives in this repo (kuetv-core) and is always built from
+// there; gradle.properties sets owntv.corePath. Gradle substitutes it for the tv.own.owntv artifacts.
 providers.gradleProperty("owntv.corePath").orNull?.takeIf { it.isNotBlank() }?.let { includeBuild(it) }
 
 rootProject.name = "OwnTV"

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kevin's copy (v2): the app is called KueTV. Core's text that names the app, with the new name;
+     the app's copy replaces core's. Generated from core's strings, one line per string. -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation,MissingTranslation">
+    <string name="common_own_tv_user">KueTV-gebruiker</string>
+    <string name="content_exit_owntv">KueTV afsluiten?</string>
+    <string name="content_storage_folder_fallback">Je downloadmap is nu niet beschikbaar, dus downloads worden in de eigen map van KueTV opgeslagen tot hij terug is.</string>
+    <string name="content_epg_own_player">KueTV-speler</string>
+    <string name="update_ready">KueTV v<xliff:g id="available">%1$s</xliff:g> staat klaar (je hebt v<xliff:g id="current">%2$s</xliff:g>).</string>
+    <string name="recovery_title">KueTV kon de database niet openen</string>
+    <string name="settings_recording_timers_inexact">Dit apparaat staat KueTV geen exacte wekkers toe, dus een opname kan een paar minuten later beginnen. Opnames starten eerder om dat te compenseren.</string>
+    <string name="recording_failed_drm">Dit kanaal is DRM-beveiligd en kan daarom wel worden bekeken, maar niet opgenomen. De beveiliging komt van je provider, niet van KueTV.</string>
+    <string name="player_trailer_blocked_title">Deze trailer kan niet in KueTV worden afgespeeld</string>
+    <string name="settings_proxy_description">Stuur al het verkeer en afspelen van KueTV via een HTTP-proxy.</string>
+    <string name="settings_metadata_shared_worker_description">KueTV Worker · geen installatie</string>
+    <string name="settings_metadata_clear_advanced_message">Je TMDB-API-sleutel en het adres van je eigen server worden van dit apparaat verwijderd, en KueTV keert terug naar de ingebouwde gedeelde dienst met het dagelijkse deel.</string>
+    <string name="settings_metadata_fair_share">De ingebouwde metadatadienst wordt gedeeld door iedereen die KueTV gebruikt, dus elk apparaat krijgt elke dag zijn eigen deel. Als je jouw deel opmaakt, pauzeren posters en beschrijvingen tot het weer wordt aangevuld — de informatie uit je eigen afspeellijst blijft gewoon werken. Je eigen TMDB-API-sleutel of server toevoegen heft de limiet op: het is gratis en een persoonlijke sleutel heeft praktisch geen limiet.</string>
+    <string name="settings_app_startup_description">Wat KueTV opent wanneer de app start</string>
+    <string name="settings_open_subtitles_access_priority">Laat beide leeg om de gedeelde Worker van KueTV te gebruiken. Een eigen Worker-URL heeft voorrang op een directe API-sleutel. Accountsessies blijven profielspecifiek.</string>
+    <string name="settings_restore_remote_description">Scan op een apparaat met een browser op hetzelfde wifi-netwerk — telefoon, computer of een andere tv — de QR-code (of open de URL), voer deze pincode in, kies je KueTV-back-upbestand en verstuur het. Daarna kies je hier wat je terugzet.</string>
+    <string name="settings_catchup_player_internal">KueTV-speler</string>
+    <string name="settings_sources_probe_warning">Veel providers zeggen nooit hoeveel kanalen je tegelijk mag kijken, dus KueTV zoekt het uit door er een paar te openen en te kijken welke blijven werken. Alles wat nu speelt, stopt en dit kan tot twee minuten duren.</string>
+    <string name="settings_sources_probe_unknown">KueTV kon niet achterhalen hoeveel kanalen deze provider toestaat.</string>
+    <string name="settings_dns_toggle_description">Alle domeinnamen die KueTV opzoekt via een aangepaste DNS-server laten omzetten.</string>
+    <string name="settings_live_tune_timeout_description">Als een livekanaal binnen deze tijd geen beeld heeft laten zien, stopt KueTV met proberen en laat het je weten, in plaats van een zwart scherm te tonen terwijl het alle spelers een voor een afgaat. ‘Nooit’ blijft proberen, wat op een kanaal dat je provider heeft verwijderd ruim een minuut kan duren. Wachttijden waar je provider zelf om vraagt, tellen niet mee.</string>
+    <string name="settings_surround_forced_description">Surround — stuur Dolby/DTS naar een echte 5.1/7.1-receiver. Als het stil wordt of hapert, valt KueTV alsnog terug op stereo en meldt je dat.</string>
+    <string name="settings_language_help_translate">Help KueTV in jouw taal te vertalen</string>
+    <string name="settings_language_contribution_description">Scan de QR-code of open de link om elke beschikbare taal te kiezen en bij te dragen aan alle zes KueTV-vertaalcomponenten.</string>
+    <string name="settings_language_contribution_qr_description">QR-code voor het overzicht van het KueTV-vertaalproject.</string>
+    <string name="settings_auto_frame_rate_warning_description">Dit apparaat draait op Android <xliff:g id="android_version">%1$s</xliff:g>. Onder Android 12 kan de tv KueTV niet vertellen naar welke verversingsfrequenties hij soepel kan overschakelen, dus het wijzigen van de frequentie kan het scherm een seconde of twee zwart maken — soms meerdere keren tijdens een programma.\n\nWe raden aan om Automatische framesnelheid hier uit te laten staan. Als je tv probleemloos overschakelt, zet je hem aan en kijk je: je kunt hem op elk moment weer uitzetten.</string>
+    <string name="settings_auto_frame_rate_warning_description_mobile">Dit apparaat draait op Android <xliff:g id="android_version">%1$s</xliff:g>. Onder Android 12 kan het apparaat KueTV niet vertellen naar welke verversingsfrequenties het soepel kan overschakelen, dus het wijzigen van de frequentie kan het scherm een seconde of twee zwart maken — soms meerdere keren tijdens een programma.\n\nWe raden aan om Automatische framesnelheid hier uit te laten staan. Als je scherm probleemloos overschakelt, zet je hem aan en kijk je: je kunt hem op elk moment weer uitzetten.</string>
+    <string name="local_sync_error_unreachable">Dit apparaat was niet bereikbaar. Open daarop KueTV → Instellingen → Gegevens → Lokaal synchroniseren en zet Synchronisatiemodus aan. Beide apparaten moeten op hetzelfde wifinetwerk zitten.</string>
+    <string name="settings_app_icon_summary">Kleur van het KueTV-pictogram en -logo</string>
+    <string name="app_icon_restart_title">KueTV opnieuw starten?</string>
+    <string name="app_icon_restart_message">Je hebt een nieuw pictogram en logo gekozen. Ze worden actief nadat KueTV opnieuw is gestart.</string>
+    <string name="settings_help_theme">KueTV is ontworpen voor donker. Systeem volgt de instelling van de tv, als die er is; licht past bij een lichte kamer.</string>
+    <string name="settings_help_fonts">Het lettertype in heel KueTV en hoe groot tekst is. Pop-ups gebruiken hetzelfde lettertype.</string>
+    <string name="settings_help_app_icon">Het KueTV-pictogram op het startscherm van je tv. Het kan even duren voordat de launcher de wijziging toont.</string>
+    <string name="settings_help_brand_accent">Het KueTV-logo in het menu, Over en de installatie toont de afspeeldriehoek in je accentkleur. Het pictogram op het startscherm houdt zijn eigen kleuren.</string>
+    <string name="settings_help_startup">Wat KueTV toont bij het starten: Start, het laatst bekeken kanaal, je favorieten of een kanaal naar keuze.</string>
+    <string name="settings_help_check_updates">Zoekt nu op GitHub naar een nieuwere KueTV en biedt aan die te installeren. Je afspeellijsten, favorieten en instellingen blijven zoals ze zijn.</string>
+    <string name="settings_help_update_startup">Zoekt bij elke start van KueTV naar een nieuwe versie en meldt het als die er is. Er wordt niets geïnstalleerd zonder te vragen.</string>
+    <plurals name="settings_help_language">
+        <item quantity="one">De taal van alle menu’s en meldingen in KueTV. <xliff:g id="count">%1$d</xliff:g> taal; volgt de taal van de tv tot je er een kiest.</item>
+        <item quantity="other">De taal van alle menu’s en meldingen in KueTV. <xliff:g id="count">%1$d</xliff:g> talen; volgt de taal van de tv tot je er een kiest.</item>
+    </plurals>
+    <string name="settings_language_system_help">KueTV volgt de taal van de tv (nu <xliff:g id="language">%1$s</xliff:g>). Kies hieronder een taal om die alleen in KueTV te gebruiken.</string>
+    <string name="settings_language_pick_help"><xliff:g id="language">%1$s</xliff:g> gebruiken in KueTV, ongeacht de taal van de tv.</string>
+    <string name="settings_help_bg_background">Stage toont de eigen zachte kleuren van KueTV. Afbeelding toont een eigen afbeelding achter elk scherm. Effen is een vlakke donkere vulling.</string>
+    <string name="setup_disclaimer">KueTV is uitsluitend een mediaspeler. De app bevat geen zenders, afspeellijsten of content. Je bent zelf verantwoordelijk voor het toevoegen van je eigen legaal toegankelijke Xtream-, M3U- of Stalker-bronnen.</string>
+    <string name="setup_set_up_owntv">KueTV configureren</string>
+    <string name="setup_sync_device_description">Kopieer alles van je andere KueTV-apparaat via wifi</string>
+    <string name="setup_byo_source_description">KueTV is een speler — voeg je eigen Xtream-, M3U- of Stalker-bron toe.</string>
+    <string name="companion_pin_page_title">KueTV — PIN invoeren</string>
+    <string name="companion_add_page_title">KueTV — Bron toevoegen</string>
+    <string name="companion_saved_page_title">KueTV — Verzonden</string>
+    <string name="companion_backup_page_title">KueTV — Back-up herstellen</string>
+    <string name="companion_backup_description">Kies een KueTV-back-upbestand (.own of een ouder .json-bestand) en druk op Verzenden. Het wordt naar de tv overgebracht — pak de afstandsbediening en kies daar wat je wilt herstellen.</string>
+    <string name="companion_image_page_title">KueTV — Achtergrondafbeelding</string>
+    <string name="companion_download_page_title">KueTV — Back-up downloaden</string>
+    <string name="companion_download_description">Je tv heeft een KueTV-back-upbestand voorbereid. Tik op de knop om het op dit apparaat op te slaan (owntv-backup.own). Bewaar het op een veilige plek — je kunt je gegevens er later mee herstellen.</string>
+    <string name="local_sync_browser_title">KueTV lokaal synchroniseren</string>
+    <string name="local_sync_browser_body">Dit adres is bedoeld voor de KueTV-app op je andere apparaat. Open daar Lokaal synchroniseren en kies dit apparaat uit de lijst.</string>
+    <string name="setup_welcome_title">Welkom bij KueTV</string>
+    <string name="setup_line_app_icon">Hoe KueTV op het startscherm van de tv verschijnt</string>
+</resources>

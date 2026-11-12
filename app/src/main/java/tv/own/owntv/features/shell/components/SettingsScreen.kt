@@ -2104,7 +2104,6 @@ private fun CatchupSourceValueHost(settingsVm: SettingsViewModel, src: tv.own.ow
 
 /** The repository line More › About shows. */
 internal const val GITHUB_REPO = "github.com/kevinquinnart-bit/OwnTV"
-internal const val TELEGRAM_LINK = "t.me/owntvplayer"
 
 /**
  * Read-only viewer for the persisted playback error history (B5): the last ~10 failures with their

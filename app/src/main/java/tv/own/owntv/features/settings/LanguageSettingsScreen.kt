@@ -165,7 +165,8 @@ fun LanguageSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         stringResource(R.string.common_ok) to stringResource(R.string.settings_key_use),
         stringResource(R.string.common_back) to stringResource(R.string.settings_group_app),
     )
-    val translate: @Composable () -> Unit = { TranslateBlock() }
+    // Kevin's copy (v2): no "Help translate" — that is the original project's translation site.
+    val translate: @Composable () -> Unit = { }
     StageFullPage(
         parents = listOf(stringResource(R.string.settings_group_app)),
         title = stringResource(R.string.settings_language),

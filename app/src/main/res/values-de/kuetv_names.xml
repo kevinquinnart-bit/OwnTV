@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kevin's copy (v2): the app is called KueTV. Core's text that names the app, with the new name;
+     the app's copy replaces core's. Generated from core's strings, one line per string. -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation,MissingTranslation">
+    <string name="common_own_tv_user">KueTV-Nutzer</string>
+    <string name="content_exit_owntv">KueTV beenden?</string>
+    <string name="content_storage_folder_fallback">Dein Download-Ordner ist gerade nicht verfügbar. Downloads werden deshalb im eigenen Ordner von KueTV gespeichert, bis er wieder da ist.</string>
+    <string name="content_epg_own_player">KueTV-Player</string>
+    <string name="update_ready">KueTV v<xliff:g id="available">%1$s</xliff:g> ist bereit (du verwendest v<xliff:g id="current">%2$s</xliff:g>).</string>
+    <string name="recovery_title">KueTV konnte seine Datenbank nicht öffnen</string>
+    <string name="settings_recording_timers_inexact">Dieses Gerät erlaubt KueTV keine exakten Wecker, daher kann eine Aufnahme einige Minuten später beginnen. Aufnahmen starten früher, um das auszugleichen.</string>
+    <string name="recording_failed_drm">Dieser Sender ist DRM-geschützt und kann daher angesehen, aber nicht aufgenommen werden. Der Schutz stammt von Ihrem Anbieter, nicht von KueTV.</string>
+    <string name="player_trailer_blocked_title">Dieser Trailer kann nicht in KueTV abgespielt werden</string>
+    <string name="settings_proxy_description">Den gesamten Datenverkehr und die gesamte Wiedergabe von KueTV über einen HTTP-Proxy leiten.</string>
+    <string name="settings_metadata_shared_worker_description">KueTV Worker · keine Einrichtung</string>
+    <string name="settings_metadata_clear_advanced_message">Ihr TMDB-API-Schlüssel und die Adresse Ihres eigenen Servers werden von diesem Gerät gelöscht, und KueTV kehrt zum integrierten gemeinsamen Dienst mit seinem Tagesanteil zurück.</string>
+    <string name="settings_metadata_fair_share">Der integrierte Metadatendienst wird von allen KueTV-Nutzern gemeinsam genutzt, daher erhält jedes Gerät täglich seinen eigenen Anteil. Wenn Ihr Anteil aufgebraucht ist, pausieren Poster und Beschreibungen, bis er wieder aufgefüllt wird — die Informationen aus Ihrer eigenen Playlist funktionieren weiterhin normal. Ein eigener TMDB-API-Schlüssel oder Server hebt diese Beschränkung auf: Er ist kostenlos, und ein persönlicher Schlüssel hat praktisch kein Limit.</string>
+    <string name="settings_app_startup_description">Was KueTV beim Start öffnet</string>
+    <string name="settings_open_subtitles_access_priority">Lasse beide Felder leer, um den gemeinsamen Worker von KueTV zu nutzen. Eine eigene Worker-URL hat Vorrang vor einem direkten API-Schlüssel. Kontositzungen bleiben profilspezifisch.</string>
+    <string name="settings_restore_remote_description">Scannen Sie auf einem beliebigen Gerät mit Browser im selben WLAN – Smartphone, Computer oder ein anderer Fernseher – den QR-Code (oder öffnen Sie die URL), geben Sie diese PIN ein, wählen Sie Ihre KueTV-Sicherungsdatei und senden Sie sie. Was wiederhergestellt wird, wählen Sie dann hier.</string>
+    <string name="settings_catchup_player_internal">KueTV-Player</string>
+    <string name="settings_sources_probe_warning">Viele Anbieter verraten nie, wie viele Kanäle Sie gleichzeitig sehen dürfen. KueTV findet es deshalb heraus, indem es einige öffnet und beobachtet, welche bestehen bleiben. Alles, was gerade läuft, wird beendet, und das kann bis zu zwei Minuten dauern.</string>
+    <string name="settings_sources_probe_unknown">KueTV konnte nicht ermitteln, wie viele Kanäle dieser Anbieter erlaubt.</string>
+    <string name="settings_dns_toggle_description">Alle Domainabfragen von KueTV über einen benutzerdefinierten DNS-Server auflösen.</string>
+    <string name="settings_live_tune_timeout_description">Zeigt ein Live-Sender bis dahin kein Bild, hört KueTV auf und sagt Ihnen Bescheid, statt einen schwarzen Bildschirm stehen zu lassen, während nacheinander alle Player durchprobiert werden. „Nie“ probiert weiter, was bei einem vom Anbieter entfernten Sender deutlich über eine Minute dauern kann. Wartezeiten, die Ihr Anbieter selbst verlangt, zählen nicht mit.</string>
+    <string name="settings_surround_forced_description">Surround — Dolby/DTS an einen echten 5.1/7.1-Receiver ausgeben. Wenn der Ton ausfällt oder ruckelt, wechselt KueTV trotzdem zu Stereo und informiert dich.</string>
+    <string name="settings_language_help_translate">Hilf mit, KueTV in deine Sprache zu übersetzen</string>
+    <string name="settings_language_contribution_description">Scannen Sie den QR-Code oder öffnen Sie den Link, um eine beliebige verfügbare Sprache auszuwählen und in allen sechs Übersetzungsbereichen von KueTV mitzuwirken.</string>
+    <string name="settings_language_contribution_qr_description">QR-Code für die Übersicht des KueTV-Übersetzungsprojekts</string>
+    <string name="settings_auto_frame_rate_warning_description">Auf diesem Gerät läuft Android <xliff:g id="android_version">%1$s</xliff:g>. Vor Android 12 kann der Fernseher KueTV nicht mitteilen, zu welchen Bildwiederholraten er fließend wechseln kann. Daher kann der Bildschirm beim Wechsel der Bildwiederholrate für ein oder zwei Sekunden schwarz werden – manchmal mehr als einmal während einer Sendung.\n\nWir empfehlen, die automatische Bildwiederholrate hier deaktiviert zu lassen. Wenn Ihr Fernseher sauber umschaltet, aktivieren Sie sie und sehen Sie selbst: Sie können die Einstellung jederzeit wieder ändern.</string>
+    <string name="settings_auto_frame_rate_warning_description_mobile">Auf diesem Gerät läuft Android <xliff:g id="android_version">%1$s</xliff:g>. Vor Android 12 kann das Gerät KueTV nicht mitteilen, zu welchen Bildwiederholraten es fließend wechseln kann. Daher kann der Bildschirm beim Wechsel der Bildwiederholrate für ein oder zwei Sekunden schwarz werden – manchmal mehr als einmal während einer Sendung.\n\nWir empfehlen, die automatische Bildwiederholrate hier deaktiviert zu lassen. Wenn Ihr Bildschirm sauber umschaltet, aktivieren Sie sie und sehen Sie selbst: Sie können die Einstellung jederzeit wieder ändern.</string>
+    <string name="local_sync_error_unreachable">Dieses Gerät war nicht erreichbar. Öffne dort KueTV → Einstellungen → Daten → Lokale Synchronisierung und schalte den Synchronisierungsmodus ein. Beide Geräte müssen im selben WLAN sein.</string>
+    <string name="settings_app_icon_summary">Farbe des KueTV-Symbols und -Logos</string>
+    <string name="app_icon_restart_title">KueTV neu starten?</string>
+    <string name="app_icon_restart_message">Sie haben ein neues Symbol und Logo gewählt. Die Änderung wird nach einem Neustart von KueTV wirksam.</string>
+    <string name="settings_help_theme">KueTV ist für Dunkel gestaltet. System folgt der Einstellung des Fernsehers, sofern vorhanden; Hell passt zu einem hellen Raum.</string>
+    <string name="settings_help_fonts">Die Schrift in ganz KueTV und wie groß Text erscheint. Pop-ups verwenden dieselbe Schrift.</string>
+    <string name="settings_help_app_icon">Das KueTV-Symbol auf dem Startbildschirm des Fernsehers. Der Launcher braucht eventuell einen Moment, bis er die Änderung zeigt.</string>
+    <string name="settings_help_brand_accent">Das KueTV-Logo im Menü, unter „Über“ und in der Einrichtung zeigt sein Play-Dreieck in deiner Akzentfarbe. Das Symbol auf dem Startbildschirm behält seine eigenen Farben.</string>
+    <string name="settings_help_startup">Was KueTV beim Start zeigt: die Startseite, den zuletzt gesehenen Sender, Ihre Favoriten oder einen Sender Ihrer Wahl.</string>
+    <string name="settings_help_check_updates">Sucht jetzt auf GitHub nach einer neueren KueTV-Version und bietet die Installation an. Playlists, Favoriten und Einstellungen bleiben, wie sie sind.</string>
+    <string name="settings_help_update_startup">Sucht bei jedem Start von KueTV nach einer neuen Version und meldet sich, wenn es eine gibt. Ohne Rückfrage wird nichts installiert.</string>
+    <plurals name="settings_help_language">
+        <item quantity="one">Die Sprache aller Menüs und Meldungen in KueTV. <xliff:g id="count">%1$d</xliff:g> Sprache; folgt der Sprache des Fernsehers, bis Sie eine wählen.</item>
+        <item quantity="other">Die Sprache aller Menüs und Meldungen in KueTV. <xliff:g id="count">%1$d</xliff:g> Sprachen; folgt der Sprache des Fernsehers, bis Sie eine wählen.</item>
+    </plurals>
+    <string name="settings_language_system_help">KueTV folgt der Sprache des Fernsehers (derzeit <xliff:g id="language">%1$s</xliff:g>). Wählen Sie unten eine Sprache, um sie nur in KueTV zu verwenden.</string>
+    <string name="settings_language_pick_help"><xliff:g id="language">%1$s</xliff:g> in KueTV verwenden, unabhängig von der Sprache des Fernsehers.</string>
+    <string name="settings_help_bg_background">Stage zeigt die eigenen sanften Farben von KueTV. Bild zeigt ein eigenes Bild hinter jedem Bildschirm. Schlicht ist eine flache dunkle Fläche.</string>
+    <string name="setup_disclaimer">KueTV ist ausschließlich ein Medienplayer. Die App enthält keine Sender, Wiedergabelisten oder Inhalte. Du bist selbst dafür verantwortlich, deine eigenen legal zugänglichen Xtream-, M3U- oder Stalker-Quellen hinzuzufügen.</string>
+    <string name="setup_set_up_owntv">KueTV einrichten</string>
+    <string name="setup_sync_device_description">Kopieren Sie alles über WLAN von Ihrem anderen KueTV-Gerät</string>
+    <string name="setup_byo_source_description">KueTV ist ein Player — füge deine eigene Xtream-, M3U- oder Stalker-Quelle hinzu.</string>
+    <string name="companion_pin_page_title">KueTV — PIN eingeben</string>
+    <string name="companion_add_page_title">KueTV — Quelle hinzufügen</string>
+    <string name="companion_saved_page_title">KueTV — Gesendet</string>
+    <string name="companion_backup_page_title">KueTV — Sicherung wiederherstellen</string>
+    <string name="companion_backup_description">Wähle eine KueTV-Sicherungsdatei (.own oder eine ältere .json-Datei) aus und drücke auf „Senden“. Sie wird auf den TV übertragen — nimm die Fernbedienung und wähle dort aus, was wiederhergestellt werden soll.</string>
+    <string name="companion_image_page_title">KueTV — Hintergrundbild</string>
+    <string name="companion_download_page_title">KueTV — Sicherung herunterladen</string>
+    <string name="companion_download_description">Ihr Fernseher hat eine KueTV-Sicherungsdatei vorbereitet. Tippen Sie auf die Schaltfläche, um sie auf diesem Gerät zu speichern (owntv-backup.own). Bewahren Sie sie an einem sicheren Ort auf — Sie können Ihre Daten später daraus wiederherstellen.</string>
+    <string name="local_sync_browser_title">KueTV lokale Synchronisierung</string>
+    <string name="local_sync_browser_body">Diese Adresse ist für die KueTV-App auf deinem anderen Gerät. Öffne dort die lokale Synchronisierung und wähle dieses Gerät aus der Liste.</string>
+    <string name="setup_welcome_title">Willkommen bei KueTV</string>
+    <string name="setup_line_app_icon">Wie KueTV auf dem Startbildschirm des Fernsehers erscheint</string>
+</resources>

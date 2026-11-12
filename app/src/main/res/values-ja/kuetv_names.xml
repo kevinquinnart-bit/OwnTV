@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kevin's copy (v2): the app is called KueTV. Core's text that names the app, with the new name;
+     the app's copy replaces core's. Generated from core's strings, one line per string. -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation,MissingTranslation">
+    <string name="common_own_tv_user">KueTV ユーザー</string>
+    <string name="content_exit_owntv">KueTVを終了しますか？</string>
+    <string name="content_storage_folder_fallback">ダウンロードフォルダーは現在利用できません。戻るまで、ダウンロードは KueTV 専用のフォルダーに保存されます。</string>
+    <string name="content_epg_own_player">KueTVプレーヤー</string>
+    <string name="update_ready">KueTV v<xliff:g id="available">%1$s</xliff:g>のインストール準備ができました（現在のバージョン：v<xliff:g id="current">%2$s</xliff:g>）。</string>
+    <string name="recovery_title">KueTVはデータベースを開けませんでした</string>
+    <string name="settings_recording_timers_inexact">この端末では KueTV が正確なアラームを設定できないため、録画が数分遅れて始まることがあります。その分だけ早めに開始します。</string>
+    <string name="recording_failed_drm">このチャンネルはDRMで保護されているため、視聴はできますが録画はできません。この保護はプロバイダーによるもので、KueTVによるものではありません。</string>
+    <string name="player_trailer_blocked_title">この予告編は KueTV では再生できません</string>
+    <string name="settings_proxy_description">KueTVのすべての通信と再生をHTTPプロキシ経由で行います。</string>
+    <string name="settings_metadata_shared_worker_description">KueTV Worker · 設定不要</string>
+    <string name="settings_metadata_clear_advanced_message">TMDB APIキーと独自サーバーのアドレスがこの端末から削除され、KueTVは1日の利用枠がある内蔵の共有サービスに戻ります。</string>
+    <string name="settings_metadata_fair_share">内蔵のメタデータサービスはKueTVを使うすべてのユーザーで共有しているため、各デバイスには1日ごとの利用枠があります。枠を使い切ると、ポスターと説明は回復するまで一時停止します。お使いのプレイリスト自身の情報はこれまでどおり表示されます。独自のTMDB APIキーまたはサーバーを追加すると、この制限はなくなります。無料で、個人キーには実質的に制限がありません。</string>
+    <string name="settings_app_startup_description">KueTVの起動時に開く画面</string>
+    <string name="settings_open_subtitles_access_priority">どちらも空欄にするとKueTVの共有Workerを使います。独自のWorker URLは直接指定したAPIキーより優先されます。アカウントのセッションはプロファイルごとに保持されます。</string>
+    <string name="settings_restore_remote_description">同じ Wi-Fi にあるブラウザー付きの任意の機器（スマホ、パソコン、別のテレビ）で QR を読み取る（または URL を開く）、この PIN を入力して KueTV のバックアップファイルを選んで送信します。復元する内容はここで選びます。</string>
+    <string name="settings_catchup_player_internal">KueTVプレーヤー</string>
+    <string name="settings_sources_probe_warning">同時に視聴できるチャンネル数を知らせないプロバイダーは少なくありません。そこで KueTV はいくつか実際に開き、どれが続くかを見て判断します。再生中のものはすべて停止し、最大で 2 分ほどかかります。</string>
+    <string name="settings_sources_probe_unknown">このプロバイダーが許可するチャンネル数を KueTV は特定できませんでした。</string>
+    <string name="settings_dns_toggle_description">KueTVのすべてのドメイン名をカスタムDNSサーバー経由で名前解決します。</string>
+    <string name="settings_live_tune_timeout_description">この時間までにライブチャンネルの映像が出ない場合、KueTV はすべてのプレーヤーを順に試して黒い画面を映し続ける代わりに、試行をやめてお知らせします。「しない」を選ぶと試行を続けるため、プロバイダーが削除したチャンネルでは 1 分をゆうに超えることがあります。プロバイダー側から求められた待ち時間は含みません。</string>
+    <string name="settings_surround_forced_description">サラウンド — Dolby/DTSを実際の5.1/7.1レシーバーに送信します。無音になったりカクついたりする場合は、KueTVはステレオに切り替えてその旨通知します。</string>
+    <string name="settings_language_help_translate">KueTVの翻訳に協力する</string>
+    <string name="settings_language_contribution_description">QRコードをスキャンするかリンクを開いて、利用可能な任意の言語を選択し、KueTVの6つの翻訳コンポーネントすべてに貢献できます。</string>
+    <string name="settings_language_contribution_qr_description">KueTVの翻訳プロジェクト概要のQRコード</string>
+    <string name="settings_auto_frame_rate_warning_description">このデバイスはAndroid <xliff:g id="android_version">%1$s</xliff:g>で動作しています。Android 12未満では、テレビがKueTVにスムーズに切り替え可能なリフレッシュレートを伝えられないため、レートを変更すると1〜2秒間画面が暗転する可能性があります。番組中に複数回発生することもあります。\n\nここではオートフレームレートをオフにしておくことをお勧めします。テレビが問題なく切り替えられる場合は、オンにして試してみてください。いつでも元に戻せます。</string>
+    <string name="settings_auto_frame_rate_warning_description_mobile">このデバイスはAndroid <xliff:g id="android_version">%1$s</xliff:g>で動作しています。Android 12未満では、デバイスがKueTVにスムーズに切り替え可能なリフレッシュレートを伝えられないため、レートを変更すると1〜2秒間画面が暗転する可能性があります。番組中に複数回発生することもあります。\n\nここではオートフレームレートをオフにしておくことをお勧めします。画面が問題なく切り替えられる場合は、オンにして試してみてください。いつでも元に戻せます。</string>
+    <string name="local_sync_error_unreachable">その端末に接続できませんでした。その端末で KueTV → 設定 → データ → ローカル同期 を開き、同期モードをオンにしてください。両方が同じ Wi-Fi に接続している必要があります。</string>
+    <string name="settings_app_icon_summary">KueTVのアイコンとロゴの色</string>
+    <string name="app_icon_restart_title">KueTVを再起動しますか？</string>
+    <string name="app_icon_restart_message">新しいアイコンとロゴを選択しました。KueTVの再起動後に反映されます。</string>
+    <string name="settings_help_theme">KueTV はダーク向けに設計されています。システムはテレビ本体の設定があればそれに従い、ライトは明るい部屋に向いています。</string>
+    <string name="settings_help_fonts">KueTV 全体で使うフォントと文字の大きさです。ポップアップも同じフォントを使います。</string>
+    <string name="settings_help_app_icon">テレビのホーム画面にある KueTV のアイコンです。ランチャーに反映されるまで少し時間がかかることがあります。</string>
+    <string name="settings_help_brand_accent">メニュー、「情報」、セットアップの KueTV ロゴの再生三角形がアクセントカラーになります。ホーム画面のアイコンは元の色のままです。</string>
+    <string name="settings_help_startup">KueTV の起動時に表示するもの：ホーム、最後に見たチャンネル、お気に入り、または選んだチャンネル。</string>
+    <string name="settings_help_check_updates">GitHub で新しい KueTV を今すぐ探し、インストールを提案します。プレイリスト、お気に入り、設定はそのまま残ります。</string>
+    <string name="settings_help_update_startup">KueTV の起動ごとに新しいバージョンを探し、あれば知らせます。確認なしにインストールされることはありません。</string>
+    <plurals name="settings_help_language">
+        <item quantity="other">KueTV のすべてのメニューとメッセージの言語です。<xliff:g id="count">%1$d</xliff:g> 言語に対応。選ぶまではテレビ本体の言語に従います。</item>
+    </plurals>
+    <string name="settings_language_system_help">KueTV はテレビの言語（現在は <xliff:g id="language">%1$s</xliff:g>）に従います。KueTV だけで使う言語を下から選んでください。</string>
+    <string name="settings_language_pick_help">テレビの言語に関係なく、KueTV で <xliff:g id="language">%1$s</xliff:g> を使います。</string>
+    <string name="settings_help_bg_background">Stage は KueTV 独自のやわらかな色を表示します。画像はすべての画面の後ろに自分の画像を表示します。無地は平らな暗い塗りです。</string>
+    <string name="setup_disclaimer">KueTVはメディアプレーヤーにすぎません。チャンネル、プレイリスト、コンテンツは一切含まれていません。合法的にアクセスできるご自身のXtream、M3U、またはStalkerソースを追加する責任はユーザーにあります。</string>
+    <string name="setup_set_up_owntv">KueTVをセットアップ</string>
+    <string name="setup_sync_device_description">Wi-Fi 経由でもう一方の KueTV 端末からすべてをコピーします</string>
+    <string name="setup_byo_source_description">KueTVはプレーヤーです。ご自身のXtream、M3U、またはStalkerソースを追加してください。</string>
+    <string name="companion_pin_page_title">KueTV — PINを入力</string>
+    <string name="companion_add_page_title">KueTV — ソースを追加</string>
+    <string name="companion_saved_page_title">KueTV — 送信完了</string>
+    <string name="companion_backup_page_title">KueTV — バックアップを復元</string>
+    <string name="companion_backup_description">KueTVのバックアップファイル（.ownまたは旧形式の.json）を選択し、［送信］を押してください。TVに転送されたら、リモコンを手に取り、TV側で復元する項目を選択してください。</string>
+    <string name="companion_image_page_title">KueTV — 背景画像</string>
+    <string name="companion_download_page_title">KueTV — バックアップをダウンロード</string>
+    <string name="companion_download_description">テレビでKueTVのバックアップファイルを準備しました。ボタンをタップして、このデバイスに保存してください（owntv-backup.own）。後で復元できるよう、安全な場所に保管してください。</string>
+    <string name="local_sync_browser_title">KueTV ローカル同期</string>
+    <string name="local_sync_browser_body">このアドレスは、もう一方の端末の KueTV アプリ用です。そちらでローカル同期を開き、一覧からこの端末を選んでください。</string>
+    <string name="setup_welcome_title">KueTV へようこそ</string>
+    <string name="setup_line_app_icon">テレビのホーム画面での KueTV の見え方</string>
+</resources>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kevin's copy (v2): the app is called KueTV. Core's text that names the app, with the new name;
+     the app's copy replaces core's. Generated from core's strings, one line per string. -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation,MissingTranslation">
+    <string name="common_own_tv_user">KueTV-felhasználó</string>
+    <string name="content_exit_owntv">Kilépsz az KueTV-ből?</string>
+    <string name="content_storage_folder_fallback">A letöltési mappa most nem érhető el, ezért a letöltések az KueTV saját mappájába kerülnek, amíg vissza nem tér.</string>
+    <string name="content_epg_own_player">KueTV-lejátszó</string>
+    <string name="update_ready">Az KueTV v<xliff:g id="available">%1$s</xliff:g> készen áll (jelenleg a v<xliff:g id="current">%2$s</xliff:g> fut).</string>
+    <string name="recovery_title">Az KueTV nem tudta megnyitni az adatbázisát</string>
+    <string name="settings_recording_timers_inexact">Ez az eszköz nem engedi az KueTV-nek a pontos ébresztők beállítását, ezért egy felvétel néhány perccel később indulhat. A felvételek emiatt korábban kezdődnek.</string>
+    <string name="recording_failed_drm">Ez a csatorna DRM-védett, ezért megnézhető, de nem rögzíthető. A védelmet a szolgáltatója alkalmazza, nem az KueTV.</string>
+    <string name="player_trailer_blocked_title">Ez az előzetes nem játszható le az KueTV-ben</string>
+    <string name="settings_proxy_description">Az KueTV teljes forgalmát és lejátszását HTTP-proxyn keresztül küldi.</string>
+    <string name="settings_metadata_shared_worker_description">KueTV Worker · nincs teendő</string>
+    <string name="settings_open_subtitles_access_priority">Hagyd mindkettőt üresen az KueTV közös Workeréhez. Az egyéni Worker URL elsőbbséget élvez a közvetlen API-kulccsal szemben. A fiókmenetek profilonként külön maradnak.</string>
+    <string name="settings_metadata_clear_advanced_message">A TMDB API-kulcsod és a saját üzemeltetésű kiszolgálód címe törlődik erről az eszközről, és az KueTV visszatér a beépített közös szolgáltatáshoz és annak napi keretéhez.</string>
+    <string name="settings_metadata_fair_share">A beépített szolgáltatáson mindenki osztozik, aki KueTV-t használ. Ha bármelyik perces, órás vagy napi keret elfogy, a TMDB-részletek szünetelnek, amíg az adott időszak vissza nem áll; a lejátszási lista adatai továbbra is működnek. A saját kulcsod vagy Workered megszünteti ezt a korlátot.</string>
+    <string name="settings_auto_frame_rate_warning_description">Ezen az eszközön Android <xliff:g id="android_version">%1$s</xliff:g> fut. Android 12 alatt a TV nem tudja megmondani az KueTV-nek, mely frissítési frekvenciákra tud zökkenőmentesen váltani, ezért a frekvenciaváltás egy-két másodpercre elsötétítheti a képet — néha egy műsor alatt többször is.\n\nAzt javasoljuk, hagyd itt kikapcsolva az automatikus képkockasebességet. Ha a TV-d tisztán vált, kapcsold be, és próbáld ki: bármikor visszaállíthatod.</string>
+    <string name="settings_auto_frame_rate_warning_description_mobile">Ezen az eszközön Android <xliff:g id="android_version">%1$s</xliff:g> fut. Android 12 alatt az eszköz nem tudja megmondani az KueTV-nek, mely frissítési frekvenciákra tud zökkenőmentesen váltani, ezért a frekvenciaváltás egy-két másodpercre elsötétítheti a képet — néha egy műsor alatt többször is.\n\nAzt javasoljuk, hagyd itt kikapcsolva az automatikus képkockasebességet. Ha a kijelződ tisztán vált, kapcsold be, és próbáld ki: bármikor visszaállíthatod.</string>
+    <string name="settings_app_startup_description">Mit nyit meg az KueTV induláskor</string>
+    <string name="settings_restore_remote_description">Bármelyik böngészős eszközön ugyanazon a Wi-Fin – telefonon, számítógépen vagy egy másik tévén – olvasd be a QR-kódot (vagy nyisd meg az URL-t), add meg ezt a PIN-t, válaszd ki az KueTV mentésfájlodat, és küldd el. Azt, hogy mit állíts vissza, itt választod ki.</string>
+    <string name="settings_catchup_player_internal">KueTV lejátszó</string>
+    <string name="settings_sources_probe_warning">Sok szolgáltató soha nem árulja el, hány csatornát nézhet egyszerre, ezért az KueTV úgy deríti ki, hogy megnyit néhányat, és megnézi, melyik marad életben. Minden, ami most szól, le fog állni, és ez akár két percig is eltarthat.</string>
+    <string name="settings_sources_probe_unknown">Az KueTV nem tudta megállapítani, hány csatornát enged ez a szolgáltató.</string>
+    <string name="settings_dns_toggle_description">Az KueTV összes domainfeloldása egyéni DNS-kiszolgálón keresztül történjen.</string>
+    <string name="settings_live_tune_timeout_description">Ha egy élő csatorna eddig sem mutatott képet, az KueTV abbahagyja a próbálkozást és szól, ahelyett hogy fekete képernyőt hagyna, miközben végigmegy az összes lejátszóján. A Soha tovább próbálkozik, ami jóval egy percnél is tovább tarthat egy olyan csatornánál, amit a szolgáltatód eltávolított. A szolgáltatód által kért várakozások nem számítanak bele.</string>
+    <string name="settings_surround_forced_description">Térhangzás — Dolby/DTS küldése valódi 5.1/7.1 erősítőnek. Ha elnémul vagy akadozik, az KueTV akkor is sztereóra vált, és szól róla.</string>
+    <string name="settings_language_help_translate">Segíts lefordítani az KueTV-t a nyelvedre</string>
+    <string name="settings_language_contribution_description">Olvasd be a QR-kódot vagy nyisd meg a hivatkozást, hogy bármelyik elérhető nyelvet válaszd, és mind a hat KueTV-fordítási komponenshez hozzájárulj.</string>
+    <string name="settings_language_contribution_qr_description">QR-kód az KueTV-fordítási projekt áttekintéséhez</string>
+    <string name="settings_glass_master_description">Áttetsző, mattított felületek használata az egész KueTV-ben.</string>
+    <string name="local_sync_error_unreachable">Ez az eszköz nem érhető el. Nyissa meg rajta az KueTV → Beállítások → Adatok → Helyi szinkronizálás menüpontot, és kapcsolja be a Szinkronizálási módot. Mindkét eszköznek ugyanazon a Wi-Fi-n kell lennie.</string>
+    <string name="settings_app_icon_summary">Az KueTV ikonjának és logójának színe</string>
+    <string name="app_icon_restart_title">Újraindítja az KueTV-t?</string>
+    <string name="app_icon_restart_message">Új ikont és logót választott. Az KueTV újraindítása után lépnek életbe.</string>
+    <string name="settings_help_theme">Az KueTV sötét témára készült. A Rendszer a tévé saját beállítását követi, ha van ilyen; a Világos világos szobába való.</string>
+    <string name="settings_help_fonts">Az KueTV-ben mindenhol használt betűtípus és a szöveg mérete. Az ablakok is ugyanezt a betűtípust használják.</string>
+    <string name="settings_help_app_icon">Az KueTV ikonja a tévé kezdőképernyőjén. Az indítónak eltarthat egy pillanatig, mire megjeleníti a változást.</string>
+    <string name="settings_help_brand_accent">Az KueTV logó a menüben, a Névjegyben és a beállításban a kiemelőszínedben mutatja a lejátszás-háromszöget. A kezdőképernyő ikonja megtartja a saját színeit.</string>
+    <string name="settings_help_startup">Amit az KueTV induláskor mutat: a kezdőlap, a legutóbb nézett csatorna, a kedvencek vagy egy választott csatorna.</string>
+    <string name="settings_help_check_updates">Most megkeresi a GitHubon az KueTV újabb verzióját, és felajánlja a telepítését. A lejátszási listák, kedvencek és beállítások változatlanok maradnak.</string>
+    <string name="settings_help_update_startup">Az KueTV minden indításakor új verziót keres, és szól, ha van. Kérdezés nélkül semmi sem települ.</string>
+    <plurals name="settings_help_language">
+        <item quantity="one">Az KueTV összes menüjének és üzenetének nyelve. <xliff:g id="count">%1$d</xliff:g> nyelv; amíg nem választ, a tévé saját nyelvét követi.</item>
+        <item quantity="other">Az KueTV összes menüjének és üzenetének nyelve. <xliff:g id="count">%1$d</xliff:g> nyelv; amíg nem választ, a tévé saját nyelvét követi.</item>
+    </plurals>
+    <string name="settings_language_system_help">Az KueTV a tévé nyelvét használja (most: <xliff:g id="language">%1$s</xliff:g>). Válassz lent egy nyelvet, ha csak az KueTV-ben szeretnéd használni.</string>
+    <string name="settings_language_pick_help"><xliff:g id="language">%1$s</xliff:g> használata az KueTV-ben, a tévé nyelvétől függetlenül.</string>
+    <string name="settings_help_bg_background">A Stage az KueTV saját lágy színeit mutatja. A Kép a saját képedet mutatja minden képernyő mögött. Az Egyszerű sima sötét kitöltés.</string>
+    <string name="setup_disclaimer">Az KueTV kizárólag médialejátszó. Nem tartalmaz csatornákat, lejátszási listákat vagy tartalmat. A saját, legálisan elérhető Xtream-, M3U- vagy Stalker-forrásaid hozzáadása a te felelősséged.</string>
+    <string name="setup_set_up_owntv">Az KueTV beállítása</string>
+    <string name="setup_sync_device_description">Másolj át mindent a másik KueTV-eszközödről Wi-Fin keresztül</string>
+    <string name="setup_byo_source_description">Az KueTV egy lejátszó — hozd a saját Xtream-, M3U- vagy Stalker-forrásodat.</string>
+    <string name="companion_pin_page_title">KueTV — PIN-kód megadása</string>
+    <string name="companion_add_page_title">KueTV — Forrás hozzáadása</string>
+    <string name="companion_saved_page_title">KueTV — Elküldve</string>
+    <string name="companion_backup_page_title">KueTV — Mentés visszaállítása</string>
+    <string name="companion_backup_description">Válassz egy KueTV-mentésfájlt (.own, vagy egy régebbi .json fájlt), és nyomd meg a Küldés gombot. Átkerül a TV-re — vedd kézbe a távirányítót, és ott válaszd ki, mit állítson vissza.</string>
+    <string name="companion_image_page_title">KueTV — Háttérkép</string>
+    <string name="companion_download_page_title">KueTV — Mentés letöltése</string>
+    <string name="companion_download_description">A TV-d elkészített egy KueTV-mentésfájlt. Koppints a gombra, hogy elmentsd erre az eszközre (owntv-backup.own). Tartsd biztonságos helyen — később visszaállíthatod belőle az adataidat.</string>
+    <string name="local_sync_browser_title">KueTV helyi szinkronizálás</string>
+    <string name="local_sync_browser_body">Ez a cím a másik eszközén futó KueTV alkalmazásnak szól. Nyissa meg ott a Helyi szinkronizálást, és válassza ki ezt az eszközt a listából.</string>
+    <string name="setup_welcome_title">Üdvözöl az KueTV</string>
+    <string name="setup_line_app_icon">Így jelenik meg az KueTV a tévé kezdőképernyőjén</string>
+</resources>

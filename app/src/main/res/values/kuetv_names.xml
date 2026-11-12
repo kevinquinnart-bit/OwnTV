@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Kevin's copy (v1): the app is called KueTV. Core's English text that names the app, with the new
-     name; the app's copy replaces core's. Generated from core's strings, one line per string. -->
-<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+<!-- Kevin's copy (v2): the app is called KueTV. Core's text that names the app, with the new name;
+     the app's copy replaces core's. Generated from core's strings, one line per string. -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation,MissingTranslation">
     <string name="app_name" translatable="false">KueTV</string>
     <string name="common_own_tv_user">KueTV User</string>
     <string name="content_exit_owntv">Exit KueTV?</string>
@@ -20,7 +20,6 @@
     <string name="settings_auto_frame_rate_warning_description">This device runs Android <xliff:g id="android_version">%1$s</xliff:g>. Below Android 12 the TV can\'t tell KueTV which refresh rates it can switch to smoothly, so changing the rate may black the screen out for a second or two — sometimes more than once during a programme.\n\nWe recommend leaving Auto frame rate off here. If your TV switches cleanly, turn it on and see: you can change it back at any time.</string>
     <string name="settings_auto_frame_rate_warning_description_mobile">This device runs Android <xliff:g id="android_version">%1$s</xliff:g>. Below Android 12 the device can\'t tell KueTV which refresh rates it can switch to smoothly, so changing the rate may black the screen out for a second or two — sometimes more than once during a programme.\n\nWe recommend leaving Auto frame rate off here. If your screen switches cleanly, turn it on and see: you can change it back at any time.</string>
     <string name="settings_app_startup_description">What KueTV opens when it starts</string>
-    <string name="settings_about_license">© 2026 KueTV · GPLv3 License</string>
     <string name="settings_restore_remote_description">On any device with a browser on the same Wi-Fi — a phone, a computer or another TV — scan the QR (or open the URL), enter this PIN, choose your KueTV backup file and send it. You then pick what to restore here.</string>
     <string name="settings_catchup_player_internal">KueTV player</string>
     <string name="settings_sources_probe_warning">Many providers never say how many channels you may watch at the same time, so KueTV finds out by opening a few and seeing which ones survive. Anything playing now will stop, and this can take up to two minutes.</string>
@@ -64,4 +63,6 @@
     <string name="local_sync_browser_body">This address is for the KueTV app on your other device. Open Local sync there and pick this device from the list.</string>
     <string name="setup_welcome_title">Welcome to KueTV</string>
     <string name="setup_line_app_icon">How KueTV appears on the TV’s home screen</string>
+    <string name="settings_about_license">KueTV · based on OwnTV © 2026 · GPLv3 License</string>
+    <string name="more_about_license">Based on OwnTV © 2026 · GPLv3 · free and open source</string>
 </resources>

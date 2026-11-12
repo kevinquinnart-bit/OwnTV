@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kevin's copy (v2): the app is called KueTV. Core's text that names the app, with the new name;
+     the app's copy replaces core's. Generated from core's strings, one line per string. -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation,MissingTranslation">
+    <string name="common_own_tv_user">KueTV Kullanıcısı</string>
+    <string name="content_exit_owntv">KueTV\'den çıkılsın mı?</string>
+    <string name="content_storage_folder_fallback">İndirme klasörünüz şu anda kullanılamıyor; geri gelene kadar indirmeler KueTV\'nin kendi klasörüne kaydediliyor.</string>
+    <string name="content_epg_own_player">KueTV oynatıcısı</string>
+    <string name="update_ready">KueTV v<xliff:g id="available">%1$s</xliff:g> hazır (sizde v<xliff:g id="current">%2$s</xliff:g> yüklü).</string>
+    <string name="recovery_title">KueTV veritabanını açamadı</string>
+    <string name="settings_recording_timers_inexact">Bu cihaz KueTV’nin tam zamanlı alarm kurmasına izin vermiyor, bu yüzden bir kayıt birkaç dakika geç başlayabilir. Kayıtlar bunu telafi etmek için erken başlar.</string>
+    <string name="recording_failed_drm">Bu kanal DRM korumalı olduğundan izlenebilir ancak kaydedilemez. Bu koruma KueTV\'den değil, sağlayıcınızdan geliyor.</string>
+    <string name="player_trailer_blocked_title">Bu fragman KueTV’de oynatılamıyor</string>
+    <string name="settings_proxy_description">Tüm KueTV trafiğini ve oynatmayı bir HTTP proxy üzerinden gönderin.</string>
+    <string name="settings_metadata_shared_worker_description">KueTV Worker · kurulum gerekmez</string>
+    <string name="settings_metadata_clear_advanced_message">TMDB API anahtarınız ve kendi sunucu adresiniz bu cihazdan silinecek ve KueTV, günlük payı olan yerleşik paylaşılan hizmete geri dönecek.</string>
+    <string name="settings_metadata_fair_share">Yerleşik meta veri hizmeti KueTV kullanan herkes tarafından paylaşılır; bu nedenle her cihaz her gün kendi payını alır. Payınızı tüketirseniz posterler ve açıklamalar yenilenene kadar duraklar — kendi oynatma listenizdeki bilgiler normal şekilde çalışmaya devam eder. Kendi TMDB API anahtarınızı veya sunucunuzu eklemek bu sınırı kaldırır: ücretsizdir ve kişisel bir anahtarın neredeyse hiç sınırı yoktur.</string>
+    <string name="settings_app_startup_description">KueTV başlatıldığında açılacak bölüm</string>
+    <string name="settings_open_subtitles_access_priority">KueTV’nin paylaşılan Worker’ını kullanmak için ikisini de boş bırakın. Özel bir Worker URL’si, doğrudan API anahtarına göre önceliklidir. Hesap oturumları profile özel kalır.</string>
+    <string name="settings_restore_remote_description">Aynı Wi-Fi’daki tarayıcılı herhangi bir cihazda — telefon, bilgisayar veya başka bir TV — QR kodunu tarayın (veya URL’yi açın), bu PIN’i girin, KueTV yedek dosyanızı seçip gönderin. Neyin geri yükleneceğini sonra burada seçersiniz.</string>
+    <string name="settings_catchup_player_internal">KueTV oynatıcı</string>
+    <string name="settings_sources_probe_warning">Birçok sağlayıcı aynı anda kaç kanal izleyebileceğinizi hiç belirtmez; bu yüzden KueTV birkaç kanal açıp hangilerinin devam ettiğine bakarak bunu kendisi bulur. Şu anda oynatılan her şey duracak ve bu işlem iki dakikaya kadar sürebilir.</string>
+    <string name="settings_sources_probe_unknown">KueTV bu sağlayıcının kaç kanala izin verdiğini belirleyemedi.</string>
+    <string name="settings_dns_toggle_description">Tüm KueTV alan adı sorguları özel bir DNS sunucusu üzerinden çözümlenir.</string>
+    <string name="settings_live_tune_timeout_description">Bir canlı kanal bu süre içinde görüntü vermediyse, KueTV tüm oynatıcılarını tek tek denerken siyah ekran bırakmak yerine denemeyi bırakır ve size söyler. “Asla” denemeyi sürdürür; sağlayıcınızın kaldırdığı bir kanalda bu bir dakikayı rahatça aşabilir. Sağlayıcınızın istediği bekleme süreleri sayılmaz.</string>
+    <string name="settings_surround_forced_description">Surround — Dolby/DTS\'yi gerçek bir 5.1/7.1 alıcıya gönderin. Ses kesilirse veya takılırsa KueTV yine de stereoya geri döner ve size bildirir.</string>
+    <string name="settings_language_help_translate">KueTV\'yi kendi dilinize çevirmeye yardım edin</string>
+    <string name="settings_language_contribution_description">QR kodu okutun veya bağlantıyı açın; dilediğiniz dili seçin ve KueTV çevirisinin altı bileşeninin tamamına katkıda bulunun.</string>
+    <string name="settings_language_contribution_qr_description">KueTV çeviri projesi genel bakışı için QR kodu</string>
+    <string name="settings_auto_frame_rate_warning_description">Bu cihaz Android <xliff:g id="android_version">%1$s</xliff:g> sürümüyle çalışıyor. Android 12\'den önceki sürümlerde TV, KueTV\'ye hangi yenileme hızlarına sorunsuz geçebileceğini bildiremez; bu yüzden hızı değiştirmek ekranın bir iki saniyeliğine kararmasına neden olabilir — bazen bir program sırasında birden fazla kez.\n\nBurada otomatik yenileme hızını kapalı bırakmanızı öneririz. TV\'niz sorunsuz geçiş yapıyorsa açıp deneyin: istediğiniz zaman geri değiştirebilirsiniz.</string>
+    <string name="settings_auto_frame_rate_warning_description_mobile">Bu cihaz Android <xliff:g id="android_version">%1$s</xliff:g> sürümüyle çalışıyor. Android 12\'den önceki sürümlerde cihaz, KueTV\'ye hangi yenileme hızlarına sorunsuz geçebileceğini bildiremez; bu yüzden hızı değiştirmek ekranın bir iki saniyeliğine kararmasına neden olabilir — bazen bir program sırasında birden fazla kez.\n\nBurada otomatik yenileme hızını kapalı bırakmanızı öneririz. Ekranınız sorunsuz geçiş yapıyorsa açıp deneyin: istediğiniz zaman geri değiştirebilirsiniz.</string>
+    <string name="local_sync_error_unreachable">Bu cihaza ulaşılamadı. O cihazda KueTV → Ayarlar → Veriler → Yerel eşitleme yolunu açıp Eşitleme modunu açın. Her iki cihaz da aynı Wi-Fi ağında olmalıdır.</string>
+    <string name="settings_app_icon_summary">KueTV simgesinin ve logosunun rengi</string>
+    <string name="app_icon_restart_title">KueTV yeniden başlatılsın mı?</string>
+    <string name="app_icon_restart_message">Yeni bir simge ve logo seçtiniz. KueTV yeniden başlatıldığında geçerli olur.</string>
+    <string name="settings_help_theme">KueTV koyu tema için tasarlandı. Sistem, varsa TV’nin kendi ayarını izler; açık tema aydınlık bir oda için uygundur.</string>
+    <string name="settings_help_fonts">KueTV’nin her yerinde kullanılan yazı tipi ve metin boyutu. Açılır pencereler de aynı yazı tipini kullanır.</string>
+    <string name="settings_help_app_icon">TV’nizin ana ekranındaki KueTV simgesi. Başlatıcının değişikliği göstermesi biraz sürebilir.</string>
+    <string name="settings_help_brand_accent">Menüdeki, Hakkında bölümündeki ve kurulumdaki KueTV logosu oynat üçgenini vurgu renginizde gösterir. Ana ekrandaki simge kendi renklerini korur.</string>
+    <string name="settings_help_startup">KueTV başlarken ne gösterecek: Ana sayfa, en son izlediğiniz kanal, favorileriniz veya seçtiğiniz bir kanal.</string>
+    <string name="settings_help_check_updates">GitHub’da şimdi daha yeni bir KueTV arar ve yüklemeyi önerir. Oynatma listeleriniz, favorileriniz ve ayarlarınız olduğu gibi kalır.</string>
+    <string name="settings_help_update_startup">KueTV her başladığında yeni bir sürüm arar ve varsa size bildirir. Sormadan hiçbir şey yüklenmez.</string>
+    <plurals name="settings_help_language">
+        <item quantity="one">KueTV’deki tüm menülerin ve iletilerin dili. <xliff:g id="count">%1$d</xliff:g> dil; siz seçene kadar TV’nin kendi dilini izler.</item>
+        <item quantity="other">KueTV’deki tüm menülerin ve iletilerin dili. <xliff:g id="count">%1$d</xliff:g> dil; siz seçene kadar TV’nin kendi dilini izler.</item>
+    </plurals>
+    <string name="settings_language_system_help">KueTV televizyonun dilini kullanır (şu an <xliff:g id="language">%1$s</xliff:g>). Yalnızca KueTV’de kullanmak için aşağıdan bir dil seçin.</string>
+    <string name="settings_language_pick_help">Televizyonun dili ne olursa olsun KueTV’de <xliff:g id="language">%1$s</xliff:g> kullan.</string>
+    <string name="settings_help_bg_background">Stage, KueTV’nin kendi yumuşak renklerini gösterir. Resim, kendi resminizi her ekranın arkasında gösterir. Düz, koyu ve düz bir dolgudur.</string>
+    <string name="setup_disclaimer">KueTV yalnızca bir medya oynatıcısıdır. Hiçbir kanal, oynatma listesi veya içerik içermez. Yasal olarak erişebildiğiniz kendi Xtream, M3U veya Stalker kaynaklarınızı eklemek sizin sorumluluğunuzdadır.</string>
+    <string name="setup_set_up_owntv">KueTV\'yi kurun</string>
+    <string name="setup_sync_device_description">Diğer KueTV cihazınızdaki her şeyi Wi-Fi üzerinden kopyalayın</string>
+    <string name="setup_byo_source_description">KueTV bir oynatıcıdır — kendi Xtream, M3U veya Stalker kaynağınızı ekleyin.</string>
+    <string name="companion_pin_page_title">KueTV — PIN Girin</string>
+    <string name="companion_add_page_title">KueTV — Kaynak ekle</string>
+    <string name="companion_saved_page_title">KueTV — Gönderildi</string>
+    <string name="companion_backup_page_title">KueTV — Yedeklemeyi geri yükle</string>
+    <string name="companion_backup_description">Bir KueTV yedekleme dosyası (.own veya eski bir .json dosyası) seçip Gönder düğmesine basın. Dosya TV\'ye aktarılır — uzaktan kumandayı alın ve orada nelerin geri yükleneceğini seçin.</string>
+    <string name="companion_image_page_title">KueTV — Arka plan görseli</string>
+    <string name="companion_download_page_title">KueTV — Yedeklemeyi indir</string>
+    <string name="companion_download_description">TV\'niz bir KueTV yedekleme dosyası hazırladı. Bu cihaza (owntv-backup.own) kaydetmek için düğmeye dokunun. Dosyayı güvenli bir yerde saklayın — daha sonra bu dosyadan geri yükleme yapabilirsiniz.</string>
+    <string name="local_sync_browser_title">KueTV yerel eşitleme</string>
+    <string name="local_sync_browser_body">Bu adres, diğer cihazınızdaki KueTV uygulaması içindir. Orada Yerel eşitlemeyi açın ve listeden bu cihazı seçin.</string>
+    <string name="setup_welcome_title">KueTV’ye hoş geldiniz</string>
+    <string name="setup_line_app_icon">KueTV’nin TV’nin ana ekranında nasıl göründüğü</string>
+</resources>

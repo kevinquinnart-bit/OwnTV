@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kevin's copy (v2): the app is called KueTV. Core's text that names the app, with the new name;
+     the app's copy replaces core's. Generated from core's strings, one line per string. -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation,MissingTranslation">
+    <string name="common_own_tv_user">KueTV-användare</string>
+    <string name="content_exit_owntv">Avsluta KueTV?</string>
+    <string name="content_storage_folder_fallback">Nedladdningsmappen är inte tillgänglig just nu, så nedladdningar sparas i KueTV:s egen mapp tills den är tillbaka.</string>
+    <string name="content_epg_own_player">KueTV-spelare</string>
+    <string name="update_ready">KueTV v<xliff:g id="available">%1$s</xliff:g> är klar (du har v<xliff:g id="current">%2$s</xliff:g>).</string>
+    <string name="recovery_title">KueTV kunde inte öppna sin databas</string>
+    <string name="settings_recording_timers_inexact">Den här enheten låter inte KueTV ställa exakta alarm, så en inspelning kan börja några minuter sent. Inspelningar börjar tidigare för att väga upp det.</string>
+    <string name="recording_failed_drm">Den här kanalen är DRM-skyddad, så den går att se men inte spela in. Skyddet kommer från din leverantör, inte från KueTV.</string>
+    <string name="player_trailer_blocked_title">Den här trailern kan inte spelas i KueTV</string>
+    <string name="settings_proxy_description">Skicka all trafik och uppspelning från KueTV via en HTTP-proxy.</string>
+    <string name="settings_metadata_shared_worker_description">KueTV Worker · ingen konfiguration</string>
+    <string name="settings_metadata_clear_advanced_message">Din TMDB API-nyckel och adressen till din egen server tas bort från den här enheten, och KueTV går tillbaka till den inbyggda delade tjänsten med dess dagliga andel.</string>
+    <string name="settings_metadata_fair_share">Den inbyggda metadatatjänsten delas av alla som använder KueTV, så varje enhet får sin egen andel varje dag. Om du gör slut på din andel pausas omslag och beskrivningar tills den fylls på igen — informationen från din egen spellista fungerar som vanligt. Att lägga till en egen TMDB API-nyckel eller server tar bort gränsen: det är gratis, och en personlig nyckel har praktiskt taget ingen gräns.</string>
+    <string name="settings_app_startup_description">Vad KueTV öppnar vid start</string>
+    <string name="settings_open_subtitles_access_priority">Lämna båda tomma för att använda KueTV:s delade Worker. En egen Worker-URL har företräde framför en direkt API-nyckel. Kontosessioner är fortfarande profilspecifika.</string>
+    <string name="settings_restore_remote_description">På valfri enhet med webbläsare i samma wifi – telefon, dator eller en annan tv – skanna QR-koden (eller öppna URL:en), ange den här PIN-koden, välj din KueTV-säkerhetskopia och skicka den. Sedan väljer du här vad som ska återställas.</string>
+    <string name="settings_catchup_player_internal">KueTV-spelare</string>
+    <string name="settings_sources_probe_warning">Många leverantörer talar aldrig om hur många kanaler du får titta på samtidigt, så KueTV tar reda på det genom att öppna några och se vilka som håller. Allt som spelas upp nu stoppas, och det här kan ta upp till två minuter.</string>
+    <string name="settings_sources_probe_unknown">KueTV kunde inte ta reda på hur många kanaler den här leverantören tillåter.</string>
+    <string name="settings_dns_toggle_description">Utför alla domänuppslagningar för KueTV via en anpassad DNS-server.</string>
+    <string name="settings_live_tune_timeout_description">Om en livekanal inte har visat någon bild inom den här tiden slutar KueTV att försöka och säger till, i stället för att lämna en svart skärm medan den betar av alla sina spelare. ”Aldrig” fortsätter att försöka, vilket på en kanal som din leverantör har tagit bort kan ta långt över en minut. Väntetider som leverantören själv ber om räknas inte.</string>
+    <string name="settings_surround_forced_description">Surround – skicka Dolby/DTS till en riktig 5.1/7.1-mottagare. Om det blir tyst eller hackar faller KueTV ändå tillbaka till stereo och meddelar dig.</string>
+    <string name="settings_language_help_translate">Hjälp till att översätta KueTV till ditt språk</string>
+    <string name="settings_language_contribution_description">Skanna QR-koden eller öppna länken för att välja valfritt tillgängligt språk och bidra i alla sex KueTV-översättningskomponenter.</string>
+    <string name="settings_language_contribution_qr_description">QR-kod för översikten av KueTV:s översättningsprojekt</string>
+    <string name="settings_auto_frame_rate_warning_description">Den här enheten kör Android <xliff:g id="android_version">%1$s</xliff:g>. På Android-versioner lägre än 12 kan TV:n inte tala om för KueTV vilka uppdateringsfrekvenser den kan växla till smidigt, så kan en ändring av bildfrekvensen göra att skärmen blir svart i en eller två sekunder — ibland mer än en gång under ett program.\n\nVi rekommenderar att du låter automatisk bildfrekvens vara av här. Om din TV växlar utan problem kan du slå på den och se: du kan när som helst ändra tillbaka.</string>
+    <string name="settings_auto_frame_rate_warning_description_mobile">Den här enheten kör Android <xliff:g id="android_version">%1$s</xliff:g>. På Android-versioner lägre än 12 kan enheten inte tala om för KueTV vilka uppdateringsfrekvenser den kan växla till smidigt, så kan en ändring av bildfrekvensen göra att skärmen blir svart i en eller två sekunder — ibland mer än en gång under ett program.\n\nVi rekommenderar att du låter automatisk bildfrekvens vara av här. Om din skärm växlar utan problem kan du slå på den och se: du kan när som helst ändra tillbaka.</string>
+    <string name="local_sync_error_unreachable">Enheten gick inte att nå. Öppna KueTV → Inställningar → Data → Lokal synkronisering på den och slå på Synkroniseringsläge. Båda enheterna måste vara på samma Wi-Fi.</string>
+    <string name="settings_app_icon_summary">Färg på KueTV:s ikon och logotyp</string>
+    <string name="app_icon_restart_title">Starta om KueTV?</string>
+    <string name="app_icon_restart_message">Du har valt en ny ikon och logotyp. De börjar gälla när KueTV startas om.</string>
+    <string name="settings_help_theme">KueTV är gjord för mörkt tema. System följer tv:ns egen inställning om den finns; ljust passar ett ljust rum.</string>
+    <string name="settings_help_fonts">Typsnittet i hela KueTV och hur stor texten är. Popup-fönster använder samma typsnitt.</string>
+    <string name="settings_help_app_icon">KueTV-ikonen på tv:ns startskärm. Det kan ta en stund innan startskärmen visar ändringen.</string>
+    <string name="settings_help_brand_accent">KueTV-loggan i menyn, Om och konfigurationen visar spelatriangeln i din accentfärg. Ikonen på startskärmen behåller sina egna färger.</string>
+    <string name="settings_help_startup">Vad KueTV visar vid start: Hem, kanalen du såg senast, dina favoriter eller en kanal du väljer.</string>
+    <string name="settings_help_check_updates">Letar nu på GitHub efter en nyare KueTV och erbjuder att installera den. Dina spellistor, favoriter och inställningar förblir som de är.</string>
+    <string name="settings_help_update_startup">Letar efter en ny version varje gång KueTV startar och säger till när det finns en. Inget installeras utan att fråga.</string>
+    <plurals name="settings_help_language">
+        <item quantity="one">Språket i alla menyer och meddelanden i KueTV. <xliff:g id="count">%1$d</xliff:g> språk; följer tv:ns eget språk tills du väljer ett.</item>
+        <item quantity="other">Språket i alla menyer och meddelanden i KueTV. <xliff:g id="count">%1$d</xliff:g> språk; följer tv:ns eget språk tills du väljer ett.</item>
+    </plurals>
+    <string name="settings_language_system_help">KueTV följer tv:ns språk (nu <xliff:g id="language">%1$s</xliff:g>). Välj ett nedan för att bara använda det i KueTV.</string>
+    <string name="settings_language_pick_help">Använd <xliff:g id="language">%1$s</xliff:g> i KueTV, oavsett tv:ns språk.</string>
+    <string name="settings_help_bg_background">Stage visar KueTVs egna mjuka färger. Bild visar din egen bild bakom varje skärm. Enfärgad är en platt mörk yta.</string>
+    <string name="setup_disclaimer">KueTV är endast en mediespelare. Den innehåller inga kanaler, spellistor eller något innehåll. Du ansvarar själv för att lägga till egna, lagligt tillgängliga Xtream-, M3U- eller Stalker-källor.</string>
+    <string name="setup_set_up_owntv">Konfigurera KueTV</string>
+    <string name="setup_sync_device_description">Kopiera allt från din andra KueTV-enhet via Wi-Fi</string>
+    <string name="setup_byo_source_description">KueTV är en spelare – använd din egen Xtream-, M3U- eller Stalker-källa.</string>
+    <string name="companion_pin_page_title">KueTV – Ange PIN</string>
+    <string name="companion_add_page_title">KueTV – Lägg till källa</string>
+    <string name="companion_saved_page_title">KueTV – Skickat</string>
+    <string name="companion_backup_page_title">KueTV – Återställ säkerhetskopia</string>
+    <string name="companion_backup_description">Välj en säkerhetskopia från KueTV (.own eller en äldre .json-fil) och tryck på Skicka. Den överförs till tv:n – ta fjärrkontrollen och välj vad som ska återställas där.</string>
+    <string name="companion_image_page_title">KueTV – Bakgrundsbild</string>
+    <string name="companion_download_page_title">KueTV – Ladda ned säkerhetskopia</string>
+    <string name="companion_download_description">Din tv har förberett en säkerhetskopia från KueTV. Tryck på knappen för att spara den på den här enheten (owntv-backup.own). Förvara den på ett säkert ställe – du kan återställa från den senare.</string>
+    <string name="local_sync_browser_title">KueTV lokal synkronisering</string>
+    <string name="local_sync_browser_body">Den här adressen är till KueTV-appen på din andra enhet. Öppna Lokal synkronisering där och välj den här enheten i listan.</string>
+    <string name="setup_welcome_title">Välkommen till KueTV</string>
+    <string name="setup_line_app_icon">Hur KueTV visas på tv:ns startskärm</string>
+</resources>

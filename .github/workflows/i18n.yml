@@ -7,7 +7,7 @@ name: i18n
 #   validate  — the Kotlin-side checks: locale-stable number formatting and bounded text overflow.
 #               The strings themselves live in the core repository now, so locales.json schema,
 #               placeholder/plural parity, translation coverage and the toolkit's own regression
-#               tests run there — see ahXN00/OwnTV_Core's i18n workflow.
+#               tests run there (kuetv-core).
 #   pseudo    — inspects the BUILT debug and release APKs and proves pseudolocales survived
 #               localeFilters in debug and are absent in release. The flag being set is not proof.
 #
@@ -24,7 +24,7 @@ name: i18n
 #
 # All three step aside for a "Pin core x.y.z" branch: that pull request changes the pin and
 # locales.json and no Kotlin at all, so every check here would re-examine code identical to main.
-# android.yml's verify-pin job covers those pull requests instead.
+# (Kevin's copy: there are no core pin bumps any more.)
 
 on:
   pull_request:

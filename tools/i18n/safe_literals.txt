@@ -927,7 +927,6 @@
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt	quick_preview_sound
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt	reminder_lead
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt	reminders
-1	technical	app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt	t.me/owntvplayer
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt	tab_
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt	tab_${tab.name}
 1	technical	app/src/main/java/tv/own/owntv/features/shell/components/SettingsScreen.kt	tab_DNS

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kevin's copy (v2): the app is called KueTV. Core's text that names the app, with the new name;
+     the app's copy replaces core's. Generated from core's strings, one line per string. -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation,MissingTranslation">
+    <string name="common_own_tv_user">KueTV erabiltzailea</string>
+    <string name="content_exit_owntv">KueTV itxi?</string>
+    <string name="content_storage_folder_fallback">Zure deskarga-karpeta ez dago eskuragarri oraintxe, beraz deskargak KueTVren karpeta propioan gordetzen ari dira berriro eskuragarri egon arte.</string>
+    <string name="content_epg_own_player">KueTV erreproduzigailua</string>
+    <string name="update_ready">KueTV v<xliff:g id="available">%1$s</xliff:g> prest dago (v<xliff:g id="current">%2$s</xliff:g> duzu).</string>
+    <string name="recovery_title">KueTVk ezin izan du bere datu-basea ireki</string>
+    <string name="settings_recording_timers_inexact">Gailu honek ez dio KueTVri alarma zehatzak ezartzen uzten, beraz baliteke grabazio bat minutu batzuk berandu hastea. Grabazioak lehenago hasten dira hori konpentsatzeko.</string>
+    <string name="recording_failed_drm">Kanal hau DRM bidez babestuta dago, beraz ikusi daiteke baina ezin da grabatu. Babesa zure hornitzailearengandik dator, ez KueTVtik.</string>
+    <string name="player_trailer_blocked_title">Trailer hau ezin da ikusi KueTV-n</string>
+    <string name="settings_proxy_description">Bidali KueTVren trafiko eta erreprodukzio guztia HTTP proxy baten bidez.</string>
+    <string name="settings_metadata_shared_worker_description">KueTV Worker · konfiguraziorik gabe</string>
+    <string name="settings_open_subtitles_access_priority">Utzi bietan hutsik KueTVren Worker partekatua erabiltzeko. Worker URL pertsonalizatu batek lehentasuna du zuzeneko API gako baten aurretik. Kontu-saioak profilarekiko espezifikoak izaten jarraitzen dute.</string>
+    <string name="settings_metadata_clear_advanced_message">Zure TMDB API gakoa eta auto-ostatatutako zerbitzariaren helbidea gailu honetatik ezabatuko dira, eta KueTV barneko zerbitzu partekatura itzuliko da bere eguneko kuotarekin.</string>
+    <string name="settings_metadata_fair_share">Barneko zerbitzua KueTV erabiltzen duten guztien artean partekatzen da. Minutuko, orduko edo eguneko kuota agortzen bada, TMDB xehetasunak pausatu egiten dira leiho hori berrezarri arte; erreprodukzio-zerrendako informazioak funtzionatzen jarraitzen du. Zure gakoak edo Workerrak kuota hau kentzen du.</string>
+    <string name="settings_auto_frame_rate_warning_description">Gailu honek Android <xliff:g id="android_version">%1$s</xliff:g> exekutatzen du. Android 12 baino lehenagoko bertsioetan telebistak ezin dio KueTVri esan zein freskatze-maiztasunetara alda dezakeen leun, beraz maiztasuna aldatzeak pantaila segundo bat edo bi beltz utz dezake — batzuetan programa batean zehar behin baino gehiagotan.\n\nHemen Fotograma-maiztasun automatikoa desaktibatuta uztea gomendatzen dugu. Zure telebistak garbi aldatzen badu, aktibatu eta probatu: edonoiz alda dezakezu berriro.</string>
+    <string name="settings_auto_frame_rate_warning_description_mobile">Gailu honek Android <xliff:g id="android_version">%1$s</xliff:g> exekutatzen du. Android 12 baino lehenagoko bertsioetan gailuak ezin dio KueTVri esan zein freskatze-maiztasunetara alda dezakeen leun, beraz maiztasuna aldatzeak pantaila segundo bat edo bi beltz utz dezake — batzuetan programa batean zehar behin baino gehiagotan.\n\nHemen Fotograma-maiztasun automatikoa desaktibatuta uztea gomendatzen dugu. Zure pantailak garbi aldatzen badu, aktibatu eta probatu: edonoiz alda dezakezu berriro.</string>
+    <string name="settings_app_startup_description">Zer irekitzen duen KueTVk abiatzean</string>
+    <string name="settings_restore_remote_description">Wi-Fi sare berean dagoen telefono, tableta edo ordenagailu batean, eskaneatu QRa (edo ireki URLa), idatzi PIN hau, aukeratu zure KueTV babeskopia-fitxategia eta sakatu Bidali telebistara. Ondoren, hemen aukeratuko duzu zer leheneratu.</string>
+    <string name="settings_catchup_player_internal">KueTV erreproduzigailua</string>
+    <string name="settings_sources_probe_warning">Hornitzaile askok ez dute inoiz esaten zenbat kanal ikus ditzakezun aldi berean, beraz KueTVk hainbat ireki eta zeintzuk irauten duten ikusiz jakiten du. Orain erreproduzitzen ari den guztia gelditu egingo da, eta honek bi minutu arte iraun dezake.</string>
+    <string name="settings_sources_probe_unknown">KueTVk ezin izan du jakin hornitzaile honek zenbat kanal onartzen dituen.</string>
+    <string name="settings_dns_toggle_description">Ebatzi KueTVren domeinu-bilaketa guztiak DNS zerbitzari pertsonalizatu baten bidez.</string>
+    <string name="settings_live_tune_timeout_description">Zuzeneko kanal batek ordu honetarako irudirik erakutsi ez badu, KueTVk saiatzeari uzten dio eta jakinarazten dizu, pantaila beltza utzi beharrean bere erreproduzigailu guztiak probatzen dituen bitartean. Inoiz ez saiatzen jarraitzen du, eta horrek minutu bat baino gehiago iraun dezake zure hornitzaileak kendu duen kanal batean. Hornitzaileak eskatutako itxaronaldiak ez dira kontatzen.</string>
+    <string name="settings_surround_forced_description">Surround — bidali Dolby/DTS benetako 5.1/7.1 hartzaile bati. Isildu edo eten-etenka egiten badu, KueTVk estereora itzultzen da eta jakinarazten dizu.</string>
+    <string name="settings_language_help_translate">Lagundu KueTV zure hizkuntzara itzultzen</string>
+    <string name="settings_language_contribution_description">Eskaneatu QR kodea edo ireki esteka erabilgarri dagoen edozein hizkuntza aukeratzeko eta KueTVren sei itzulpen-osagaietan guztietan laguntzeko.</string>
+    <string name="settings_language_contribution_qr_description">KueTV itzulpen-proiektuaren ikuspegi orokorraren QR kodea</string>
+    <string name="settings_glass_master_description">Erabili gainazal zeharrargi eta izoztuak KueTV osoan.</string>
+    <string name="local_sync_error_unreachable">Gailu hori ezin izan da atzitu. Bertan, ireki KueTV → Ezarpenak → Datuak → Tokiko sinkronizazioa eta aktibatu Sinkronizazio modua. Bi gailuak Wi-Fi sare berean egon behar dute.</string>
+    <string name="settings_app_icon_summary">KueTVren ikonoaren eta logoaren kolorea</string>
+    <string name="app_icon_restart_title">KueTV berrabiarazi?</string>
+    <string name="app_icon_restart_message">Ikono eta logo berri bat aukeratu duzu. KueTV berrabiarazi ondoren izango dute eragina.</string>
+    <string name="setup_disclaimer">KueTV multimedia-erreproduzigailu hutsa da. Ez du kanalik, erreprodukzio-zerrendarik edo edukirik barne hartzen. Zure ardura da legez atzitu ditzakezun Xtream, M3U edo Stalker iturburuak gehitzea.</string>
+    <string name="setup_set_up_owntv">Konfiguratu KueTV</string>
+    <string name="setup_sync_device_description">Kopiatu dena zure beste KueTV gailutik Wi-Fi bidez</string>
+    <string name="setup_byo_source_description">KueTV erreproduzigailua da — ekarri zure Xtream, M3U edo Stalker iturburua.</string>
+    <string name="companion_pin_page_title">KueTV — Idatzi PINa</string>
+    <string name="companion_add_page_title">KueTV — Gehitu iturburua</string>
+    <string name="companion_saved_page_title">KueTV — Bidalita</string>
+    <string name="companion_backup_page_title">KueTV — Leheneratu babeskopia</string>
+    <string name="companion_backup_description">Aukeratu KueTV babeskopia-fitxategi bat (.own, edo .json zaharrago bat) eta sakatu Bidali. Telebistara transferitzen da — hartu urrutiko agintea eta aukeratu bertan zer leheneratu.</string>
+    <string name="companion_image_page_title">KueTV — Atzealdeko irudia</string>
+    <string name="companion_download_page_title">KueTV — Deskargatu babeskopia</string>
+    <string name="companion_download_description">Zure telebistak KueTV babeskopia-fitxategi bat prestatu du. Sakatu botoia gailu honetan gordetzeko (owntv-backup.own). Gorde leku seguru batean — geroago leheneratu dezakezu.</string>
+    <string name="local_sync_browser_title">KueTV tokiko sinkronizazioa</string>
+    <string name="local_sync_browser_body">Helbide hau zure beste gailuko KueTV aplikaziorako da. Ireki Tokiko sinkronizazioa bertan eta aukeratu gailu hau zerrendatik.</string>
+</resources>
