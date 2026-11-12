@@ -32,4 +32,7 @@ internal object PanelMenuHost {
 
     /** Puts focus in the column, on its open category. */
     var focusPanel: (() -> Boolean)? = null
+
+    /** Opens the screen's panel when it is a sheet that is closed (or focuses its column). */
+    var openPanel: (() -> Unit)? = null
 }

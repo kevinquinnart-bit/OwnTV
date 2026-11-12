@@ -534,6 +534,12 @@ fun LiveScreen(
     var openProgramme by remember { mutableStateOf<Pair<ChannelEntity, tv.own.owntv.core.parser.XtEpgEntry>?>(null) }
     // Back closes the sheet: one level out.
     androidx.activity.compose.BackHandler(enabled = categoriesOpen) { categoriesOpen = false; focusCurrentRow() }
+
+    // Kevin's copy (v2): the shell's Back opens this screen's one left panel (the rail is not drawn here).
+    androidx.compose.runtime.SideEffect {
+        tv.own.owntv.features.shell.components.PanelMenuHost.openPanel = { if (!separate) categoriesOpen = true else runCatching { railFocus.requestFocus() } }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { tv.own.owntv.features.shell.components.PanelMenuHost.openPanel = null } }
     LaunchedEffect(categoriesOpen) {
         if (categoriesOpen) { withFrameNanos { }; runCatching { railFocus.requestFocus() } }
         // However the sheet closed (Back, a pick, ◀ to the rail), the next one starts fresh.

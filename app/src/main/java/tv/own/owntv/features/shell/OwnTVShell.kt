@@ -194,7 +194,7 @@ fun OwnTVShell(
     val shellVm = org.koin.androidx.compose.koinViewModel<ShellViewModel>()
     var playerMode by shellVm.playerMode
     // Kevin's copy (v1): a category column on screen carries the menu, so the rail steps aside.
-    val panelOwnsMenu = tv.own.owntv.features.shell.components.PanelMenuHost.active &&
+    val panelOwnsMenu =
         (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.MOVIES || selectedSection == MainSection.SERIES) &&
         playerMode != PlayerMode.FULLSCREEN
     // Deep-link: the Guide's "Add EPG" button switches to Settings and opens EPG Sources → add.
@@ -961,7 +961,11 @@ fun OwnTVShell(
             selectedSection == MainSection.MORE -> { focusRailAfterMore = true; onSelectSection(MainSection.HOME) }
             // Kevin's copy (v1): the category column holds the menu, so Back goes to it, and from it offers to leave.
             panelOwnsMenu && tv.own.owntv.features.shell.components.PanelMenuHost.focused -> showExit = true
-            panelOwnsMenu -> { tv.own.owntv.features.shell.components.PanelMenuHost.focusPanel?.invoke() }
+            panelOwnsMenu -> {
+                if (tv.own.owntv.features.shell.components.PanelMenuHost.focusPanel?.invoke() != true) {
+                    tv.own.owntv.features.shell.components.PanelMenuHost.openPanel?.invoke()
+                }
+            }
             else -> focusRail()
         }
     }
@@ -1224,7 +1228,8 @@ fun OwnTVShell(
                                     val back = if (contentLtr) Key.DirectionLeft else Key.DirectionRight
                                     if (e.key != back || e.type != KeyEventType.KeyDown) return@onKeyEvent false
                                     if (!contentFocusManager.moveFocus(if (contentLtr) androidx.compose.ui.focus.FocusDirection.Left else androidx.compose.ui.focus.FocusDirection.Right)) {
-                                        focusRail()
+                                        // Kevin's copy (v2): where the screen's own panel holds the menu, ◀ opens it.
+                                        if (panelOwnsMenu) tv.own.owntv.features.shell.components.PanelMenuHost.openPanel?.invoke() else focusRail()
                                     }
                                     true
                                 }

@@ -42,6 +42,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
@@ -198,7 +199,15 @@ fun MoreScreen(
                     settingsGroup,
                     { pageEntry = it },
                     { subPage = it },
-                    Modifier.fillMaxSize().onFocusChanged { pageFocused = it.hasFocus },
+                    Modifier.fillMaxSize().onFocusChanged { pageFocused = it.hasFocus }
+                        // Kevin's copy (v3): ▶ from a setting that does not use it goes to the mini screen
+                        // and its controls (full screen, stop, size, audio only).
+                        .onKeyEvent { e ->
+                            if (showPlayer && onNowPlaying != null && e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight) {
+                                onNowPlaying()
+                                true
+                            } else false
+                        },
                 )
             }
         }

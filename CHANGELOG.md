@@ -10,6 +10,9 @@
 ## Unreleased
 
 ### ✨ New features
+- **📋 One left panel everywhere on Live TV, Films and Series (also when categories open as a pop-up); ◀ opens it, ▶ closes it**
+- **⏯️ Player pop-up opens with nothing chosen: ▼ to reach its buttons; ▶ does nothing**
+- **📺 More: ▶ moves onto the mini screen and its controls**
 - **⏯️ Player: play / pause, rewind and forward moved from the middle of the picture to the bottom box beside LIVE**
 - **📋 More: no explanation panel over the player — each setting's own line is enough**
 - **📋 Live TV, Films and Series: the menu sits at the top of the categories column — one left panel, no rail**

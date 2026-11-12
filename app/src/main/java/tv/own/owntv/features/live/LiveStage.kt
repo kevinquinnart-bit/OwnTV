@@ -497,7 +497,7 @@ internal fun LiveCategories(
     onSearchEditingChange: (Boolean) -> Unit = {},
 ) {
     // Kevin's copy (v1): the menu at the top of the column (not the sheet), so there is one left panel.
-    val menu = tv.own.owntv.features.shell.components.LocalPanelMenu.current?.takeIf { !sheet }
+    val menu = tv.own.owntv.features.shell.components.LocalPanelMenu.current
     val ownFocus = remember { FocusRequester() }
     // The rows before the search field: the "Menu" label and its items.
     val head = if (menu == null) 0 else 1 + menu.sections.size + (if (menu.onNowPlaying != null) 1 else 0)
