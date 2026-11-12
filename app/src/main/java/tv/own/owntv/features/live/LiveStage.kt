@@ -61,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
 import tv.own.owntv.R
+import tv.own.owntv.features.shell.components.stageIcon
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.epg.displayLogoUrl
 import tv.own.owntv.core.live.EpgNowNext
@@ -495,6 +496,24 @@ internal fun LiveCategories(
     /** The category search is being typed in (the player's sheet then leaves ◀ to the text cursor). */
     onSearchEditingChange: (Boolean) -> Unit = {},
 ) {
+    // Kevin's copy (v1): the menu at the top of the column (not the sheet), so there is one left panel.
+    val menu = tv.own.owntv.features.shell.components.LocalPanelMenu.current?.takeIf { !sheet }
+    val ownFocus = remember { FocusRequester() }
+    // The rows before the search field: the "Menu" label and its items.
+    val head = if (menu == null) 0 else 1 + menu.sections.size + (if (menu.onNowPlaying != null) 1 else 0)
+    androidx.compose.runtime.DisposableEffect(menu != null) {
+        if (menu != null) {
+            tv.own.owntv.features.shell.components.PanelMenuHost.active = true
+            tv.own.owntv.features.shell.components.PanelMenuHost.focusPanel = { runCatching { ownFocus.requestFocus() }.isSuccess }
+        }
+        onDispose {
+            if (menu != null) {
+                tv.own.owntv.features.shell.components.PanelMenuHost.active = false
+                tv.own.owntv.features.shell.components.PanelMenuHost.focused = false
+                tv.own.owntv.features.shell.components.PanelMenuHost.focusPanel = null
+            }
+        }
+    }
     var localQuery by remember { mutableStateOf("") }
     val query = searchQuery ?: localQuery
     val setQuery: (String) -> Unit = onSearchQueryChange ?: { localQuery = it }
@@ -510,7 +529,7 @@ internal fun LiveCategories(
     LaunchedEffect(selectedIndex) {
         val pos = visible.indexOf(selectedIndex)
         if (!hasFocus || pos < 0) return@LaunchedEffect
-        runCatching { listState.scrollToItem(pos + 1) } // +1: the search field is item 0
+        runCatching { listState.scrollToItem(pos + 1 + head) } // +1: the search field comes first (after the menu)
         withFrameNanos { }
         runCatching { rowFocusers[pos].requestFocus() }
     }
@@ -519,7 +538,7 @@ internal fun LiveCategories(
         visible.indexOf(target).takeIf { it >= 0 }?.let { pos ->
             // A row further than the screen (a CH± jump) is not composed yet: scroll to it first.
             if (!runCatching { rowFocusers[pos].requestFocus() }.getOrDefault(false)) {
-                runCatching { listState.scrollToItem(pos + 1) } // +1: the search field is item 0
+                runCatching { listState.scrollToItem(pos + 1 + head) } // +1: the search field comes first (after the menu)
                 withFrameNanos { }
                 runCatching { rowFocusers[pos].requestFocus() }
             }
@@ -531,7 +550,7 @@ internal fun LiveCategories(
     androidx.activity.compose.BackHandler(enabled = hasFocus && query.isNotEmpty()) {
         setQuery("")
         scope.launch {
-            runCatching { listState.scrollToItem(0) }
+            runCatching { listState.scrollToItem(head) }
             withFrameNanos { }
             runCatching { searchFocus.requestFocus() }
         }
@@ -564,14 +583,18 @@ internal fun LiveCategories(
                 .fillMaxWidth()
                 .weight(1f)
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-                .onFocusChanged { hasFocus = it.hasFocus }
+                .focusRequester(ownFocus)
+                .onFocusChanged {
+                    hasFocus = it.hasFocus
+                    if (menu != null) tv.own.owntv.features.shell.components.PanelMenuHost.focused = it.hasFocus
+                }
                 .focusProperties {
                     onEnter = {
                         val pos = visible.indexOf(selectedIndex)
                         val target = if (pos in rowFocusers.indices) rowFocusers[pos] else searchFocus
                         if (!runCatching { target.requestFocus() }.getOrDefault(false)) {
                             scope.launch {
-                                runCatching { listState.scrollToItem(if (pos >= 0) pos + 1 else 0) }
+                                runCatching { listState.scrollToItem(if (pos >= 0) pos + 1 + head else head) }
                                 withFrameNanos { }
                                 runCatching { target.requestFocus() }
                             }
@@ -583,6 +606,34 @@ internal fun LiveCategories(
             // Room for the 2 px outer focus ring, which the list would otherwise clip.
             contentPadding = PaddingValues(start = 4.mpx, end = 4.mpx, top = 4.mpx, bottom = 8.mpx),
         ) {
+            if (menu != null) {
+                item(key = "__menu__") {
+                    Text(
+                        stringResource(R.string.kevin_more_menu).uppercase(), style = stageText(12.5f, 800, 0.13.em), color = StageColors.Dim,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 14.mpx, top = 4.mpx, bottom = 8.mpx),
+                    )
+                }
+                menu.onNowPlaying?.let { play ->
+                    item(key = "__menu_now__") {
+                        tv.own.owntv.ui.stage.StageGroupItem(
+                            text = stringResource(R.string.shell_now_playing), icon = tv.own.owntv.ui.components.OwnTVIcon.PLAY_CIRCLE,
+                            onClick = play, modifier = rightKey,
+                        )
+                    }
+                }
+                menu.sections.forEach { section ->
+                    item(key = "__menu_" + section.name) {
+                        tv.own.owntv.ui.stage.StageGroupItem(
+                            text = stringResource(section.labelRes),
+                            icon = section.stageIcon,
+                            selected = section == menu.current,
+                            onClick = { menu.onSelect(section) },
+                            modifier = rightKey,
+                        )
+                    }
+                }
+            }
             item(key = "__search__") {
                 StageSearchField(
                     query = query,

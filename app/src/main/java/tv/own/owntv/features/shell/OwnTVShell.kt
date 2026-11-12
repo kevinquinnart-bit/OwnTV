@@ -193,6 +193,10 @@ fun OwnTVShell(
     // does not close a film that is playing.
     val shellVm = org.koin.androidx.compose.koinViewModel<ShellViewModel>()
     var playerMode by shellVm.playerMode
+    // Kevin's copy (v1): a category column on screen carries the menu, so the rail steps aside.
+    val panelOwnsMenu = tv.own.owntv.features.shell.components.PanelMenuHost.active &&
+        (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.MOVIES || selectedSection == MainSection.SERIES) &&
+        playerMode != PlayerMode.FULLSCREEN
     // Deep-link: the Guide's "Add EPG" button switches to Settings and opens EPG Sources → add.
     var openEpgAdd by remember { mutableStateOf(false) }
     // Setup's "Add a TV guide" (P10B-W9) lands on the same page once the shell is up.
@@ -914,11 +918,23 @@ fun OwnTVShell(
     }
 
     LaunchedEffect(focusRailAfterMore, selectedSection) {
-        if (!focusRailAfterMore || selectedSection == MainSection.MORE) return@LaunchedEffect
+        if (!focusRailAfterMore) return@LaunchedEffect
         repeat(10) {
             androidx.compose.runtime.withFrameNanos { }
-            if (runCatching { sidebarFocus.requestFocus() }.isSuccess) {
-                railKeyAt = android.os.SystemClock.uptimeMillis()
+            // A screen whose column holds the menu: into the screen, as the rail's ▶ would.
+            val entry = when (selectedSection) {
+                MainSection.MORE -> moreEntry
+                MainSection.LIVE_TV, MainSection.EPG -> guideEntry
+                MainSection.MOVIES, MainSection.SERIES -> vodEntry
+                else -> null
+            }
+            val railShown = selectedSection != MainSection.MORE && !panelOwnsMenu
+            val landed = if (railShown) {
+                runCatching { sidebarFocus.requestFocus() }.isSuccess.also { if (it) railKeyAt = android.os.SystemClock.uptimeMillis() }
+            } else {
+                entry?.invoke() == true || tv.own.owntv.features.shell.components.PanelMenuHost.focusPanel?.invoke() == true
+            }
+            if (landed) {
                 focusRailAfterMore = false
                 return@LaunchedEffect
             }
@@ -943,6 +959,9 @@ fun OwnTVShell(
             focusedLayer == ShellLayer.SIDEBAR -> showExit = true
             // Kevin's copy (v3): More has no rail to go back to; its panel's Back goes Home.
             selectedSection == MainSection.MORE -> { focusRailAfterMore = true; onSelectSection(MainSection.HOME) }
+            // Kevin's copy (v1): the category column holds the menu, so Back goes to it, and from it offers to leave.
+            panelOwnsMenu && tv.own.owntv.features.shell.components.PanelMenuHost.focused -> showExit = true
+            panelOwnsMenu -> { tv.own.owntv.features.shell.components.PanelMenuHost.focusPanel?.invoke() }
             else -> focusRail()
         }
     }
@@ -1093,6 +1112,16 @@ fun OwnTVShell(
               }
               onSelectSection(section)
           }
+          // Kevin's copy (v1): the menu for the screens that show their categories as a column — listed at
+          // the top of that column, which then stands in for the rail.
+          val panelMenu = if (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.MOVIES || selectedSection == MainSection.SERIES) {
+              tv.own.owntv.features.shell.components.PanelMenu(
+                  sections = tv.own.owntv.features.shell.components.StageRailOrder.filter { it == MainSection.SEARCH || it in visibleSections } + MainSection.MORE,
+                  current = selectedSection,
+                  onSelect = { section -> focusRailAfterMore = true; selectFromNav(section) },
+                  onNowPlaying = if (nowPlayingRail != null) ({ enterNowPlaying() }) else null,
+              )
+          } else null
           // Audio Mode: the now-playing bar — in the top bar left of the weather chip, or in the Stage
           // cluster in the Continue pill's place. Present only while PlayerMode.AUDIO.
           val audioBarContent: (@Composable () -> Unit)? = if (playerMode == PlayerMode.AUDIO) {
@@ -1180,7 +1209,7 @@ fun OwnTVShell(
                                 .padding(
                                     start = when {
                                         // Kevin's copy (v3): More has no rail beside it — its panel is the menu.
-                                        selectedSection == MainSection.MORE -> 0.dp
+                                        selectedSection == MainSection.MORE || panelOwnsMenu -> 0.dp
                                         navStyle == tv.own.owntv.core.settings.SettingsRepository.NavStyle.DOCKED ->
                                             tv.own.owntv.features.shell.components.railDockedReserve(navSize)
                                         stageScreen -> 0.dp
@@ -1205,6 +1234,7 @@ fun OwnTVShell(
                         )
                         .then(if (stageScreen) Modifier else Modifier.padding(end = 6.dp, bottom = 6.dp)),
                 ) {
+                    androidx.compose.runtime.CompositionLocalProvider(tv.own.owntv.features.shell.components.LocalPanelMenu provides panelMenu) {
                     when {
                         // Plan Z — the hub the rail's last item now opens. Settings is a row in it.
                         selectedSection == MainSection.MORE -> tv.own.owntv.features.more.MoreScreen(
@@ -1478,6 +1508,7 @@ fun OwnTVShell(
                             }
                         }
                     }
+                    }
                 }
             }
           }
@@ -1516,7 +1547,7 @@ fun OwnTVShell(
                     .onFocusChanged { clusterFocused = it.hasFocus }.focusGroup(),
             )
             // Kevin's copy (v3): in More the one left panel is More's own, which lists the menu too.
-            if (selectedSection != MainSection.MORE) tv.own.owntv.features.shell.components.StageRail(
+            if (selectedSection != MainSection.MORE && !panelOwnsMenu) tv.own.owntv.features.shell.components.StageRail(
                 state = railState,
                 size = railSize,
                 length = navLength,
