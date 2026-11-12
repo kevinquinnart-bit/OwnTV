@@ -10,6 +10,7 @@
 ## Unreleased
 
 ### ✨ New features
+- **🅺 K logo on its white tile, so it shows on dark screens; App icon and Accent-coloured logo settings removed**
 - **🅺 Now called KueTV, with the KayKue K logo (icon, banner, launch screen, menus)**
 - **📅 Free UK and Irish guides in Add EPG (one press fills it in)**
 - **✨ More like this and With an actor… on films and shows (title options)**

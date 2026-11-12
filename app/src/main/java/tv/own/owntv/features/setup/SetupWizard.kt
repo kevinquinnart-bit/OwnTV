@@ -32,7 +32,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import org.koin.androidx.compose.koinViewModel
 import tv.own.owntv.R
-import tv.own.owntv.core.brand.AppIcon
 import tv.own.owntv.core.database.entity.SourceEntity
 import tv.own.owntv.core.setup.SourceImporter
 import tv.own.owntv.core.sync.importProgressDisplay
@@ -48,7 +47,6 @@ import tv.own.owntv.features.settings.StageFieldRow
 import tv.own.owntv.features.settings.StageSettingRow
 import tv.own.owntv.features.settings.SettingHelp
 import tv.own.owntv.features.shell.PendingShellRequest
-import tv.own.owntv.ui.components.BrandMark
 import tv.own.owntv.ui.components.BrowseMode
 import tv.own.owntv.ui.components.OwnTVAvatar
 import tv.own.owntv.ui.components.OwnTVAvatars
@@ -318,14 +316,12 @@ private fun DisplaySizeStep(onNext: () -> Unit, onBack: () -> Unit) {
     val vm: DisplaySizeViewModel = koinViewModel()
     val zoom by vm.uiZoomPercent.collectAsStateWithLifecycle()
     val fontSize by vm.fontSizePercent.collectAsStateWithLifecycle()
-    val appIcon by vm.appIcon.collectAsStateWithLifecycle()
     val zoomFocus = rememberFirstFocus()
     // Zoom below LOW_RAM_WARN can OOM a 2 GB device (#51), so the first step under the line is gated
     // exactly as the Settings dialog gates it. Accepting once arms the rest of this visit; arriving
     // already below the line (a restored backup) must not nag.
     var lowZoomAccepted by remember { mutableStateOf(zoom < UiZoom.LOW_RAM_WARN) }
     var pendingLowZoom by remember { mutableStateOf<Int?>(null) }
-    var pickIcon by remember { mutableStateOf(false) }
     val stepZoom: (Int) -> Unit = { dir ->
         if (dir > 0) vm.setZoom(zoom + UiZoom.STEP)
         else {
@@ -358,18 +354,7 @@ private fun DisplaySizeStep(onNext: () -> Unit, onBack: () -> Unit) {
             onClick = { vm.setFontSize(fontSize + UiFontScale.STEP) },
             onStep = { dir -> vm.setFontSize(fontSize + dir * UiFontScale.STEP) },
         )
-        // No restart prompt here: nothing is on the home screen yet, and the pick applies as soon as
-        // the app is next in the background.
-        val icons = AppIcon.entries
-        val at = icons.indexOf(appIcon).coerceAtLeast(0)
-        StageSettingRow(
-            icon = OwnTVIcon.SPARKLE,
-            title = stringResource(R.string.settings_app_icon),
-            desc = stringResource(R.string.setup_line_app_icon),
-            value = SettingValue.Custom { AppIconSwatches(icons, appIcon) },
-            onClick = { pickIcon = true },
-            onStep = { dir -> vm.setAppIcon(icons[(at + dir + icons.size) % icons.size]) },
-        )
+        // KueTV (Kevin's copy, v2): no App icon row — every icon is the K.
         // The sample (W2): a row's own type at the size it will really be.
         Row(
             Modifier
@@ -384,19 +369,6 @@ private fun DisplaySizeStep(onNext: () -> Unit, onBack: () -> Unit) {
             Text(stringResource(R.string.settings_panel_width_preview).uppercase(), style = stageText(13, 800, androidx.compose.ui.unit.TextUnit(0.13f, androidx.compose.ui.unit.TextUnitType.Em)), color = StageColors.Dim)
             Text(stringResource(R.string.home_row_now_trending), style = stageText(21, 700), color = StageColors.Text, modifier = Modifier.weight(1f))
             Text(stringResource(R.string.common_on), style = stageText(18, 700), color = stageAccent.accent)
-        }
-    }
-
-    // OK on App icon: the icon tiles in a popup (no restart question — nothing is on the home screen yet).
-    if (pickIcon) {
-        val tileFocus = remember { FocusRequester() }
-        LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { tileFocus.requestFocus() } }
-        tv.own.owntv.ui.stage.StagePopup(onDismiss = { pickIcon = false }, title = stringResource(R.string.settings_app_icon), eyebrow = null, width = 880.mpx) {
-            tv.own.owntv.ui.components.AppIconPicker(
-                selected = appIcon,
-                onPick = { vm.setAppIcon(it); pickIcon = false },
-                firstFocus = tileFocus,
-            )
         }
     }
 
@@ -422,26 +394,6 @@ private fun DisplaySizeStep(onNext: () -> Unit, onBack: () -> Unit) {
             focusCancel = true,
             eyebrow = null,
         )
-    }
-}
-
-/** The app icon row's value (W2): the first five icon colours, the chosen one ringed, then "+N". */
-@Composable
-private fun AppIconSwatches(icons: List<AppIcon>, chosen: AppIcon) {
-    val a = stageAccent
-    val shown = (icons.take(5) + chosen).distinct().take(5)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.mpx), verticalAlignment = Alignment.CenterVertically) {
-        shown.forEach { icon ->
-            Box(
-                Modifier
-                    .size(34.mpx)
-                    .then(if (icon == chosen) Modifier.border(2.mpx, a.accent, RoundedCornerShape(9.mpx)) else Modifier),
-                contentAlignment = Alignment.Center,
-            ) { BrandMark(icon, 30.mpx, followAccent = false) }
-        }
-        if (icons.size > shown.size) {
-            Text("+" + localizedInteger(icons.size - shown.size, grouping = false), style = stageText(17, 700), color = StageColors.Muted)
-        }
     }
 }
 
