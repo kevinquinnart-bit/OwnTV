@@ -36,9 +36,9 @@
     <string name="settings_backup_section_favorites">Favourites</string>
     <string name="settings_choose_history">Choose what to remove for this profile. Playlists, favourites and downloads are not affected.</string>
     <string name="settings_customize_restore_defaults_description">Hidden categories and items show again, renames and custom order are cleared, and moved-out items return. Combined categories, favourites and guide matches are kept.</string>
-    <string name="settings_help_check_updates">Looks on GitHub for a newer OwnTV now and offers to install it. Your playlists, favourites and settings stay as they are.</string>
+    <string name="settings_help_check_updates">Looks on GitHub for a newer KueTV now and offers to install it. Your playlists, favourites and settings stay as they are.</string>
     <string name="settings_help_profiles">Each viewer keeps their own favourites, watch history, resume points and Home rows. Kids mode shows only the categories you allow; a PIN stops anyone else from opening the profile.</string>
-    <string name="settings_help_startup">What OwnTV shows when it starts: Home, the channel you watched last, your favourites, or a channel you pick.</string>
+    <string name="settings_help_startup">What KueTV shows when it starts: Home, the channel you watched last, your favourites, or a channel you pick.</string>
     <string name="settings_profile_add_line">A viewer with their own favourites, history and settings</string>
     <string name="settings_sources_resync_description">Resync now fetches the latest catalogue and keeps everything already saved.\n\nResync and remove missing titles also allows removing titles the provider no longer lists. Your favourites, history and resume positions for titles that are still listed are kept.</string>
     <string name="settings_startup_favorites">Live · Favourites</string>
