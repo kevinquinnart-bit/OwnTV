@@ -1234,6 +1234,7 @@ fun SettingsScreen(
             // Inside More the rows start where More's pages do, right of its panel.
             leftInset = if (embedded) 520.mpx else 500.mpx,
             panelTopAt = helpTop ?: 240.mpx,
+            showHelp = !embedded,
             panel = panel,
             group = if (searching) stringResource(R.string.common_nav_settings) else stringResource(group.titleRes),
             count = pageCount,

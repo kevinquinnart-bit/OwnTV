@@ -312,14 +312,18 @@ internal fun CenterControls(
     player: PlaybackEngine, nav: NavState, isPlaying: Boolean, isLive: Boolean,
     onRewindLive: (() -> Unit)?, onForwardLive: (() -> Unit)?, timeshiftOffset: () -> Int?,
     playFocus: FocusRequester, modifier: Modifier = Modifier,
+    /** Kevin's copy (v2): drawn in the bottom box beside the LIVE badge — smaller, no line above it. */
+    inline: Boolean = false,
 ) {
     val seekStep by player.seekStepMs.collectAsStateWithLifecycle() // Settings -> Seek step
     val rewindMode = onRewindLive != null // this is a catch-up-capable Live channel
     // Read here, not in the HUD root: it ticks every second while rewound (T14).
     val timeshiftOffsetSec = timeshiftOffset()
     val timeshifting = timeshiftOffsetSec != null
+    val small = if (inline) 36 else 44
+    val big = if (inline) 44 else 64
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        if (timeshifting) {
+        if (timeshifting && !inline) {
             // Counts down as the archive catches up to the live edge; grows if you pause.
             Text(
                 if (timeshiftOffsetSec <= 1) stringResource(R.string.player_at_live_edge) else stringResource(R.string.player_behind_live, mmss(timeshiftOffsetSec)),
@@ -329,19 +333,19 @@ internal fun CenterControls(
             Spacer(Modifier.height(12.dp))
         }
         TransportCapsule {
-            if (nav.hasPrev) CircleButton(OwnTVIcon.SKIP_PREVIOUS, size = 44) { player.previous() }
+            if (nav.hasPrev) CircleButton(OwnTVIcon.SKIP_PREVIOUS, size = small) { player.previous() }
             when {
-                rewindMode -> CircleButton(OwnTVIcon.REWIND, size = 44) { onRewindLive() } // step back into the archive
-                !isLive -> CircleButton(OwnTVIcon.REWIND, size = 44) { player.seekBy(-seekStep) }
+                rewindMode -> CircleButton(OwnTVIcon.REWIND, size = small) { onRewindLive() } // step back into the archive
+                !isLive -> CircleButton(OwnTVIcon.REWIND, size = small) { player.seekBy(-seekStep) }
             }
-            CircleButton(if (isPlaying) OwnTVIcon.PAUSE else OwnTVIcon.PLAY, size = 64, primary = true, modifier = Modifier.focusRequester(playFocus)) { player.togglePlayPause() }
+            CircleButton(if (isPlaying) OwnTVIcon.PAUSE else OwnTVIcon.PLAY, size = big, primary = true, modifier = Modifier.focusRequester(playFocus)) { player.togglePlayPause() }
             when {
-                rewindMode && timeshifting -> CircleButton(OwnTVIcon.FORWARD, size = 44) { onForwardLive?.invoke() } // toward live
-                !isLive && !rewindMode -> CircleButton(OwnTVIcon.FORWARD, size = 44) { player.seekBy(seekStep) }
+                rewindMode && timeshifting -> CircleButton(OwnTVIcon.FORWARD, size = small) { onForwardLive?.invoke() } // toward live
+                !isLive && !rewindMode -> CircleButton(OwnTVIcon.FORWARD, size = small) { player.seekBy(seekStep) }
             }
             // "Go to live" is no longer a transport button: it is the Go Live pill at the head of the
             // dock's left cluster, beside the timeline it acts on.
-            if (nav.hasNext) CircleButton(OwnTVIcon.SKIP_NEXT, size = 44) { player.next() }
+            if (nav.hasNext) CircleButton(OwnTVIcon.SKIP_NEXT, size = small) { player.next() }
         }
     }
 }
@@ -367,6 +371,8 @@ internal fun BottomBar(
     onBack: () -> Unit, modifier: Modifier = Modifier,
     /** Kevin's copy: the channel and programme strip, drawn at the top of this box. */
     header: (@Composable () -> Unit)? = null,
+    /** Kevin's copy (v2): play / pause, rewind and forward, at the end of the timeline row beside LIVE. */
+    transport: (@Composable () -> Unit)? = null,
 ) {
     // Changes only while rewound into the archive. The film position is read lower still, by
     // [VodTimeline], so the tool buttons do not redraw every second (T14).
@@ -407,17 +413,29 @@ internal fun BottomBar(
                     }
                     Spacer(Modifier.width(12.dp))
                     LiveStateBadge(timeshiftOffsetSec)
+                    if (transport != null) { Spacer(Modifier.width(12.dp)); transport() }
                 }
                 Spacer(Modifier.height(10.dp))
             }
             !isLive && duration > 0 -> {
-                VodTimeline(player, position, duration, seekFocus)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { VodTimeline(player, position, duration, seekFocus) }
+                    if (transport != null) { Spacer(Modifier.width(12.dp)); transport() }
+                }
                 Spacer(Modifier.height(10.dp))
             }
             // A live channel with no archive has no timeline to scrub, but it still has a state to
             // report — and the badge no longer lives in the top bar.
             isLive && !badgeInHeader -> {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { LiveStateBadge(timeshiftOffsetSec) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    LiveStateBadge(timeshiftOffsetSec)
+                    if (transport != null) { Spacer(Modifier.width(12.dp)); transport() }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+            // The badge sits in the header row: the transport still gets a row of its own, at the right.
+            transport != null -> {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { transport() }
                 Spacer(Modifier.height(10.dp))
             }
         }

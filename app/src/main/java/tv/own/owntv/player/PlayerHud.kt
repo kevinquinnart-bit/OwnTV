@@ -686,8 +686,8 @@ fun PlayerHud(
             // Hide the transport (play/seek/prev/next) and bottom bar while an error is up — the error
             // overlay owns the screen with its own Retry, so the play/rewind/forward must not show behind it.
             if (error == null) {
-                // Centred in the space above the bottom box, which is taller now it carries the strip.
-                CenterControls(player, nav, isPlaying, isLive, onRewindLive, onForwardLive, timeshiftOffset, playFocus, modifier = Modifier.align(Alignment.Center).padding(bottom = dockHeight))
+                // Kevin's copy (v2): play / pause, rewind and forward sit in the bottom box beside LIVE
+                // (passed as the bottom bar's transport below), not in the middle of the picture.
 
                 val reportDuration = duration.takeIf { it > 0 }?.let { formatTime(it) }
                 val reportSavedMessage = stringResource(R.string.player_report_saved)
@@ -731,6 +731,7 @@ fun PlayerHud(
                     favorite = favorite, onToggleFavorite = onToggleFavorite,
                     onOpenDialog = { dialog = it }, onPip = onPip, onAudioMode = onAudioMode,
                     onMultiview = onMultiview, onRecordThis = onRecordThis, recordingThis = recordingThis, onBack = onBack,
+                    transport = { CenterControls(player, nav, isPlaying, isLive, onRewindLive, onForwardLive, timeshiftOffset, playFocus, inline = true) },
                     modifier = Modifier.align(Alignment.BottomStart)
                         .onSizeChanged { dockHeight = with(hudDensity) { it.height.toDp() } },
                     // Kevin's copy: everything in this one box. The channel row across the width with the

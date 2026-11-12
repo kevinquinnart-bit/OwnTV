@@ -10,6 +10,8 @@
 ## Unreleased
 
 ### ✨ New features
+- **⏯️ Player: play / pause, rewind and forward moved from the middle of the picture to the bottom box beside LIVE**
+- **📋 More: no explanation panel over the player — each setting's own line is enough**
 - **📋 Live TV, Films and Series: the menu sits at the top of the categories column — one left panel, no rail**
 - **📺 More: the mini player plays top right beside the settings, with the programme on now under it**
 - **📋 One left panel in More: the menu, every settings category, Favourites, History and the rest; the chosen one shows on the right**

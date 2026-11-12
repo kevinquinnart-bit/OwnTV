@@ -256,6 +256,11 @@ fun StageSettingsPage(
     leftInset: androidx.compose.ui.unit.Dp = 0.mpx,
     /** Kevin's copy (v3): where the explanation panel starts; lower when More shows the player above it. */
     panelTopAt: androidx.compose.ui.unit.Dp = 240.mpx,
+    /**
+     * Kevin's copy (v3): off inside More — no explanation panel for the focused row (each row's own line
+     * says enough); the panel still opens for a row that edits its value there.
+     */
+    showHelp: Boolean = true,
     rows: @Composable ColumnScope.() -> Unit = {},
 ) {
     val searching = searchQuery.isNotBlank()
@@ -333,9 +338,10 @@ fun StageSettingsPage(
                     content = rows,
                 )
             }
-            val help = panel.help
+            val help = panel.help.takeIf { showHelp }
             val editor = panel.editor
-            if (help != null || panelTop != null || editor != null) {
+            val pagePicture = panelTop.takeIf { showHelp }
+            if (help != null || pagePicture != null || editor != null) {
                 Column(
                     Modifier
                         .padding(start = panelStart, top = panelTopAt)
@@ -344,10 +350,10 @@ fun StageSettingsPage(
                         .stageGlass(30.mpx)
                         .padding(26.mpx),
                 ) {
-                    if (editor != null) SettingPanelEditor(editor, help, onClosed = { panel.opener?.let { r -> runCatching { r.requestFocus() } } })
+                    if (editor != null) SettingPanelEditor(editor, panel.help, onClosed = { panel.opener?.let { r -> runCatching { r.requestFocus() } } })
                     else {
                         // A row that brings its own picture (Popup size's sample) shows it in place of the page's.
-                        if (panelTop != null && help?.extra == null) panelTop()
+                        if (pagePicture != null && help?.extra == null) pagePicture()
                         if (help != null) SettingPanelBody(help)
                     }
                 }
