@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalDensity
@@ -56,6 +57,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.own.owntv.R
+import tv.own.owntv.ui.stage.stageGlass
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.launcher.LauncherDeepLink
 import tv.own.owntv.core.nav.MainSection
@@ -1220,6 +1222,9 @@ fun OwnTVShell(
                             menuSections = tv.own.owntv.features.shell.components.StageRailOrder.filter { it == MainSection.SEARCH || it in visibleSections },
                             onMenu = { section -> focusRailAfterMore = true; selectFromNav(section) },
                             onNowPlaying = if (nowPlayingRail != null) enterNowPlaying else null,
+                            // Kevin's copy (v3): the mini player plays in a box top right, the programme under it.
+                            showPlayer = playerMode == PlayerMode.MINI && multiview == null,
+                            nowPanel = if (zapSource == MainSection.LIVE_TV) ({ MoreNowCard(liveVm) }) else null,
                             // Kevin's copy (v3): a Settings category drawn inside More, right of its panel.
                             settingsPage = { group, setEntry, onSubPage, pageModifier ->
                                 SettingsScreen(
@@ -1232,6 +1237,7 @@ fun OwnTVShell(
                                     embeddedGroup = group,
                                     entryHook = setEntry,
                                     onSubPage = onSubPage,
+                                    helpTop = if (playerMode == PlayerMode.MINI && multiview == null) MORE_HELP_TOP_MPX.mpx else null,
                                     modifier = pageModifier,
                                 )
                             },
@@ -1643,8 +1649,11 @@ fun OwnTVShell(
         // while it holds focus, so its buttons fit. Both are measured against this layer's own origin,
         // so they line up whatever lies around them.
         val slot = tv.own.owntv.features.live.LiveVideoSlot.bounds
-        val inSlot = !isFull && slot != null && zapSource == MainSection.LIVE_TV &&
-            (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.EPG)
+        val inSlot = !isFull && slot != null && (
+            (zapSource == MainSection.LIVE_TV && (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.EPG)) ||
+                // Kevin's copy (v3): More's box beside a Settings category, whatever is playing.
+                selectedSection == MainSection.MORE
+            )
         var layerOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
         var layerWidth by remember { mutableStateOf(0) }
         if (!isFull) {
@@ -1726,7 +1735,7 @@ fun OwnTVShell(
                 )
             }
             // The Guide's LIVE badge and channel line stay on top of the picture in its box.
-            if (inSlot) {
+            if (inSlot && selectedSection != MainSection.MORE) {
                 tv.own.owntv.features.live.LiveVideoSlot.label?.let {
                     tv.own.owntv.features.epg.GuideVideoOverlay(channelLine = it.line, nowTitle = it.nowTitle)
                 }
@@ -2324,3 +2333,62 @@ private const val RAIL_KEY_WINDOW_MS = 400L
 private const val MINI_DOCK_TOP_MPX = 22
 private const val MINI_DOCK_HEIGHT_MPX = 94
 private const val MINI_DOCK_GAP_MPX = 22
+
+/** Kevin's copy (v3): where Settings' explanation panel starts inside More while the player shows above it. */
+private const val MORE_HELP_TOP_MPX = 566
+
+/**
+ * Kevin's copy (v3): under More's player box — the live channel playing, the programme on now with its
+ * times and how far through it is, and what is on next.
+ */
+@Composable
+private fun MoreNowCard(liveVm: tv.own.owntv.features.live.LiveViewModel) {
+    val held by liveVm.heldChannel.collectAsStateWithLifecycle()
+    val preview by liveVm.previewChannel.collectAsStateWithLifecycle()
+    val keyed by liveVm.nowNextKeyed.collectAsStateWithLifecycle()
+    val channel = held ?: preview ?: return
+    val nowNext = keyed.second.takeIf { keyed.first == channel.id }
+    val time = tv.own.owntv.ui.format.rememberSystemTimeFormatter()
+    var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(30_000); clock = System.currentTimeMillis() } }
+    val now = nowNext?.now?.takeIf { clock < it.stopMs }
+    val next = nowNext?.next
+    Column(
+        Modifier.fillMaxWidth().stageGlass(24.mpx).padding(22.mpx),
+        verticalArrangement = Arrangement.spacedBy(6.mpx),
+    ) {
+        androidx.tv.material3.Text(
+            channel.name, style = tv.own.owntv.ui.theme.stageText(15, 700), color = tv.own.owntv.ui.theme.StageColors.Dim,
+            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        if (now != null) {
+            androidx.tv.material3.Text(
+                now.title, style = tv.own.owntv.ui.theme.stageText(22, 800), color = tv.own.owntv.ui.theme.StageColors.Text,
+                maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            androidx.tv.material3.Text(
+                stringResource(R.string.kevin_more_time_range, time(now.startMs), time(now.stopMs)),
+                style = tv.own.owntv.ui.theme.stageText(15, 600), color = tv.own.owntv.ui.theme.StageColors.Muted,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            val span = (now.stopMs - now.startMs).coerceAtLeast(1L)
+            val done = ((clock - now.startMs).toFloat() / span).coerceIn(0f, 1f)
+            Box(Modifier.fillMaxWidth().height(4.mpx).background(tv.own.owntv.ui.theme.StageColors.Ink.copy(alpha = 0.15f), RoundedCornerShape(2.mpx))) {
+                Box(Modifier.fillMaxWidth(done).height(4.mpx).background(tv.own.owntv.ui.theme.stageAccent.accent, RoundedCornerShape(2.mpx)))
+            }
+            now.description?.takeIf { it.isNotBlank() }?.let { d ->
+                androidx.tv.material3.Text(
+                    d, style = tv.own.owntv.ui.theme.stageText(15, 500), color = tv.own.owntv.ui.theme.StageColors.Muted,
+                    maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (next != null) {
+            androidx.tv.material3.Text(
+                stringResource(R.string.kevin_more_next, time(next.startMs), next.title),
+                style = tv.own.owntv.ui.theme.stageText(15, 600), color = tv.own.owntv.ui.theme.StageColors.Muted,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+    }
+}

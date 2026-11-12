@@ -229,6 +229,8 @@ fun SettingsScreen(
     entryHook: ((() -> Boolean)?) -> Unit = {},
     /** Inside More: true while a full page (a sub-screen) covers the screen, so More hides its panel. */
     onSubPage: (Boolean) -> Unit = {},
+    /** Inside More with the player showing: the explanation panel starts below the player. */
+    helpTop: androidx.compose.ui.unit.Dp? = null,
 ) {
     val embedded = embeddedGroup != null
     // A cross-script language change recreates the Activity so Android can apply the new script's
@@ -1231,6 +1233,7 @@ fun SettingsScreen(
         StageSettingsPage(
             // Inside More the rows start where More's pages do, right of its panel.
             leftInset = if (embedded) 520.mpx else 500.mpx,
+            panelTopAt = helpTop ?: 240.mpx,
             panel = panel,
             group = if (searching) stringResource(R.string.common_nav_settings) else stringResource(group.titleRes),
             count = pageCount,

@@ -10,6 +10,7 @@
 ## Unreleased
 
 ### ✨ New features
+- **📺 More: the mini player plays top right beside the settings, with the programme on now under it**
 - **📋 One left panel in More: the menu, every settings category, Favourites, History and the rest; the chosen one shows on the right**
 - **🔒 KueTV stands alone: no OwnTV name, links or Telegram/translate cards; builds use only this repo**
 - **🅺 K logo on its white tile, so it shows on dark screens; App icon and Accent-coloured logo settings removed**

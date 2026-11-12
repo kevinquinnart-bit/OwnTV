@@ -29,6 +29,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -100,6 +104,13 @@ fun MoreScreen(
     onMenu: (tv.own.owntv.core.nav.MainSection) -> Unit = {},
     /** The player's "Now playing" entry, while something plays. */
     onNowPlaying: (() -> Unit)? = null,
+    /**
+     * Kevin's copy (v3): the mini player is on. With a Settings category open, More keeps a video box
+     * top right for it (the shell plays the picture there) and draws [nowPanel] — the programme on now —
+     * under it.
+     */
+    showPlayer: Boolean = false,
+    nowPanel: (@Composable () -> Unit)? = null,
     onPlayChannel: (Long) -> Unit,
     onPlayMovie: (Long, Long) -> Unit,
     onPlayEpisode: (seriesId: Long, episodeId: Long, positionMs: Long) -> Unit,
@@ -190,6 +201,28 @@ fun MoreScreen(
                     Modifier.fillMaxSize().onFocusChanged { pageFocused = it.hasFocus },
                 )
             }
+        }
+        // The player's box and the programme under it, in the explanation panel's column. Only beside a
+        // Settings category: the other pages use the whole width.
+        if (showPlayer && !subPage && selected == MoreItem.SETTINGS) {
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                val w = maxWidth / 1920f
+                Column(
+                    Modifier.padding(start = w * 1290, top = MORE_PLAYER_TOP_MPX.mpx).width(w * 566),
+                    verticalArrangement = Arrangement.spacedBy(16.mpx),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(20.mpx))
+                            .background(androidx.compose.ui.graphics.Color.Black)
+                            .onGloballyPositioned { tv.own.owntv.features.live.LiveVideoSlot.bounds = it.boundsInRoot() },
+                    )
+                    nowPanel?.invoke()
+                }
+            }
+            DisposableEffect(Unit) { onDispose { tv.own.owntv.features.live.LiveVideoSlot.bounds = null } }
         }
         if (!subPage) {
         // --- The sheet (`.gsheet`, 440 wide at 24 / 24 / 24): the full height (owner tried level with the page, kept this).
@@ -355,3 +388,6 @@ private fun relativeShort(at: Long): String =
 
 /** How long focus rests on a panel item before its page is shown. */
 private const val FOCUS_SELECT_MS = 250L
+
+/** Where More's player box starts, just under the settings band. */
+internal const val MORE_PLAYER_TOP_MPX = 230

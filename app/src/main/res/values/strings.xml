@@ -101,4 +101,8 @@
     <string name="kevin_stremio_page_wrong">That code doesn\'t match the one on the TV.</string>
     <!-- Kevin's copy: the label over the menu (Search, Home, Live TV…) at the top of More's panel. -->
     <string name="kevin_more_menu">Menu</string>
+    <!-- Kevin's copy: under More's player box — a programme's start and end times. -->
+    <string name="kevin_more_time_range"><xliff:g id="start">%1$s</xliff:g> – <xliff:g id="end">%2$s</xliff:g></string>
+    <!-- Kevin's copy: under More's player box — the programme after this one: its start time and title. -->
+    <string name="kevin_more_next">Next <xliff:g id="time">%1$s</xliff:g> · <xliff:g id="title">%2$s</xliff:g></string>
 </resources>

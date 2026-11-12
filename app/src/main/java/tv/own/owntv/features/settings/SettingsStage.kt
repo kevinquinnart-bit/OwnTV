@@ -254,6 +254,8 @@ fun StageSettingsPage(
      * here, and the rows run on to a narrower explanation panel, so they spread over the freed space.
      */
     leftInset: androidx.compose.ui.unit.Dp = 0.mpx,
+    /** Kevin's copy (v3): where the explanation panel starts; lower when More shows the player above it. */
+    panelTopAt: androidx.compose.ui.unit.Dp = 240.mpx,
     rows: @Composable ColumnScope.() -> Unit = {},
 ) {
     val searching = searchQuery.isNotBlank()
@@ -336,9 +338,9 @@ fun StageSettingsPage(
             if (help != null || panelTop != null || editor != null) {
                 Column(
                     Modifier
-                        .padding(start = panelStart, top = 240.mpx)
+                        .padding(start = panelStart, top = panelTopAt)
                         .width(w * 1856 - panelStart)
-                        .heightIn(max = maxHeight - 280.mpx)
+                        .heightIn(max = maxHeight - panelTopAt - 40.mpx)
                         .stageGlass(30.mpx)
                         .padding(26.mpx),
                 ) {
