@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
  * phone, and the TV is given a lasting key. The app asks only for `drive.file`, so it can see and change
  * the files it created itself and nothing else in the user's Drive.
  *
- * Everything goes in one folder, "OwnTV", with "Backups" and "Recordings" inside it.
+ * Everything goes in one folder, "KueTV", with "Backups" and "Recordings" inside it.
  */
 class GoogleDrive(context: Context, baseClient: OkHttpClient) {
 
@@ -401,7 +401,7 @@ class GoogleDrive(context: Context, baseClient: OkHttpClient) {
         private const val API = "https://www.googleapis.com/drive/v3"
         private const val UPLOAD = "https://www.googleapis.com/upload/drive/v3"
         private const val FOLDER_MIME = "application/vnd.google-apps.folder"
-        private const val ROOT_FOLDER = "OwnTV"
+        private const val ROOT_FOLDER = "KueTV"
         private val JSON = "application/json; charset=UTF-8".toMediaType()
 
         /** 8 MB pieces: a multiple of 256 KB, as Drive requires for every piece but the last. */

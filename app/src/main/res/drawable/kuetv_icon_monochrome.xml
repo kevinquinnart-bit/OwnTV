@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- KueTV (Kevin's copy): replaces core's OwnTV brand drawing of the same name. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="20.825" android:translateY="24.658" android:scaleX="0.09465" android:scaleY="0.09465"><path android:pathData="M145.00,150.09A20.00,20.00 0 0 1 155.70,132.38L275.70,69.38A20.00,20.00 0 0 1 305.00,87.09L305.00,528.00A20.00,20.00 0 0 1 285.00,548.00L165.00,548.00A20.00,20.00 0 0 1 145.00,528.00Z" android:fillColor="#FF000000"/><path android:pathData="M452.65,123.87A18.00,18.00 0 0 1 465.95,118.00L572.59,118.00A18.00,18.00 0 0 1 585.54,148.50L425.29,314.45A12.00,12.00 0 0 0 424.50,330.23L556.96,497.84A18.00,18.00 0 0 1 542.83,527.00L453.36,527.00A18.00,18.00 0 0 1 439.61,520.61L278.79,330.05A12.00,12.00 0 0 1 279.09,314.22Z" android:fillColor="#FF000000"/></group>
+</vector>

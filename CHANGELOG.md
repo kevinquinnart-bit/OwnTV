@@ -10,6 +10,7 @@
 ## Unreleased
 
 ### ✨ New features
+- **🅺 Now called KueTV, with the KayKue K logo (icon, banner, launch screen, menus)**
 - **📅 Free UK and Irish guides in Add EPG (one press fills it in)**
 - **✨ More like this and With an actor… on films and shows (title options)**
 - **☁️ Google Drive: back up and restore, and copy recordings there (oldest deleted when full) — More › Backup & Restore**

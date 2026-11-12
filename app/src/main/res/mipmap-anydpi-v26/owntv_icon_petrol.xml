@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- KueTV (Kevin's copy): replaces core's OwnTV brand drawing of the same name. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/kuetv_icon_bg"/>
+    <foreground android:drawable="@drawable/kuetv_icon_foreground"/>
+    <monochrome android:drawable="@drawable/kuetv_icon_monochrome"/>
+</adaptive-icon>

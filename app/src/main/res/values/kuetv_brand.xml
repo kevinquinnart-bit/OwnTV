@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- KueTV (Kevin's copy): replaces core's OwnTV brand drawing of the same name. -->
+<resources>
+    <color name="kuetv_icon_bg">#FFFFFF</color>
+</resources>

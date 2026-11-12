@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,12 +21,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import org.koin.compose.koinInject
 import tv.own.owntv.R
 import tv.own.owntv.core.brand.AppIcon
 import tv.own.owntv.core.brand.AppIconSwitcher
-import tv.own.owntv.core.settings.SettingsRepository
 import tv.own.owntv.ui.theme.OwnTVTheme
 import tv.own.owntv.ui.theme.stageAccent
 
@@ -41,39 +37,14 @@ fun rememberAppliedIcon(): AppIcon {
     return remember(context) { AppIconSwitcher.applied(context) }
 }
 
-/** Settings › Accent-colored logo: the play triangle of every in-app logo in the accent (default on). */
-@Composable
-private fun accentTriangle(): Color? {
-    val settings: SettingsRepository = koinInject()
-    val on by settings.brandAccentTriangle.collectAsStateWithLifecycle(initialValue = true)
-    return if (on) stageAccent.accent else null
-}
-
 /**
- * The icon's flat mark (no shadow, no next card); at 32 dp and below the simpler small drawing. Pixel
- * above 32 dp is its dot matrix ([PixelMark]). With Accent-colored logo on, the play triangle takes the
- * accent: on a card a white triangle is drawn over the card's own and tinted (Pixel has none).
- * [followAccent] false draws the icon as the launcher shows it (the icon pickers).
+ * KueTV (Kevin's copy, v2): the KayKue K mark, the same whatever icon colour or accent is set. [icon] and
+ * [followAccent] stay so the callers need no change.
  */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 fun BrandMark(icon: AppIcon, size: Dp, modifier: Modifier = Modifier, followAccent: Boolean = true) {
-    val small = size <= 32.dp
-    val accent = accentTriangle().takeIf { followAccent }
-    if (icon == AppIcon.PIXEL && !small) {
-        PixelMark(modifier.size(size), triangle = accent ?: Color(icon.accent))
-        return
-    }
-    Box(modifier.size(size)) {
-        Image(painterResource(if (small) icon.markSmall else icon.mark), contentDescription = null, modifier = Modifier.fillMaxSize())
-        if (accent != null && icon.isCard(small)) {
-            Image(
-                painterResource(if (small) R.drawable.owntv_mark_play_small else R.drawable.owntv_mark_play),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                colorFilter = ColorFilter.tint(accent),
-            )
-        }
-    }
+    Image(painterResource(R.drawable.kuetv_mark), contentDescription = null, modifier = modifier.size(size))
 }
 
 /**
@@ -127,18 +98,22 @@ private fun pixelDots(): List<Triple<Float, Float, Int>> {
 }
 
 /**
- * The #227 wordmark by @m3th0d93 (D5): lowercase "own" in cream, "tv" in [tv] (the accent), drawn from
- * core's two vectors at [width]; its height follows the 988 × 182 drawing.
+ * KueTV (Kevin's copy, v2): "Kue" in [own] (cream), "TV" in [tv] (the accent), Poppins SemiBold as in the
+ * KayKue logo. As tall as the old 988 × 182 wordmark at [width]; the box is as wide as the word
+ * ([KUETV_WORD_ASPECT] × its height).
  */
 @Composable
 fun Wordmark(width: Dp, modifier: Modifier = Modifier, tv: Color = stageAccent.accent, own: Color = WordmarkCream) {
-    Box(modifier.width(width).height(width * 182f / 988f)) {
+    Box(modifier.width(width * 182f / 988f * KUETV_WORD_ASPECT).height(width * 182f / 988f)) {
         Image(painterResource(R.drawable.owntv_wordmark_own), null, Modifier.fillMaxSize(), colorFilter = ColorFilter.tint(own))
         Image(painterResource(R.drawable.owntv_wordmark_tv), null, Modifier.fillMaxSize(), colorFilter = ColorFilter.tint(tv))
     }
 }
 
 val WordmarkCream = Color(0xFFFFF6EE)
+
+/** Width ÷ cap height of "KueTV" in the two wordmark drawings. */
+const val KUETV_WORD_ASPECT = 4.486f
 
 /**
  * The lockup (Brand tab, C column): the mark, then the #227 wordmark at 2.75 × the mark's width (62 →

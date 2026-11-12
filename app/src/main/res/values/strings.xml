@@ -19,7 +19,7 @@
     <string name="kevin_update_found">found <xliff:g id="version">%1$s</xliff:g>, downloading</string>
     <string name="kevin_update_installed"><xliff:g id="version">%1$s</xliff:g> installed</string>
     <string name="kevin_update_not_installed"><xliff:g id="version">%1$s</xliff:g> downloaded and sent to the TV\'s installer, but it did not install</string>
-    <string name="kevin_update_waiting"><xliff:g id="version">%1$s</xliff:g> downloaded; the Install screen opens when OwnTV is next on screen</string>
+    <string name="kevin_update_waiting"><xliff:g id="version">%1$s</xliff:g> downloaded; the Install screen opens when KueTV is next on screen</string>
     <string name="kevin_update_cancelled">install of <xliff:g id="version">%1$s</xliff:g> was cancelled</string>
     <string name="kevin_update_failed">failed: <xliff:g id="reason">%1$s</xliff:g></string>
     <!-- More › About (Kevin's copy): when channels and guide last finished downloading. -->
@@ -43,7 +43,7 @@
     <string name="kevin_with_person_none">Nothing else with <xliff:g id="person">%1$s</xliff:g> found yet. A title is found once its details have been loaded, so this list grows as you browse.</string>
     <!-- More › Backup & Restore (Kevin's copy): Google Drive. -->
     <string name="kevin_drive">Google Drive</string>
-    <string name="kevin_drive_backup_place">Google Drive › OwnTV › Backups › <xliff:g id="file">%1$s</xliff:g></string>
+    <string name="kevin_drive_backup_place">Google Drive › KueTV › Backups › <xliff:g id="file">%1$s</xliff:g></string>
     <string name="kevin_drive_not_set_up">Google Drive isn\'t set up in this copy of the app yet.</string>
     <string name="kevin_drive_sign_in_title">Sign in to Google Drive</string>
     <string name="kevin_drive_sign_in_steps">On your phone, open <xliff:g id="url">%1$s</xliff:g> (or scan the code) and enter:</string>
