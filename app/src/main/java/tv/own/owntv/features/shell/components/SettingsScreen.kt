@@ -5,6 +5,7 @@ import tv.own.owntv.features.settings.SettingValue
 import tv.own.owntv.features.settings.labelRes
 import tv.own.owntv.features.settings.AccentSwatches
 import tv.own.owntv.ui.theme.mpx
+import tv.own.owntv.ui.stage.stageGlass
 import tv.own.owntv.features.settings.StageSettingRow
 import tv.own.owntv.features.settings.StageSettingsPage
 import tv.own.owntv.features.settings.StageSettingsHeading
@@ -59,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -301,8 +303,10 @@ fun SettingsScreen(
     var displayedGroup by rememberSaveable { mutableIntStateOf(start?.group ?: 0) }
     var savedScrollPx by remember { mutableIntStateOf(0) }
     val saveScroll = { savedScrollPx = pageScroll.value }
-    // The rows column: fresh entry and a lost focus land here, on the page's first row.
+    // The rows column: a lost focus lands here, on the page's first row.
     val rowsFocus = remember { FocusRequester() }
+    // Kevin's copy (v2): the category list's items; a fresh entry lands on the open category.
+    val categoryFocus = remember { List(SettingsGroup.entries.size) { FocusRequester() } }
     LaunchedEffect(start) {
         if (start == null) return@LaunchedEffect
         tab = SettingsTab.ROOT
@@ -955,13 +959,14 @@ fun SettingsScreen(
         }
     }
 
-    // A fresh entry from More: the page's first row (a search start focuses the field instead).
+    // A fresh entry from More: the open category in the list (a search start focuses the field instead).
     if (onBack != null) {
         LaunchedEffect(Unit) {
             if (returningRowFocus != null || start?.search == true) return@LaunchedEffect
             repeat(10) {
                 withFrameNanos { }
-                if (runCatching { rowsFocus.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+                val target = categoryFocus[selectedGroup.coerceIn(0, categoryFocus.size - 1)]
+                if (runCatching { target.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
             }
         }
     }
@@ -1182,7 +1187,31 @@ fun SettingsScreen(
         tv.own.owntv.features.settings.LocalOpenSubtitleStyle provides { saveScroll(); open(SettingsTab.SUBTITLE_STYLE) },
         tv.own.owntv.features.settings.LocalSubtitleStyleRowFocus provides rowFocus.getValue(SettingsTab.SUBTITLE_STYLE),
     ) {
+        // Kevin's copy (v2): the categories as a plain list in the left panel (no cards); the picked one's
+        // rows fill the space to its right. OK on a category opens it; Back from the rows returns to it.
+        var listFocused by remember { mutableStateOf(false) }
+        BackHandler(enabled = !listFocused && !searching && deepReturnKey == null && menuRow == null && !anyDialogOpen) {
+            runCatching { categoryFocus[selectedGroup.coerceIn(0, categoryFocus.size - 1)].requestFocus() }
+        }
+        Box(modifier.fillMaxSize()) {
+        SettingsCategoryList(
+            selected = selectedGroup,
+            onPick = { i ->
+                searchQuery = ""
+                searchMode = false
+                deepReturnKey = null
+                videoRowKey = null
+                if (i == selectedGroup) {
+                    runCatching { rowsFocus.requestFocus() }
+                } else {
+                    selectedGroup = i
+                }
+            },
+            focus = categoryFocus,
+            modifier = Modifier.onFocusChanged { listFocused = it.hasFocus },
+        )
         StageSettingsPage(
+            leftInset = 500.mpx,
             panel = panel,
             group = if (searching) stringResource(R.string.common_nav_settings) else stringResource(group.titleRes),
             count = pageCount,
@@ -1192,7 +1221,7 @@ fun SettingsScreen(
             crumb = !searching,
             searchFocus = searchFieldFocus,
             rowsFocus = rowsFocus,
-            modifier = modifier,
+            modifier = Modifier.fillMaxSize(),
             searchAutoEdit = searchAutoEdit,
             panelTop = if (group == SettingsGroup.APPEARANCE && !searching) ({ tv.own.owntv.features.settings.SettingsLivePreview() }) else null,
         ) {
@@ -1232,6 +1261,7 @@ fun SettingsScreen(
                     if (group == SettingsGroup.APP) VideoPlayerGroupRows(VideoGroup.DIAGNOSTICS, pageScroll, firstHeading = false)
                 }
             }
+        }
         }
     }
 
@@ -3375,4 +3405,52 @@ private fun serviceRowExtras(vm: SettingsViewModel): Map<String, RowExtra> {
         "tab_NETWORK" to RowExtra(SettingValue.Opens(if (proxy.usable) "${proxy.host}:${proxy.port}" else off)),
         "tab_DNS" to RowExtra(SettingValue.Opens(if (dns.enabled && dnsHost.isNotBlank()) dnsHost else if (dns.enabled) on else off)),
     )
+}
+
+/** Kevin's copy (v2): each category's icon, in [SettingsGroup] order (the ones More's cards used). */
+private val SettingsCategoryIcons = listOf(
+    OwnTVIcon.SPARKLE, OwnTVIcon.PERSON, OwnTVIcon.LIST, OwnTVIcon.PALETTE, OwnTVIcon.GRID, OwnTVIcon.MOVIES,
+    OwnTVIcon.PLAY_CIRCLE, OwnTVIcon.EXPAND, OwnTVIcon.HEADPHONES, OwnTVIcon.LIVE_TV, OwnTVIcon.REC, OwnTVIcon.INFO,
+)
+
+/**
+ * Kevin's copy (v2): Settings' categories as a plain list in the left glass panel, lined up like More's
+ * sheet — no cards. The open one is marked; OK opens another (focus goes to its rows).
+ */
+@Composable
+private fun SettingsCategoryList(
+    selected: Int,
+    onPick: (Int) -> Unit,
+    focus: List<FocusRequester>,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .padding(start = 24.mpx, top = 24.mpx, bottom = 24.mpx)
+            .width(440.mpx)
+            .fillMaxHeight()
+            .stageGlass(32.mpx, overContent = true)
+            .padding(horizontal = 16.mpx, vertical = 26.mpx)
+            // Coming back from the rows lands on the open category.
+            .focusProperties { onEnter = { runCatching { focus[selected.coerceIn(0, focus.size - 1)].requestFocus() } } }
+            .focusGroup()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(2.mpx),
+    ) {
+        Text(
+            stringResource(R.string.common_nav_settings),
+            style = tv.own.owntv.ui.theme.stageText(30, 800), color = StageColors.Text,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 16.mpx, bottom = 14.mpx),
+        )
+        SettingsGroup.entries.forEachIndexed { i, g ->
+            tv.own.owntv.ui.stage.StageGroupItem(
+                text = stringResource(g.titleRes),
+                icon = SettingsCategoryIcons.getOrElse(i) { OwnTVIcon.SETTINGS },
+                selected = i == selected,
+                onClick = { onPick(i) },
+                modifier = Modifier.focusRequester(focus[i]),
+            )
+        }
+    }
 }

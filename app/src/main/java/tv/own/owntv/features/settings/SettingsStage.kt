@@ -249,6 +249,11 @@ fun StageSettingsPage(
     settingsRoot: Boolean = true,
     /** Off where there is no Settings to search (the setup wizard reuses the Add a source pages). */
     showSearch: Boolean = true,
+    /**
+     * Kevin's copy (v2): room kept on the left for Settings' category list. The band and the rows start
+     * here, and the rows run on to a narrower explanation panel, so they spread over the freed space.
+     */
+    leftInset: androidx.compose.ui.unit.Dp = 0.mpx,
     rows: @Composable ColumnScope.() -> Unit = {},
 ) {
     val searching = searchQuery.isNotBlank()
@@ -261,8 +266,14 @@ fun StageSettingsPage(
         BoxWithConstraints(modifier.fillMaxSize()) {
             // The mockup's 1920 px frame as fractions of the real width, so other zooms reflow.
             val w = maxWidth / 1920f
+            val inset = leftInset > 0.mpx
+            // Without the category list: rows 50…1110 and the panel 1160…1856 of the 1920 frame. With it:
+            // rows from the list's edge to 1250, the panel 1290…1856.
+            val rowsStart = if (inset) leftInset else w * 50
+            val panelStart = if (inset) w * 1290 else w * 1160
+            val rowsWidth = if (inset) panelStart - w * 40 - leftInset else w * 1060
             Row(
-                Modifier.fillMaxWidth().padding(start = w * 64, end = w * 64, top = 128.mpx).height(60.mpx),
+                Modifier.fillMaxWidth().padding(start = if (inset) leftInset else w * 64, end = w * 64, top = 128.mpx).height(60.mpx),
                 horizontalArrangement = Arrangement.spacedBy(16.mpx),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -299,18 +310,18 @@ fun StageSettingsPage(
             val rowsTop = if (toolbar != null) 300.mpx else 210.mpx
             if (toolbar != null) {
                 Row(
-                    Modifier.padding(start = w * 50, top = 210.mpx).width(w * 1060).height(84.mpx).padding(horizontal = 6.mpx),
+                    Modifier.padding(start = rowsStart, top = 210.mpx).width(rowsWidth).height(84.mpx).padding(horizontal = 6.mpx),
                     horizontalArrangement = Arrangement.spacedBy(8.mpx),
                     verticalAlignment = Alignment.CenterVertically,
                     content = toolbar,
                 )
             }
-            if (list != null) list(Modifier.padding(start = w * 50, top = rowsTop).width(w * 1060).fillMaxHeight())
+            if (list != null) list(Modifier.padding(start = rowsStart, top = rowsTop).width(rowsWidth).fillMaxHeight())
             else CompositionLocalProvider(LocalBringIntoViewSpec provides edgeScrollSpec) {
                 Column(
                     Modifier
-                        .padding(start = w * 50, top = rowsTop)
-                        .width(w * 1060)
+                        .padding(start = rowsStart, top = rowsTop)
+                        .width(rowsWidth)
                         .fillMaxHeight()
                         .focusRequester(rowsFocus)
                         .focusGroup()
@@ -325,8 +336,8 @@ fun StageSettingsPage(
             if (help != null || panelTop != null || editor != null) {
                 Column(
                     Modifier
-                        .padding(start = w * 1160, top = 240.mpx)
-                        .width(w * 696)
+                        .padding(start = panelStart, top = 240.mpx)
+                        .width(w * 1856 - panelStart)
                         .heightIn(max = maxHeight - 280.mpx)
                         .stageGlass(30.mpx)
                         .padding(26.mpx),

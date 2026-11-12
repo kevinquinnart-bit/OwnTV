@@ -98,7 +98,9 @@ fun MoreScreen(
     vm: MoreCountsViewModel = koinViewModel(),
     settingsVm: SettingsViewModel = koinViewModel(),
 ) {
-    var selected by rememberSaveable { mutableStateOf(MoreItem.SETTINGS) }
+    // Kevin's copy (v2): Settings opens straight to its own screen (its categories listed on the left), so
+    // the page shown here starts on Favourites.
+    var selected by rememberSaveable { mutableStateOf(MoreItem.FAVORITES) }
     val itemFocus = remember { MoreItem.entries.associateWith { FocusRequester() } }
     // What OK / ▶ focuses on the page: a fixed target, or the page's own choice (its first row).
     val pageTarget = remember { FocusRequester() }
@@ -119,7 +121,8 @@ fun MoreScreen(
         if (!restoreFocus) return@LaunchedEffect
         withFrameNanos { }
         withFrameNanos { }
-        if (!enterPage()) runCatching { itemFocus.getValue(selected).requestFocus() }
+        // Back from Settings: land on the Settings item it was opened from.
+        runCatching { itemFocus.getValue(MoreItem.SETTINGS).requestFocus() }
         onRestored()
     }
     // Composed before the page, so a page's own Back (a step popup, a dialog) still wins over it.
@@ -130,7 +133,6 @@ fun MoreScreen(
     val sync by vm.sync.collectAsStateWithLifecycle()
     val lastBackup by vm.lastBackup.collectAsStateWithLifecycle()
     val playlists by vm.playlistCount.collectAsStateWithLifecycle()
-    val pinned by settingsVm.quickPinnedKeys.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var logVersion by remember { mutableIntStateOf(0) }
     val logCount by produceState(0, logVersion) { value = withContext(Dispatchers.IO) { PlaybackErrorLog.read(context).size } }
@@ -160,7 +162,11 @@ fun MoreScreen(
                     modifier = Modifier.focusRequester(itemFocus.getValue(it)),
                 )
             }
-            item(MoreItem.SETTINGS, OwnTVIcon.SETTINGS, stringResource(R.string.common_nav_settings), null, false)
+            StageGroupItem(
+                text = stringResource(R.string.common_nav_settings), icon = OwnTVIcon.SETTINGS,
+                onClick = { onOpenSettings(null, false) },
+                modifier = Modifier.focusRequester(itemFocus.getValue(MoreItem.SETTINGS)),
+            )
             GroupLabel(stringResource(R.string.more_group_your_things))
             item(MoreItem.FAVORITES, OwnTVIcon.FAVORITE, stringResource(R.string.content_category_favorites), favorites.total.toString(), false)
             item(MoreItem.HISTORY, OwnTVIcon.HISTORY, stringResource(R.string.content_category_history), history.total.toString(), false)
@@ -196,11 +202,8 @@ fun MoreScreen(
         ) {
             val setEntry: (() -> Boolean) -> Unit = { pageEntry = it }
             when (selected) {
-                MoreItem.SETTINGS -> SettingsPage(
-                    entry = pageTarget, pinned = pinned.size,
-                    onOpenGroup = { onOpenSettings(it, false) },
-                    onSearch = { onOpenSettings(null, true) },
-                )
+                // Never the page: OK on Settings opens the Settings screen itself.
+                MoreItem.SETTINGS -> Unit
                 MoreItem.FAVORITES -> FavouritesPage(
                     vm = vm, setEntry = setEntry,
                     onPlayChannel = onPlayChannel, onPlayMovie = { onPlayMovie(it, 0L) }, onOpenSeries = onOpenSeries,
