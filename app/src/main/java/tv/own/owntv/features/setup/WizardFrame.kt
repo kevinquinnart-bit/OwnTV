@@ -1,6 +1,7 @@
 package tv.own.owntv.features.setup
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.em
 import androidx.tv.material3.Text
 import tv.own.owntv.R
+import androidx.compose.ui.res.painterResource
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.stage.StageFocus
 import tv.own.owntv.ui.stage.StageKeyHints
@@ -72,15 +74,13 @@ internal fun WizardFrame(
     if (onBack != null) BackHandler { onBack() }
     val a = stageAccent
     BoxWithConstraints(Modifier.fillMaxSize().stageBackground(a.accent)) {
-        // The OwnTV lockup: the play mark on its cream tile, the name beside it.
+        // KueTV (Kevin's copy, v2): the K mark, the name beside it.
         Row(
             Modifier.padding(start = 64.mpx, top = 56.mpx),
             horizontalArrangement = Arrangement.spacedBy(14.mpx),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(44.mpx).background(LockupTile, RoundedCornerShape(12.mpx)), contentAlignment = Alignment.Center) {
-                OwnTVIcon(OwnTVIcon.PLAY, LockupMark, Modifier.size(22.mpx))
-            }
+            Image(painterResource(R.drawable.kuetv_mark), contentDescription = null, modifier = Modifier.size(44.mpx))
             Text(stringResource(R.string.app_name), style = stageText(24, 800), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         StepDots(step, Modifier.align(Alignment.TopEnd).padding(end = 64.mpx, top = 66.mpx))
@@ -183,8 +183,6 @@ internal fun WizardCards(cards: List<WizardCard>, firstFocus: FocusRequester? = 
     }
 }
 
-private val LockupTile = Color(0xFFEFE6D2)
-private val LockupMark = Color(0xFF14535C)
 
 @Composable
 private fun Float.mpxLine() = with(androidx.compose.ui.platform.LocalDensity.current) { this@mpxLine.mpx.toSp() }
