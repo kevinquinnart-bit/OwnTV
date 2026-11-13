@@ -489,7 +489,18 @@ internal fun BottomBar(
                     }
                 }
             }
+            // Kevin's copy (v5): Go Live and play / pause / rewind / forward in the centre of this row.
+            // ▼ from the pop-up lands on the row's first button (on the left), so these are only ever
+            // reached by moving along the row to them — never by changing channel or opening the pop-up.
             Spacer(Modifier.weight(1f))
+            val goLive = onGoToLive != null && onScrubLive != null
+            if (goLive || transport != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (goLive) GoLivePill(enabled = (timeshiftOffsetSec ?: 0) > 1) { onGoToLive?.invoke() }
+                    transport?.invoke()
+                }
+                Spacer(Modifier.weight(1f))
+            }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // H2 — the ORDER is core's, exactly as in the media cluster above. Each control
                 // keeps its own composable and condition; only the sequence is shared.
@@ -575,20 +586,6 @@ internal fun BottomBar(
                         -> Unit
                     }
                 }
-            }
-        }
-        // Band C — Kevin's copy (v4): Go Live and play / pause / rewind / forward on a last row of their
-        // own, at the right. Reaching them takes a second ▼ past the tools, so they are never hit by
-        // accident on the way to the tools or while changing channel.
-        val goLive = onGoToLive != null && onScrubLive != null
-        if (transport != null || goLive) {
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth().focusGroup(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                if (goLive) {
-                    GoLivePill(enabled = (timeshiftOffsetSec ?: 0) > 1) { onGoToLive?.invoke() }
-                    Spacer(Modifier.width(12.dp))
-                }
-                transport?.invoke()
             }
         }
     }
