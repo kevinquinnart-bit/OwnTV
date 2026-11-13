@@ -91,6 +91,12 @@ android {
             ?: localSigningProps.getProperty("owntv.edgeKey")
             ?: ""
         buildConfigField("String", "TMDB_EDGE_KEY", "\"${edgeKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        // Kevin's copy: the Google Drive sign-in key, from the build's environment (the repo's secrets).
+        // Blank when not set — Drive then says it is not set up yet.
+        val driveId = (System.getenv("KUETV_DRIVE_CLIENT_ID") ?: "").filter { it.isLetterOrDigit() || it in "-_." }
+        val driveSecret = (System.getenv("KUETV_DRIVE_CLIENT_SECRET") ?: "").filter { it.isLetterOrDigit() || it in "-_." }
+        buildConfigField("String", "KUETV_DRIVE_CLIENT_ID", "\"$driveId\"")
+        buildConfigField("String", "KUETV_DRIVE_CLIENT_SECRET", "\"$driveSecret\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

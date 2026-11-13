@@ -6,9 +6,9 @@ package tv.own.owntv.features.drive
  *
  * Google treats the secret of an app installed on a device as not secret: it is inside every copy of
  * the app anyway. It only identifies the app to Google; on its own it opens nobody's Drive.
- * Blank until the key is created — Drive then says it is not set up yet.
+ * Read from the build (the repo's secrets, v2); blank when not set — Drive then says it is not set up yet.
  */
 object DriveKeys {
-    const val CLIENT_ID = ""
-    const val CLIENT_SECRET = ""
+    const val CLIENT_ID = tv.own.owntv.BuildConfig.KUETV_DRIVE_CLIENT_ID
+    const val CLIENT_SECRET = tv.own.owntv.BuildConfig.KUETV_DRIVE_CLIENT_SECRET
 }
