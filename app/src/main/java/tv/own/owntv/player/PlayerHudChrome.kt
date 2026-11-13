@@ -373,6 +373,8 @@ internal fun BottomBar(
     header: (@Composable () -> Unit)? = null,
     /** Kevin's copy (v2): play / pause, rewind and forward, at the end of the timeline row beside LIVE. */
     transport: (@Composable () -> Unit)? = null,
+    /** Kevin's copy (v4): on the row of tools, so ▼ from the pop-up's rest point lands on its first button. */
+    toolsFocus: FocusRequester? = null,
 ) {
     // Changes only while rewound into the archive. The film position is read lower still, by
     // [VodTimeline], so the tool buttons do not redraw every second (T14).
@@ -435,7 +437,10 @@ internal fun BottomBar(
         // slack a focused button expands into, so growth is always toward the centre: the left cluster
         // pushes only the buttons to its right, the right cluster only those to its left. Walk either
         // cluster outward-in and nothing you have already passed ever moves.
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().focusGroup()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().then(if (toolsFocus != null) Modifier.focusRequester(toolsFocus) else Modifier).focusGroup(),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // H2 — the ORDER comes from core's canonical list, not from the order these lines
                 // happen to be written in. Each control keeps its own composable and its own
@@ -449,9 +454,8 @@ internal fun BottomBar(
                         // and falling behind inserts it and pushes them right. onGoToLive alone is
                         // non-null on every tuned live channel, so onScrubLive is what says the
                         // channel has an archive at all.
-                        PlayerControl.GO_LIVE -> if (onGoToLive != null && onScrubLive != null) {
-                            GoLivePill(enabled = (timeshiftOffsetSec ?: 0) > 1) { onGoToLive() }
-                        }
+                        // Kevin's copy (v4): Go Live sits in the last row with play / rewind, out of the way.
+                        PlayerControl.GO_LIVE -> Unit
                         PlayerControl.VOLUME ->
                             CtrlButton(volumeIcon(volume), label = stringResource(R.string.player_tool_volume)) { onOpenDialog(HudDialog.VOLUME) }
                         PlayerControl.SPEED ->
@@ -485,8 +489,6 @@ internal fun BottomBar(
                     }
                 }
             }
-            // Kevin's copy (v3): play / pause, rewind and forward close the left group of buttons.
-            if (transport != null) { Spacer(Modifier.width(12.dp)); transport() }
             Spacer(Modifier.weight(1f))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // H2 — the ORDER is core's, exactly as in the media cluster above. Each control
@@ -573,6 +575,20 @@ internal fun BottomBar(
                         -> Unit
                     }
                 }
+            }
+        }
+        // Band C — Kevin's copy (v4): Go Live and play / pause / rewind / forward on a last row of their
+        // own, at the right. Reaching them takes a second ▼ past the tools, so they are never hit by
+        // accident on the way to the tools or while changing channel.
+        val goLive = onGoToLive != null && onScrubLive != null
+        if (transport != null || goLive) {
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth().focusGroup(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                if (goLive) {
+                    GoLivePill(enabled = (timeshiftOffsetSec ?: 0) > 1) { onGoToLive?.invoke() }
+                    Spacer(Modifier.width(12.dp))
+                }
+                transport?.invoke()
             }
         }
     }

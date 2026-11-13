@@ -271,6 +271,7 @@ fun PlayerHud(
     // Kevin's copy (v2): on a live channel the pop-up opens with nothing chosen — focus rests here, and
     // only ▼ goes into its buttons, so OK cannot pause, rewind or record by accident.
     val holdFocus = remember { FocusRequester() }
+    val toolsFocus = remember { FocusRequester() }
     val nextFocus = remember { FocusRequester() }
     // The timeline, and whether the next reveal of the controls lands on it rather than Play (N6).
     val seekFocus = remember { FocusRequester() }
@@ -658,7 +659,7 @@ fun PlayerHud(
                     Modifier.size(1.dp).focusRequester(holdFocus).focusable().onKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
                         when {
-                            e.key == Key.DirectionDown -> { runCatching { playFocus.requestFocus() }; true }
+                            e.key == Key.DirectionDown -> { runCatching { toolsFocus.requestFocus() }.onFailure { runCatching { playFocus.requestFocus() } }; true }
                             e.key == Key.DirectionUp -> { if (canZap) zap(1); true }
                             e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter -> { controlsVisible = false; true }
                             e.key.horizontalDirection(layoutDirection) == HorizontalDirection.START -> {
@@ -758,6 +759,7 @@ fun PlayerHud(
                     favorite = favorite, onToggleFavorite = onToggleFavorite,
                     onOpenDialog = { dialog = it }, onPip = onPip, onAudioMode = onAudioMode,
                     onMultiview = onMultiview, onRecordThis = onRecordThis, recordingThis = recordingThis, onBack = onBack,
+                    toolsFocus = toolsFocus,
                     transport = { CenterControls(player, nav, isPlaying, isLive, onRewindLive, onForwardLive, timeshiftOffset, playFocus, inline = true) },
                     modifier = Modifier.align(Alignment.BottomStart)
                         .onSizeChanged { dockHeight = with(hudDensity) { it.height.toDp() } },
