@@ -18,4 +18,8 @@ object LiveVideoSlot {
     data class Label(val line: String, val nowTitle: String?)
 
     var label by mutableStateOf<Label?>(null)
+
+    /** Kevin's copy (v1): the mini player is on (a channel docked small), so Films and Series give it
+     *  their info card's picture box. Set by the shell. */
+    var miniShown by mutableStateOf(false)
 }

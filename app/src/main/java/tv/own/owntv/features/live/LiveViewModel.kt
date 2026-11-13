@@ -2291,6 +2291,14 @@ class LiveViewModel(
         recoverJob = null
         resetVariantStalls()
         armVariantStart()
+        // A channel opened from a preview that is already playing never reports a fresh start, so the
+        // engines are asked directly whether the picture is on.
+        viewModelScope.launch {
+            repeat(3) {
+                if (previewEngine.isPlaying.value || player.isPlaying.value) { if (recoverVersion != null) recoverPlayed = true; return@launch }
+                delay(1_000L)
+            }
+        }
     }
 
     private fun disarmVariantWatch() {
@@ -2306,7 +2314,8 @@ class LiveViewModel(
     /** The engine on screen gave up on the channel: open it again (see [recoverVersion]). */
     private fun onLiveGaveUp() {
         val single = recoverVersion ?: return
-        if (!recoverPlayed && variantVersions.isEmpty()) return // never played: the error stays, as before
+        // A channel that never played gets three tries, then the error stays; one that played keeps trying.
+        if (!recoverPlayed && recoverTries >= 3) return
         if (_catchupActive.value || timeshift.isRewound) return
         if (recoverJob?.isActive == true) return
         val wait = when (recoverTries) { 0 -> 2_000L; 1 -> 5_000L; else -> 10_000L }
@@ -2327,6 +2336,8 @@ class LiveViewModel(
                     )
                 }
                 resetVariantStalls()
+                // Stopped first: the same address again would only be unmuted, leaving the error on screen.
+                live.stop()
                 live.launch { live.start(single.copy(name = variantShownName), getSource(single.sourceId)) }
             }
         }
@@ -2422,10 +2433,13 @@ class LiveViewModel(
                 .distinctUntilChanged()
                 .collect { (buffering, playing) -> onVariantPlayback(buffering, playing) }
         }
+        // Each engine watched on its own: an old failure left showing on one must not hide a new one
+        // on the other.
         viewModelScope.launch {
-            combine(previewEngine.error, player.error) { a, b -> a != null || b != null }
-                .distinctUntilChanged()
-                .collect { failed -> if (failed) onLiveGaveUp() }
+            previewEngine.error.map { it != null }.distinctUntilChanged().collect { failed -> if (failed) onLiveGaveUp() }
+        }
+        viewModelScope.launch {
+            player.error.map { it != null }.distinctUntilChanged().collect { failed -> if (failed) onLiveGaveUp() }
         }
     }
 

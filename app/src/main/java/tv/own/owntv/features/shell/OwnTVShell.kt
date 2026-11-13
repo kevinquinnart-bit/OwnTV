@@ -1676,6 +1676,9 @@ fun OwnTVShell(
           }
       }
 
+      if (!(multiview == null && playerMode == PlayerMode.MINI)) {
+          androidx.compose.runtime.SideEffect { tv.own.owntv.features.live.LiveVideoSlot.miniShown = false }
+      }
       if (multiview == null && (playerMode == PlayerMode.FULLSCREEN || playerMode == PlayerMode.MINI)) {
         val isFull = playerMode == PlayerMode.FULLSCREEN
         // Kevin's copy: a live channel in the mini player fills Live TV's or the Guide's own video box
@@ -1685,10 +1688,13 @@ fun OwnTVShell(
         // while it holds focus, so its buttons fit. Both are measured against this layer's own origin,
         // so they line up whatever lies around them.
         val slot = tv.own.owntv.features.live.LiveVideoSlot.bounds
+        androidx.compose.runtime.SideEffect { tv.own.owntv.features.live.LiveVideoSlot.miniShown = !isFull }
         val inSlot = !isFull && slot != null && (
             (zapSource == MainSection.LIVE_TV && (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.EPG)) ||
                 // Kevin's copy (v3): More's box beside a Settings category, whatever is playing.
-                selectedSection == MainSection.MORE
+                selectedSection == MainSection.MORE ||
+                // Kevin's copy (v1): the picture box of the Films / Series info card.
+                selectedSection == MainSection.MOVIES || selectedSection == MainSection.SERIES
             )
         var layerOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
         var layerWidth by remember { mutableStateOf(0) }

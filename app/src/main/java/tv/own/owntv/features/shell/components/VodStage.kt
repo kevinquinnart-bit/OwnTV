@@ -31,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
@@ -348,9 +350,29 @@ internal fun VodCast(cast: List<CastMember>, count: Int, modifier: Modifier = Mo
  */
 @Composable
 internal fun VodDetailsCard(info: VodTitleInfo?, hints: List<Pair<String, String>>, series: Boolean, modifier: Modifier = Modifier) {
+    // Kevin's copy (v1): with the mini player on, the picture box at the top of this card is where it
+    // plays, and the title's information stays underneath it.
+    val miniHere = tv.own.owntv.features.live.LiveVideoSlot.miniShown
+    if (miniHere) {
+        androidx.compose.runtime.DisposableEffect(Unit) {
+            onDispose { tv.own.owntv.features.live.LiveVideoSlot.bounds = null }
+        }
+    }
     Box(modifier.stageGlass(30.mpx).padding(20.mpx)) {
+        if (miniHere && info == null) {
+            Box(
+                Modifier.fillMaxWidth().height(290.mpx).clip(RoundedCornerShape(20.mpx)).background(Color.Black)
+                    .onGloballyPositioned { tv.own.owntv.features.live.LiveVideoSlot.bounds = it.boundsInRoot() },
+            )
+        }
         if (info != null) {
             Column(Modifier.fillMaxSize().clipToBounds()) {
+                if (miniHere) {
+                    Box(
+                        Modifier.fillMaxWidth().height(290.mpx).clip(RoundedCornerShape(20.mpx)).background(Color.Black)
+                            .onGloballyPositioned { tv.own.owntv.features.live.LiveVideoSlot.bounds = it.boundsInRoot() },
+                    )
+                } else
                 Box(Modifier.fillMaxWidth().height(290.mpx).clip(RoundedCornerShape(20.mpx)).background(Color.Black.copy(alpha = 0.3f))) {
                     val art = info.backdropUrl ?: info.posterUrl
                     if (!art.isNullOrBlank()) {
