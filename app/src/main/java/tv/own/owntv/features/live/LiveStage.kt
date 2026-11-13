@@ -560,6 +560,22 @@ internal fun LiveCategories(
     val rightKey = Modifier.onPreviewKeyEvent { e ->
         if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight) { onNavigateRight(); true } else false
     }
+    // Kevin's copy (v1): ◀ anywhere below the menu jumps straight up to it, on the screen you are on,
+    // instead of scrolling back past every category.
+    val menuFocus = remember { FocusRequester() }
+    val menuCurrentRow = menu?.let { m -> 1 + (if (m.onNowPlaying != null) 1 else 0) + m.sections.indexOf(m.current).coerceAtLeast(0) } ?: 0
+    val leftToMenu = Modifier.onPreviewKeyEvent { e ->
+        if (menu != null && e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft) {
+            if (!runCatching { menuFocus.requestFocus() }.getOrDefault(false)) {
+                scope.launch {
+                    runCatching { listState.scrollToItem(menuCurrentRow) }
+                    withFrameNanos { }
+                    runCatching { menuFocus.requestFocus() }
+                }
+            }
+            true
+        } else false
+    }
     val a = stageAccent
     Column(
         modifier
@@ -630,7 +646,7 @@ internal fun LiveCategories(
                             icon = section.stageIcon,
                             selected = section == menu.current,
                             onClick = { menu.onSelect(section) },
-                            modifier = rightKey,
+                            modifier = if (section == menu.current) rightKey.focusRequester(menuFocus) else rightKey,
                         )
                     }
                 }
@@ -645,7 +661,7 @@ internal fun LiveCategories(
                         .fillMaxWidth()
                         .padding(start = if (sheet) 8.mpx else 0.mpx, end = if (sheet) 8.mpx else 0.mpx, bottom = if (sheet) 14.mpx else 16.mpx)
                         .focusRequester(searchFocus)
-                        .then(if (query.isEmpty()) rightKey else Modifier),
+                        .then(if (query.isEmpty()) rightKey.then(leftToMenu) else Modifier),
                     height = if (sheet) 54.mpx else 48.mpx,
                     radius = if (sheet) 16.mpx else 15.mpx,
                     horizontalPadding = if (sheet) 16.mpx else 18.mpx,
@@ -663,7 +679,7 @@ internal fun LiveCategories(
                     }
                 }
                 item(key = entry.item.key.toString()) {
-                    val rowModifier = Modifier.focusRequester(rowFocusers[pos]).then(rightKey)
+                    val rowModifier = Modifier.focusRequester(rowFocusers[pos]).then(rightKey).then(leftToMenu)
                         .onFocusChanged { if (it.hasFocus) onRowFocus(index) }
                     val selected = index == selectedIndex
                     if (sheet) {

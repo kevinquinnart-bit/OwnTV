@@ -350,8 +350,8 @@ internal fun VodCast(cast: List<CastMember>, count: Int, modifier: Modifier = Mo
  */
 @Composable
 internal fun VodDetailsCard(info: VodTitleInfo?, hints: List<Pair<String, String>>, series: Boolean, modifier: Modifier = Modifier) {
-    // Kevin's copy (v1): with the mini player on, the picture box at the top of this card is where it
-    // plays, and the title's information stays underneath it.
+    // Kevin's copy (v2): with the mini player on, it plays in a box at the bottom of this card, under the
+    // title's picture and information, which stay at the top as before.
     val miniHere = tv.own.owntv.features.live.LiveVideoSlot.miniShown
     if (miniHere) {
         androidx.compose.runtime.DisposableEffect(Unit) {
@@ -359,20 +359,9 @@ internal fun VodDetailsCard(info: VodTitleInfo?, hints: List<Pair<String, String
         }
     }
     Box(modifier.stageGlass(30.mpx).padding(20.mpx)) {
-        if (miniHere && info == null) {
-            Box(
-                Modifier.fillMaxWidth().height(290.mpx).clip(RoundedCornerShape(20.mpx)).background(Color.Black)
-                    .onGloballyPositioned { tv.own.owntv.features.live.LiveVideoSlot.bounds = it.boundsInRoot() },
-            )
-        }
-        if (info != null) {
-            Column(Modifier.fillMaxSize().clipToBounds()) {
-                if (miniHere) {
-                    Box(
-                        Modifier.fillMaxWidth().height(290.mpx).clip(RoundedCornerShape(20.mpx)).background(Color.Black)
-                            .onGloballyPositioned { tv.own.owntv.features.live.LiveVideoSlot.bounds = it.boundsInRoot() },
-                    )
-                } else {
+        Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
+                if (info != null) {
                     Box(Modifier.fillMaxWidth().height(290.mpx).clip(RoundedCornerShape(20.mpx)).background(Color.Black.copy(alpha = 0.3f))) {
                         val art = info.backdropUrl ?: info.posterUrl
                         if (!art.isNullOrBlank()) {
@@ -392,29 +381,36 @@ internal fun VodDetailsCard(info: VodTitleInfo?, hints: List<Pair<String, String
                         }
                         // No name over the art without title art: the line under it already says it (#7.3).
                     }
-                }
-                Column(Modifier.padding(horizontal = 4.mpx)) {
-                    Text(
-                        HeadlineTitle.of(info.title), style = stageText(24, 800), color = StageColors.Text, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 18.mpx, bottom = 8.mpx),
-                    )
-                    VodMeta(listOfNotNull(info.year?.toString(), info.runtimeSecs?.let { vodRuntime(it) }), info.rating, info.tags, 17)
-                    if (info.genres.isNotEmpty()) {
+                    Column(Modifier.padding(horizontal = 4.mpx)) {
                         Text(
-                            info.genres.joinToString(" · "), style = stageText(16, 700), color = stageAccent.accent,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.mpx),
+                            HeadlineTitle.of(info.title), style = stageText(24, 800), color = StageColors.Text, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 18.mpx, bottom = 8.mpx),
                         )
-                    }
-                    info.plot?.takeIf { it.isNotBlank() }?.let {
-                        Text(
-                            it, style = stageText(17, 400).copy(lineHeight = (17 * 1.55f).mpxSp), color = StageColors.Body,
-                            maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 14.mpx, bottom = 18.mpx),
-                        )
-                    }
-                    if (info.cast.isNotEmpty()) {
-                        VodCast(info.cast, 5, Modifier.graphicsLayer { scaleX = 0.92f; scaleY = 0.92f; transformOrigin = TransformOrigin(0f, 0f) })
+                        VodMeta(listOfNotNull(info.year?.toString(), info.runtimeSecs?.let { vodRuntime(it) }), info.rating, info.tags, 17)
+                        if (info.genres.isNotEmpty()) {
+                            Text(
+                                info.genres.joinToString(" · "), style = stageText(16, 700), color = stageAccent.accent,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.mpx),
+                            )
+                        }
+                        info.plot?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                it, style = stageText(17, 400).copy(lineHeight = (17 * 1.55f).mpxSp), color = StageColors.Body,
+                                maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 14.mpx, bottom = 18.mpx),
+                            )
+                        }
+                        if (info.cast.isNotEmpty()) {
+                            VodCast(info.cast, 5, Modifier.graphicsLayer { scaleX = 0.92f; scaleY = 0.92f; transformOrigin = TransformOrigin(0f, 0f) })
+                        }
                     }
                 }
+            }
+            if (miniHere) {
+                Box(
+                    Modifier.padding(top = 14.mpx, bottom = 44.mpx).fillMaxWidth().aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(20.mpx)).background(Color.Black)
+                        .onGloballyPositioned { tv.own.owntv.features.live.LiveVideoSlot.bounds = it.boundsInRoot() },
+                )
             }
         }
         StageKeyHints(hints, Modifier.align(Alignment.BottomStart).padding(start = 4.mpx, bottom = 2.mpx))
