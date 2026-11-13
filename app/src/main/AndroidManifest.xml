@@ -40,6 +40,18 @@
         android:name="android.software.leanback"
         android:required="false" />
 
+    <!-- Kevin's copy: lets the Players page see which of the free UK and Irish player apps are installed. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".OwnTVApp"
         android:allowBackup="false"

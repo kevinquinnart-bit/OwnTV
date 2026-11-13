@@ -29,6 +29,17 @@
     <string name="kevin_variant_switched"><xliff:g id="from">%1$s</xliff:g> to <xliff:g id="to">%2$s</xliff:g>: <xliff:g id="why">%3$s</xliff:g></string>
     <string name="kevin_variant_reason_buffering">kept buffering</string>
     <string name="kevin_variant_reason_no_start">did not start within 12 seconds</string>
+    <string name="kevin_players_title">UK &amp; Irish players</string>
+    <string name="kevin_players_note">These play in their own apps. Back returns here.</string>
+    <string name="kevin_players_installed">Installed. OK opens it.</string>
+    <string name="kevin_players_missing">Not installed. OK finds it in the app store.</string>
+    <string name="kevin_players_no_store">Couldn\'t open the app or the app store.</string>
+    <string name="kevin_player_bbc" translatable="false">BBC iPlayer</string>
+    <string name="kevin_player_itv" translatable="false">ITVX</string>
+    <string name="kevin_player_c4" translatable="false">Channel 4</string>
+    <string name="kevin_player_c5" translatable="false">5 (Channel 5)</string>
+    <string name="kevin_player_rte" translatable="false">RTÉ Player</string>
+    <string name="kevin_player_virgin" translatable="false">Virgin Media Play</string>
     <string name="kevin_panel_menu_title">Menu</string>
     <string name="kevin_variant_reason_lost">lost its connection</string>
     <string name="kevin_variant_reopened"><xliff:g id="channel">%1$s</xliff:g> lost its connection and was opened again</string>
