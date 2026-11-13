@@ -372,25 +372,26 @@ internal fun VodDetailsCard(info: VodTitleInfo?, hints: List<Pair<String, String
                         Modifier.fillMaxWidth().height(290.mpx).clip(RoundedCornerShape(20.mpx)).background(Color.Black)
                             .onGloballyPositioned { tv.own.owntv.features.live.LiveVideoSlot.bounds = it.boundsInRoot() },
                     )
-                } else
-                Box(Modifier.fillMaxWidth().height(290.mpx).clip(RoundedCornerShape(20.mpx)).background(Color.Black.copy(alpha = 0.3f))) {
-                    val art = info.backdropUrl ?: info.posterUrl
-                    if (!art.isNullOrBlank()) {
-                        AsyncImage(
-                            model = art, contentDescription = null, contentScale = ContentScale.Crop,
-                            alignment = BiasAlignment(if (series) 1f else -0.4f, -0.2f), modifier = Modifier.fillMaxSize(),
-                        )
+                } else {
+                    Box(Modifier.fillMaxWidth().height(290.mpx).clip(RoundedCornerShape(20.mpx)).background(Color.Black.copy(alpha = 0.3f))) {
+                        val art = info.backdropUrl ?: info.posterUrl
+                        if (!art.isNullOrBlank()) {
+                            AsyncImage(
+                                model = art, contentDescription = null, contentScale = ContentScale.Crop,
+                                alignment = BiasAlignment(if (series) 1f else -0.4f, -0.2f), modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                        Box(Modifier.fillMaxSize().gradientWash(true, 0f to Color.Transparent, 0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f)))
+                        var logoFailed by remember(info.logoUrl) { mutableStateOf(false) }
+                        if (!info.logoUrl.isNullOrBlank() && !logoFailed) {
+                            AsyncImage(
+                                model = info.logoUrl, contentDescription = null, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
+                                onState = { if (it is AsyncImagePainter.State.Error) logoFailed = true },
+                                modifier = Modifier.align(Alignment.BottomStart).padding(start = 18.mpx, bottom = 14.mpx, end = 18.mpx).height(96.mpx).fillMaxWidth(),
+                            )
+                        }
+                        // No name over the art without title art: the line under it already says it (#7.3).
                     }
-                    Box(Modifier.fillMaxSize().gradientWash(true, 0f to Color.Transparent, 0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f)))
-                    var logoFailed by remember(info.logoUrl) { mutableStateOf(false) }
-                    if (!info.logoUrl.isNullOrBlank() && !logoFailed) {
-                        AsyncImage(
-                            model = info.logoUrl, contentDescription = null, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
-                            onState = { if (it is AsyncImagePainter.State.Error) logoFailed = true },
-                            modifier = Modifier.align(Alignment.BottomStart).padding(start = 18.mpx, bottom = 14.mpx, end = 18.mpx).height(96.mpx).fillMaxWidth(),
-                        )
-                    }
-                    // No name over the art without title art: the line under it already says it (#7.3).
                 }
                 Column(Modifier.padding(horizontal = 4.mpx)) {
                     Text(
