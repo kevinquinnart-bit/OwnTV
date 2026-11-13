@@ -296,20 +296,52 @@ class MovieViewModel(
         // (FOCUS_DEBOUNCE_MS: scrolling past cards must cost nothing), then reads the DB cache or TMDB.
         .transformLatest { (m, _) ->
             if (m == null) { emit(null); return@transformLatest }
-            resolvedMeta[m.id]?.let { emit(MovieMeta(m.id, it)); return@transformLatest }
+            resolvedMeta[m.id]?.let { cached ->
+                emit(MovieMeta(m.id, cached, providerDetails[m.id]))
+                if (needsProviderDetails(m, cached)) providerDetailsFor(m)?.let { emit(MovieMeta(m.id, cached, it)) }
+                return@transformLatest
+            }
             delay(tv.own.owntv.core.metadata.MetadataRepository.FOCUS_DEBOUNCE_MS)
             val cache = runCatching { metadata.resolveMovie(m) }.getOrNull()
             if (cache != null) {
                 if (resolvedMeta.size > 500) resolvedMeta.clear()
                 resolvedMeta[m.id] = cache
             }
-            emit(MovieMeta(m.id, cache))
+            emit(MovieMeta(m.id, cache, providerDetails[m.id]))
+            // Kevin's copy (v1): no description from the list or the film details service, so ask the
+            // provider for this one film's own details.
+            if (needsProviderDetails(m, cache)) providerDetailsFor(m)?.let { emit(MovieMeta(m.id, cache, it)) }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** TMDB metadata tagged with the movie id it was resolved for, so the UI never shows stale meta on a
      *  different card during the debounce window. [cache] is null while resolving or on no match. */
-    data class MovieMeta(val movieId: Long, val cache: tv.own.owntv.core.database.entity.MetadataCacheEntity?)
+    data class MovieMeta(
+        val movieId: Long,
+        val cache: tv.own.owntv.core.database.entity.MetadataCacheEntity?,
+        /** Kevin's copy (v1): the provider's own description and genres, when nothing else had them. */
+        val provider: tv.own.owntv.core.parser.XtreamClient.XtVodDetails? = null,
+    )
+
+    private val xtreamClient: tv.own.owntv.core.parser.XtreamClient by lazy {
+        org.koin.java.KoinJavaComponent.get(tv.own.owntv.core.parser.XtreamClient::class.java)
+    }
+    private val providerDetails = java.util.concurrent.ConcurrentHashMap<Long, tv.own.owntv.core.parser.XtreamClient.XtVodDetails>()
+    private val providerDetailsTried = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Long, Boolean>())
+
+    private fun needsProviderDetails(m: MovieEntity, cache: tv.own.owntv.core.database.entity.MetadataCacheEntity?): Boolean =
+        m.plot.isNullOrBlank() && cache?.overview.isNullOrBlank() && !m.remoteId.isNullOrBlank()
+
+    private suspend fun providerDetailsFor(m: MovieEntity): tv.own.owntv.core.parser.XtreamClient.XtVodDetails? {
+        providerDetails[m.id]?.let { return it }
+        if (!providerDetailsTried.add(m.id)) return null
+        val source = runCatching { sourceDao.getById(m.sourceId) }.getOrNull() ?: return null
+        if (source.type != tv.own.owntv.core.model.SourceType.XTREAM) return null
+        val details = runCatching { xtreamClient.getVodDetails(source, m.remoteId!!) }.getOrNull() ?: return null
+        if (providerDetails.size > 500) providerDetails.clear()
+        providerDetails[m.id] = details
+        return details
+    }
 
     /**
      * Poster fallback for grid/list tiles the provider gave no artwork for. Those show a placeholder

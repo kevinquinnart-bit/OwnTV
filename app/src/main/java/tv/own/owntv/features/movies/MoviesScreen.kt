@@ -2,6 +2,7 @@
 
 package tv.own.owntv.features.movies
 
+import tv.own.owntv.features.shell.components.rightToMini
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.CompositionLocalProvider
@@ -464,7 +465,14 @@ fun MoviesScreen(
     val panelShares = rememberPanelShares(PanelSection.MOVIES, settingsVm)
     val cinematicSheetPct by settingsVm.cinematicSheetWidth(PanelSection.MOVIES).collectAsStateWithLifecycle()
     val selectedMeta = selectedMovieMeta?.takeIf { it.movieId == selectedMovie?.id }?.cache
-    val titleInfo = selectedMovie?.let { movieTitleInfo(it, selectedMeta, metadataMode.tmdbWins) }
+    // Kevin's copy (v1): the provider's own description and genres fill in when nothing else had them.
+    val providerDetails = selectedMovieMeta?.takeIf { it.movieId == selectedMovie?.id }?.provider
+    val titleInfo = selectedMovie?.let { movieTitleInfo(it, selectedMeta, metadataMode.tmdbWins) }?.let { info ->
+        if (providerDetails == null) info else info.copy(
+            plot = info.plot?.takeIf { it.isNotBlank() } ?: providerDetails.plot,
+            genres = info.genres.ifEmpty { providerDetails.genre?.split(',', '/')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty() },
+        )
+    }
     val (categoryEntries, groupsHeading) = vodCategoryEntries(railItems, railCounts, playlistMarks, series = false)
     val headerLabel = if (selectedItem?.key is LiveKey.Folder || selectedItem?.key is LiveKey.Custom) ProviderTags.parse(selectedLabel).name else selectedLabel
 
@@ -667,6 +675,7 @@ fun MoviesScreen(
                                         onClick = { startMovie(movie) },
                                         onLongClick = { openMenu(movie, index) },
                                         modifier = Modifier
+                                            .rightToMini(index % columns == columns - 1 || index == movies.itemCount - 1)
                                             .gridFocusTarget(
                                                 itemId = movie.id, index = index,
                                                 contextId = contextMovieId, contextFocus = contextFocus,
@@ -784,6 +793,7 @@ fun MoviesScreen(
                                     onClick = { startMovie(movie) },
                                     onLongClick = { openMenu(movie, index) },
                                     modifier = Modifier
+                                        .rightToMini(true)
                                         .gridFocusTarget(
                                             itemId = movie.id, index = index,
                                             contextId = contextMovieId, contextFocus = contextFocus,
@@ -836,6 +846,7 @@ fun MoviesScreen(
                                     onClick = { startMovie(movie) },
                                     onLongClick = { openMenu(movie, index) },
                                     modifier = Modifier
+                                        .rightToMini(index % columns == columns - 1 || index == movies.itemCount - 1)
                                         .gridFocusTarget(
                                             itemId = movie.id, index = index,
                                             contextId = contextMovieId, contextFocus = contextFocus,

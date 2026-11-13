@@ -1677,7 +1677,10 @@ fun OwnTVShell(
       }
 
       if (!(multiview == null && playerMode == PlayerMode.MINI)) {
-          androidx.compose.runtime.SideEffect { tv.own.owntv.features.live.LiveVideoSlot.miniShown = false }
+          androidx.compose.runtime.SideEffect {
+              tv.own.owntv.features.live.LiveVideoSlot.miniShown = false
+              tv.own.owntv.features.live.LiveVideoSlot.enterMini = null
+          }
       }
       if (multiview == null && (playerMode == PlayerMode.FULLSCREEN || playerMode == PlayerMode.MINI)) {
         val isFull = playerMode == PlayerMode.FULLSCREEN
@@ -1688,7 +1691,10 @@ fun OwnTVShell(
         // while it holds focus, so its buttons fit. Both are measured against this layer's own origin,
         // so they line up whatever lies around them.
         val slot = tv.own.owntv.features.live.LiveVideoSlot.bounds
-        androidx.compose.runtime.SideEffect { tv.own.owntv.features.live.LiveVideoSlot.miniShown = !isFull }
+        androidx.compose.runtime.SideEffect {
+            tv.own.owntv.features.live.LiveVideoSlot.miniShown = !isFull
+            tv.own.owntv.features.live.LiveVideoSlot.enterMini = if (!isFull) enterNowPlaying else null
+        }
         val inSlot = !isFull && slot != null && (
             (zapSource == MainSection.LIVE_TV && (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.EPG)) ||
                 // Kevin's copy (v3): More's box beside a Settings category, whatever is playing.
@@ -1778,8 +1784,23 @@ fun OwnTVShell(
             }
             // The Guide's LIVE badge and channel line stay on top of the picture in its box.
             if (inSlot && selectedSection != MainSection.MORE) {
-                tv.own.owntv.features.live.LiveVideoSlot.label?.let {
-                    tv.own.owntv.features.epg.GuideVideoOverlay(channelLine = it.line, nowTitle = it.nowTitle)
+                val vod = selectedSection == MainSection.MOVIES || selectedSection == MainSection.SERIES
+                if (vod) {
+                    // Kevin's copy (v1): in the Films / Series card the box names the channel and what is on,
+                    // with the Guide's LIVE badge and line.
+                    if (zapSource == MainSection.LIVE_TV) {
+                        val held by liveVm.heldChannel.collectAsStateWithLifecycle()
+                        val keyed by liveVm.nowNextKeyed.collectAsStateWithLifecycle()
+                        (held ?: previewChannel)?.let { ch ->
+                            val nowTitle = keyed.second.takeIf { keyed.first == ch.id }?.now
+                                ?.takeIf { System.currentTimeMillis() < it.stopMs }?.title
+                            tv.own.owntv.features.epg.GuideVideoOverlay(channelLine = ch.name, nowTitle = nowTitle)
+                        }
+                    }
+                } else {
+                    tv.own.owntv.features.live.LiveVideoSlot.label?.let {
+                        tv.own.owntv.features.epg.GuideVideoOverlay(channelLine = it.line, nowTitle = it.nowTitle)
+                    }
                 }
             }
             if (isFull && !autoFrameRate && !afrPrompted) {

@@ -256,6 +256,43 @@ class XtreamClient(private val http: HttpClient) {
         return XtSeriesInfo(numberBlankEpisodes(episodes))
     }
 
+    /** Kevin's copy (v1): a film's own description and genres from the provider (`get_vod_info`), for
+     *  titles whose list entry carried none. Null when the panel has nothing for it. */
+    data class XtVodDetails(val plot: String?, val genre: String?)
+
+    suspend fun getVodDetails(s: SourceEntity, vodId: String): XtVodDetails? {
+        var plot: String? = null
+        var description: String? = null
+        var genre: String? = null
+        http.get(api(s, "get_vod_info", "&vod_id=$vodId"), s.userAgent) { input ->
+            JsonReader(input.reader(Charsets.UTF_8)).use { reader ->
+                reader.isLenient = true
+                if (reader.peek() != JsonToken.BEGIN_OBJECT) { reader.skipValue(); return@use }
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    if (reader.nextName() == "info" && reader.peek() == JsonToken.BEGIN_OBJECT) {
+                        reader.beginObject()
+                        while (reader.hasNext()) {
+                            when (reader.nextName()) {
+                                "plot" -> plot = reader.nextScalarStringOrNull()
+                                "description" -> description = reader.nextScalarStringOrNull()
+                                "genre" -> genre = reader.nextScalarStringOrNull()
+                                else -> reader.skipValue()
+                            }
+                        }
+                        reader.endObject()
+                    } else {
+                        reader.skipValue()
+                    }
+                }
+                reader.endObject()
+            }
+        }
+        val text = plot?.takeIf { it.isNotBlank() } ?: description?.takeIf { it.isNotBlank() }
+        val genres = genre?.takeIf { it.isNotBlank() }
+        return if (text == null && genres == null) null else XtVodDetails(text?.trim(), genres?.trim())
+    }
+
     /** `episodes` as `{ season → [episodes] }`. */
     private fun readEpisodesObject(reader: JsonReader, out: MutableList<XtEpisode>) {
         reader.beginObject()

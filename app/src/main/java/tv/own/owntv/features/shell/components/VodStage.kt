@@ -5,6 +5,7 @@ import tv.own.owntv.ui.stage.StageTitleArt
 import tv.own.owntv.ui.stage.backdropLeftWash
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clip
@@ -381,7 +385,21 @@ internal fun VodDetailsCard(info: VodTitleInfo?, hints: List<Pair<String, String
                         }
                         // No name over the art without title art: the line under it already says it (#7.3).
                     }
-                    Column(Modifier.padding(horizontal = 4.mpx)) {
+                    // Kevin's copy (v1): text that does not fit rolls slowly up to its end and back, so the
+                    // whole description can be read without moving off the title.
+                    val infoScroll = androidx.compose.foundation.rememberScrollState()
+                    LaunchedEffect(info.title, info.plot, infoScroll.maxValue) {
+                        infoScroll.scrollTo(0)
+                        val travel = infoScroll.maxValue
+                        if (travel <= 0) return@LaunchedEffect
+                        while (true) {
+                            kotlinx.coroutines.delay(4_000)
+                            infoScroll.animateScrollTo(travel, androidx.compose.animation.core.tween(durationMillis = (travel * 30).coerceIn(3_000, 30_000), easing = androidx.compose.animation.core.LinearEasing))
+                            kotlinx.coroutines.delay(4_000)
+                            infoScroll.animateScrollTo(0, androidx.compose.animation.core.tween(durationMillis = 800))
+                        }
+                    }
+                    Column(Modifier.padding(horizontal = 4.mpx).weight(1f, fill = false).verticalScroll(infoScroll, enabled = false)) {
                         Text(
                             HeadlineTitle.of(info.title), style = stageText(24, 800), color = StageColors.Text, maxLines = 2, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(top = 18.mpx, bottom = 8.mpx),
@@ -396,7 +414,7 @@ internal fun VodDetailsCard(info: VodTitleInfo?, hints: List<Pair<String, String
                         info.plot?.takeIf { it.isNotBlank() }?.let {
                             Text(
                                 it, style = stageText(17, 400).copy(lineHeight = (17 * 1.55f).mpxSp), color = StageColors.Body,
-                                maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 14.mpx, bottom = 18.mpx),
+                                modifier = Modifier.padding(top = 14.mpx, bottom = 18.mpx),
                             )
                         }
                         if (info.cast.isNotEmpty()) {
@@ -652,3 +670,14 @@ internal class VodStepper(private val scope: CoroutineScope, private val state: 
         }
     }
 }
+
+/** Kevin's copy (v1): ▶ from the right-most title of a row moves onto the mini player, when one is on. */
+internal fun Modifier.rightToMini(lastInRow: Boolean): Modifier = this.then(
+    Modifier.onPreviewKeyEvent { e ->
+        if (lastInRow && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+            e.key == androidx.compose.ui.input.key.Key.DirectionRight && tv.own.owntv.features.live.LiveVideoSlot.miniShown
+        ) {
+            tv.own.owntv.features.live.LiveVideoSlot.enterMini?.let { it(); true } ?: false
+        } else false
+    },
+)

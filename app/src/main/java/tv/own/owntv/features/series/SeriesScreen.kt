@@ -2,6 +2,7 @@
 
 package tv.own.owntv.features.series
 
+import tv.own.owntv.features.shell.components.rightToMini
 import tv.own.owntv.ui.stage.backdropLeftWash
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.heightIn
@@ -702,6 +703,7 @@ private fun SeriesGrid(
                                         onClick = { onOpenAt(index); vm.openSeries(show) },
                                         onLongClick = { openMenu(show, index) },
                                         modifier = Modifier
+                                            .rightToMini(index % columns == columns - 1 || index == series.itemCount - 1)
                                             .gridFocusTarget(
                                                 itemId = show.id, index = index,
                                                 contextId = contextSeriesId, contextFocus = contextFocus,
@@ -817,6 +819,7 @@ private fun SeriesGrid(
                                     onClick = { onOpenAt(index); vm.openSeries(show) },
                                     onLongClick = { openMenu(show, index) },
                                     modifier = Modifier
+                                        .rightToMini(true)
                                         .gridFocusTarget(
                                             itemId = show.id, index = index,
                                             contextId = contextSeriesId, contextFocus = contextFocus,
@@ -866,6 +869,7 @@ private fun SeriesGrid(
                                     onClick = { onOpenAt(index); vm.openSeries(show) },
                                     onLongClick = { openMenu(show, index) },
                                     modifier = Modifier
+                                        .rightToMini(index % columns == columns - 1 || index == series.itemCount - 1)
                                         .gridFocusTarget(
                                             itemId = show.id, index = index,
                                             contextId = contextSeriesId, contextFocus = contextFocus,

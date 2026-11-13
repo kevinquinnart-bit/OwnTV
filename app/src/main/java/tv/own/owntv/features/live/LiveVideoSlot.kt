@@ -22,4 +22,7 @@ object LiveVideoSlot {
     /** Kevin's copy (v1): the mini player is on (a channel docked small), so Films and Series give it
      *  their info card's picture box. Set by the shell. */
     var miniShown by mutableStateOf(false)
+
+    /** Kevin's copy (v1): moves focus onto the mini player (▶ from the Films / Series titles). Set by the shell. */
+    var enterMini: (() -> Unit)? = null
 }
