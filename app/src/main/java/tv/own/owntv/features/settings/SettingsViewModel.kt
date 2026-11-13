@@ -538,7 +538,7 @@ class SettingsViewModel(
     )
     fun setTimeshiftWindowMinutes(minutes: Int) { viewModelScope.launch { settings.setTimeshiftWindowMinutes(minutes) } }
     val timeshiftResumeMode: StateFlow<SettingsRepository.ResumeMode> =
-        settings.timeshiftResumeMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsRepository.ResumeMode.ASK)
+        settings.timeshiftResumeMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsRepository.ResumeMode.NEVER)
     fun setTimeshiftResumeMode(name: String) {
         viewModelScope.launch {
             settings.setTimeshiftResumeMode(runCatching { SettingsRepository.ResumeMode.valueOf(name) }.getOrDefault(SettingsRepository.ResumeMode.ASK))

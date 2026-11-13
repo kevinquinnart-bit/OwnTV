@@ -448,7 +448,8 @@ class SettingsRepository(private val context: Context, private val localeStore: 
         val LIVE_LEFT_RIGHT_REWINDS = booleanPreferencesKey("live_left_right_rewinds")
         val TIMESHIFT_ENABLED = booleanPreferencesKey("timeshift_enabled")
         val TIMESHIFT_WINDOW_MINUTES = intPreferencesKey("timeshift_window_minutes")
-        val TIMESHIFT_RESUME_MODE = stringPreferencesKey("timeshift_resume_mode")
+        // Kevin's copy (v1): a new key, so every install starts on "go live" whatever it had saved.
+        val TIMESHIFT_RESUME_MODE = stringPreferencesKey("timeshift_resume_mode_v2")
         val SURROUND_SOUND = booleanPreferencesKey("surround_sound")
         val SURROUND_MODE = stringPreferencesKey("surround_mode")
         val AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
@@ -1156,7 +1157,7 @@ class SettingsRepository(private val context: Context, private val localeStore: 
 
     /** N4 — coming back to a channel whose saved copy was kept: ask, resume where you were, or go live. */
     val timeshiftResumeMode: Flow<ResumeMode> = prefsFlow { prefs ->
-        prefs[Keys.TIMESHIFT_RESUME_MODE]?.let { runCatching { ResumeMode.valueOf(it) }.getOrNull() } ?: ResumeMode.ASK
+        prefs[Keys.TIMESHIFT_RESUME_MODE]?.let { runCatching { ResumeMode.valueOf(it) }.getOrNull() } ?: ResumeMode.NEVER
     }
 
     suspend fun setTimeshiftResumeMode(mode: ResumeMode) {
