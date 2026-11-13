@@ -141,6 +141,10 @@ fun ChannelListOverlay(
                         // pushing outward from the End panel closes it. Back always closes.
                         if (!alignEnd && onOpenCategories != null) onOpenCategories() else onDismiss()
                         true
+                    } else if (!alignEnd && e.type == KeyEventType.KeyDown && e.key.horizontalDirection(layoutDirection) == HorizontalDirection.END) {
+                        // Kevin's copy (v1): ▶ on the left panel closes it, back to the picture.
+                        onDismiss()
+                        true
                     } else false
                 }
                 .padding(horizontal = 16.mpx, vertical = 26.mpx),

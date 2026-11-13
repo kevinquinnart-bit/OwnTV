@@ -533,7 +533,11 @@ fun LiveScreen(
     val scheduleFocus = remember { FocusRequester() }
     var openProgramme by remember { mutableStateOf<Pair<ChannelEntity, tv.own.owntv.core.parser.XtEpgEntry>?>(null) }
     // Back closes the sheet: one level out.
-    androidx.activity.compose.BackHandler(enabled = categoriesOpen) { categoriesOpen = false; focusCurrentRow() }
+    // Kevin's copy (v3): when the menu sits in this panel, Back from it goes to the shell, which offers
+    // to close the app (as Back on the old menu did). Closing the panel here instead meant Back only
+    // ever opened and shut it, and the close-app question never came.
+    val panelHoldsMenu = tv.own.owntv.features.shell.components.LocalPanelMenu.current != null
+    androidx.activity.compose.BackHandler(enabled = categoriesOpen && !panelHoldsMenu) { categoriesOpen = false; focusCurrentRow() }
 
     // Kevin's copy (v2): the shell's Back opens this screen's one left panel (the rail is not drawn here).
     androidx.compose.runtime.SideEffect {

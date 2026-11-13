@@ -54,6 +54,8 @@ fun CategoryBrowserOverlay(
     currentKey: LiveKey?,
     onSelect: (LiveKey) -> Unit,
     onDismiss: () -> Unit,
+    /** Kevin's copy (v1): ▶ closes the whole left panel, not just this step of it. */
+    onClose: () -> Unit = onDismiss,
     modifier: Modifier = Modifier,
 ) {
     val layoutDirection = LocalLayoutDirection.current
@@ -97,7 +99,7 @@ fun CategoryBrowserOverlay(
             listState = listState,
             onSelect = { onSelect(entries[it].item.key) },
             onLongSelect = {},
-            onNavigateRight = {},
+            onNavigateRight = { onClose() },
             focusRequester = listFocus,
             focusRowIndex = focusRow,
             onRowFocused = { focusRow = null },

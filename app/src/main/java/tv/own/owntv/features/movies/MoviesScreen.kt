@@ -469,7 +469,11 @@ fun MoviesScreen(
     val headerLabel = if (selectedItem?.key is LiveKey.Folder || selectedItem?.key is LiveKey.Custom) ProviderTags.parse(selectedLabel).name else selectedLabel
 
     // Back closes the sheet: one level out.
-    androidx.activity.compose.BackHandler(enabled = categoriesOpen) { categoriesOpen = false; focusCurrentTitle() }
+    // Kevin's copy (v3): when the menu sits in this panel, Back from it goes to the shell, which offers
+    // to close the app (as Back on the old menu did). Closing the panel here instead meant Back only
+    // ever opened and shut it, and the close-app question never came.
+    val panelHoldsMenu = tv.own.owntv.features.shell.components.LocalPanelMenu.current != null
+    androidx.activity.compose.BackHandler(enabled = categoriesOpen && !panelHoldsMenu) { categoriesOpen = false; focusCurrentTitle() }
 
     // Kevin's copy (v2): the shell's Back opens this screen's one left panel (the rail is not drawn here).
     androidx.compose.runtime.SideEffect {

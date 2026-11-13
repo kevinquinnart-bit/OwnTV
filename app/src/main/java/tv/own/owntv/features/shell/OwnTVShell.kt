@@ -2027,6 +2027,7 @@ fun OwnTVShell(
                             currentKey = zapListKey ?: previewChannel?.categoryId?.let { tv.own.owntv.core.live.LiveKey.Folder(it) },
                             onSelect = { key -> liveVm.loadChannelsForCategory(key) },
                             onDismiss = { liveVm.hideCategoryBrowser() },
+                            onClose = { liveVm.hideCategoryBrowser(); showChannelList = false },
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else if (zapChannels.isNotEmpty()) {
