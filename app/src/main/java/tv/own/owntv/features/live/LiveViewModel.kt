@@ -2268,19 +2268,68 @@ class LiveViewModel(
     private var variantLongStall: Job? = null
     private var variantStartTimer: Job? = null
 
+    // Kevin's copy (v2): a channel that has played and then loses its connection (the provider ends the
+    // stream) is opened again by itself instead of stopping on "Playback error". With other versions it
+    // moves to the next one; with one version it reopens the same one. It keeps trying, a little more
+    // slowly each time (2, 5, then every 10 seconds), until it plays again or the channel is changed.
+    // A rewound channel or a catch-up programme is left alone, as is a channel that never played.
+    private var recoverVersion: ChannelEntity? = null
+    private var recoverPlayed = false
+    private var recoverTries = 0
+    private var recoverPlayingSince = 0L
+    private var recoverJob: Job? = null
+
     private fun armVariantWatch(versions: List<ChannelEntity>, shownName: String) {
         variantVersions = if (versions.size > 1) versions else emptyList()
         variantAt = 0
         variantShownName = shownName
+        recoverVersion = versions.firstOrNull()
+        recoverPlayed = false
+        recoverTries = 0
+        recoverPlayingSince = 0L
+        recoverJob?.cancel()
+        recoverJob = null
         resetVariantStalls()
         armVariantStart()
     }
 
     private fun disarmVariantWatch() {
         variantVersions = emptyList()
+        recoverVersion = null
+        recoverJob?.cancel()
+        recoverJob = null
         resetVariantStalls()
         variantStartTimer?.cancel()
         variantStartTimer = null
+    }
+
+    /** The engine on screen gave up on the channel: open it again (see [recoverVersion]). */
+    private fun onLiveGaveUp() {
+        val single = recoverVersion ?: return
+        if (!recoverPlayed && variantVersions.isEmpty()) return // never played: the error stays, as before
+        if (_catchupActive.value || timeshift.isRewound) return
+        if (recoverJob?.isActive == true) return
+        val wait = when (recoverTries) { 0 -> 2_000L; 1 -> 5_000L; else -> 10_000L }
+        recoverTries++
+        recoverJob = viewModelScope.launch {
+            delay(wait)
+            if (recoverVersion == null) return@launch // the channel was changed or stopped meanwhile
+            if (variantVersions.size >= 2) {
+                stepDownVariant(tv.own.owntv.R.string.kevin_variant_reason_lost)
+            } else {
+                runCatching {
+                    tv.own.owntv.player.PlaybackErrorLog.event(
+                        appContext,
+                        engine = if (previewEngine.isPlaying.value || previewEngine.buffering.value) ENGINE_EXO else ENGINE_MPV,
+                        live = true,
+                        reason = tv.own.owntv.player.PlayerFailureReason.LIVE_FALLBACK,
+                        detail = appContext.getString(tv.own.owntv.R.string.kevin_variant_reopened, single.name),
+                    )
+                }
+                resetVariantStalls()
+                live.launch { live.start(single.copy(name = variantShownName), getSource(single.sourceId)) }
+            }
+        }
     }
 
     /** A version that has not played [VARIANT_START_MS] after it was opened gives way to the next. */
@@ -2306,8 +2355,16 @@ class LiveViewModel(
     }
 
     private fun onVariantPlayback(buffering: Boolean, playing: Boolean) {
-        if (variantVersions.isEmpty()) return
         val now = android.os.SystemClock.elapsedRealtime()
+        // A minute of good picture before a drop starts the reconnect waits again from the shortest.
+        if (playing && !buffering) {
+            if (recoverVersion != null) recoverPlayed = true
+            if (recoverPlayingSince == 0L) recoverPlayingSince = now
+        } else {
+            if (recoverPlayingSince > 0L && now - recoverPlayingSince >= 60_000L) recoverTries = 0
+            recoverPlayingSince = 0L
+        }
+        if (variantVersions.isEmpty()) return
         if (playing && !buffering) {
             // Only a stall after the picture has played counts; the first load is not a stall.
             if (variantHasPlayed && variantBufferingSince > 0L && now - variantBufferingSince >= VARIANT_STALL_MS) {
@@ -2364,6 +2421,11 @@ class LiveViewModel(
             }
                 .distinctUntilChanged()
                 .collect { (buffering, playing) -> onVariantPlayback(buffering, playing) }
+        }
+        viewModelScope.launch {
+            combine(previewEngine.error, player.error) { a, b -> a != null || b != null }
+                .distinctUntilChanged()
+                .collect { failed -> if (failed) onLiveGaveUp() }
         }
     }
 

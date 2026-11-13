@@ -29,6 +29,8 @@
     <string name="kevin_variant_switched"><xliff:g id="from">%1$s</xliff:g> to <xliff:g id="to">%2$s</xliff:g>: <xliff:g id="why">%3$s</xliff:g></string>
     <string name="kevin_variant_reason_buffering">kept buffering</string>
     <string name="kevin_variant_reason_no_start">did not start within 12 seconds</string>
+    <string name="kevin_variant_reason_lost">lost its connection</string>
+    <string name="kevin_variant_reopened"><xliff:g id="channel">%1$s</xliff:g> lost its connection and was opened again</string>
     <!-- Settings › EPG Sources › Add EPG (Kevin's copy): a free guide filled in with one press. Channels are matched to it by name. -->
     <string name="kevin_free_guides">Free guides</string>
     <string name="kevin_free_guides_line">Fill in a free UK or Irish guide</string>
