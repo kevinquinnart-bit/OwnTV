@@ -413,14 +413,12 @@ internal fun BottomBar(
                     }
                     Spacer(Modifier.width(12.dp))
                     LiveStateBadge(timeshiftOffsetSec)
-                    if (transport != null) { Spacer(Modifier.width(12.dp)); transport() }
                 }
                 Spacer(Modifier.height(10.dp))
             }
             !isLive && duration > 0 -> {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) { VodTimeline(player, position, duration, seekFocus) }
-                    if (transport != null) { Spacer(Modifier.width(12.dp)); transport() }
                 }
                 Spacer(Modifier.height(10.dp))
             }
@@ -429,13 +427,7 @@ internal fun BottomBar(
             isLive && !badgeInHeader -> {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                     LiveStateBadge(timeshiftOffsetSec)
-                    if (transport != null) { Spacer(Modifier.width(12.dp)); transport() }
                 }
-                Spacer(Modifier.height(10.dp))
-            }
-            // The badge sits in the header row: the transport still gets a row of its own, at the right.
-            transport != null -> {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { transport() }
                 Spacer(Modifier.height(10.dp))
             }
         }
@@ -493,6 +485,8 @@ internal fun BottomBar(
                     }
                 }
             }
+            // Kevin's copy (v3): play / pause, rewind and forward close the left group of buttons.
+            if (transport != null) { Spacer(Modifier.width(12.dp)); transport() }
             Spacer(Modifier.weight(1f))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // H2 — the ORDER is core's, exactly as in the media cluster above. Each control

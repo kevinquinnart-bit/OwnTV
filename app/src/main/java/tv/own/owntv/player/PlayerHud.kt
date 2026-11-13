@@ -443,7 +443,7 @@ fun PlayerHud(
                 error != null -> runCatching { retryFocus.requestFocus() }
                 // Falls back to Play when no timeline is drawn after all (no duration yet, say).
                 toSeek -> runCatching { seekFocus.requestFocus() }.onFailure { runCatching { playFocus.requestFocus() } }
-                isLive -> runCatching { holdFocus.requestFocus() }.onFailure { runCatching { playFocus.requestFocus() } }
+                isLive || onScrubLive != null -> runCatching { holdFocus.requestFocus() }.onFailure { runCatching { playFocus.requestFocus() } }
                 else -> runCatching { playFocus.requestFocus() }
             }
         } else runCatching { catchFocus.requestFocus() }
@@ -575,7 +575,8 @@ fun PlayerHud(
                 // even while rewound (when the engine is playing a file and calls it not live), so that
                 // is what the keys scrub; only without one does a film's seek bar apply.
                 !controlsVisible && error == null && (e.key == Key.DirectionLeft || e.key == Key.DirectionRight) &&
-                    (if (onScrubLive != null) liveLeftRightRewinds else !isLive && duration > 0L) -> {
+                    // Kevin's copy (v3): never on a live channel — ◀ there opens the left panel and ▶ does nothing.
+                    (onScrubLive == null && !isLive && duration > 0L) -> {
                     val back = e.key == Key.DirectionLeft
                     if (onScrubLive != null) {
                         onScrubLive(if (back) LIVE_SCRUB_STEP_SEC else -LIVE_SCRUB_STEP_SEC)
@@ -652,7 +653,7 @@ fun PlayerHud(
         if (controlsVisible) {
             // Where focus rests while the pop-up is only being read: ▼ goes into the buttons, ▲ changes
             // channel, ◀ opens the left panel, OK closes the pop-up, ▶ does nothing.
-            if (isLive && error == null) {
+            if ((isLive || onScrubLive != null) && error == null) {
                 Box(
                     Modifier.size(1.dp).focusRequester(holdFocus).focusable().onKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
