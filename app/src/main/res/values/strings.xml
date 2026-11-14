@@ -106,7 +106,8 @@
     <string name="kevin_stremio_add">Add an add-on…</string>
     <string name="kevin_stremio_remove">Remove an add-on…</string>
     <string name="kevin_stremio_add_title">Add a Stremio add-on</string>
-    <string name="kevin_stremio_add_steps">On your phone, open <xliff:g id="url">%1$s</xliff:g> (or scan the code), paste the add-on\'s address and enter code <xliff:g id="code">%2$s</xliff:g>.</string>
+    <string name="kevin_stremio_add_open">On your phone, scan the square, or open this address:</string>
+    <string name="kevin_stremio_add_code">Paste the add-on\'s address there, then enter this code:</string>
     <string name="kevin_stremio_type_here">Type it here instead</string>
     <string name="kevin_stremio_address_label">Add-on address (ends in manifest.json)</string>
     <string name="kevin_stremio_added">Added <xliff:g id="name">%1$s</xliff:g></string>

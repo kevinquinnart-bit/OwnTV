@@ -173,7 +173,11 @@ private fun AddView(addons: StremioAddons, onDone: () -> Unit) {
             }
             Column(verticalArrangement = Arrangement.spacedBy(12.mpx)) {
                 if (url != null) {
-                    Text(stringResource(R.string.kevin_stremio_add_steps, url, inbox.code), style = stageText(19, 500), color = StageColors.Text)
+                    // Each thing to read is on its own line, and the code is big enough to read from the sofa.
+                    Text(stringResource(R.string.kevin_stremio_add_open), style = stageText(19, 500), color = StageColors.Text)
+                    Text(url.removePrefix("http://").removeSuffix("/"), style = stageText(28, 700), color = StageColors.Text)
+                    Text(stringResource(R.string.kevin_stremio_add_code), style = stageText(19, 500), color = StageColors.Text)
+                    Text(inbox.code.toList().joinToString(" "), style = stageText(64, 800), color = StageColors.Text)
                 } else if (started == false) {
                     Text(stringResource(R.string.kevin_stremio_server_failed), style = stageText(17, 500), color = StageColors.Danger)
                 }

@@ -10,6 +10,7 @@
 ## Unreleased
 
 ### ✨ New features
+- **🔢 Add an add-on: the code and the phone address are now in big text, each on its own line**
 - **🧲 Play best stream now plays torrents too, after the web streams**
 - **▶️ Play best stream on a film or an episode: tries the add-ons' streams best first until one plays, in English with English subtitles**
 - **📋 One left panel everywhere on Live TV, Films and Series (also when categories open as a pop-up); ◀ opens it, ▶ closes it**
