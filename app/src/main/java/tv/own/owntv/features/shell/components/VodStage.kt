@@ -61,7 +61,6 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
-import coil3.compose.AsyncImagePainter
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.withFrameNanos
@@ -366,25 +365,7 @@ internal fun VodDetailsCard(info: VodTitleInfo?, hints: List<Pair<String, String
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
                 if (info != null) {
-                    Box(Modifier.fillMaxWidth().height(290.mpx).clip(RoundedCornerShape(20.mpx)).background(Color.Black.copy(alpha = 0.3f))) {
-                        val art = info.backdropUrl ?: info.posterUrl
-                        if (!art.isNullOrBlank()) {
-                            AsyncImage(
-                                model = art, contentDescription = null, contentScale = ContentScale.Crop,
-                                alignment = BiasAlignment(if (series) 1f else -0.4f, -0.2f), modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                        Box(Modifier.fillMaxSize().gradientWash(true, 0f to Color.Transparent, 0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f)))
-                        var logoFailed by remember(info.logoUrl) { mutableStateOf(false) }
-                        if (!info.logoUrl.isNullOrBlank() && !logoFailed) {
-                            AsyncImage(
-                                model = info.logoUrl, contentDescription = null, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
-                                onState = { if (it is AsyncImagePainter.State.Error) logoFailed = true },
-                                modifier = Modifier.align(Alignment.BottomStart).padding(start = 18.mpx, bottom = 14.mpx, end = 18.mpx).height(96.mpx).fillMaxWidth(),
-                            )
-                        }
-                        // No name over the art without title art: the line under it already says it (#7.3).
-                    }
+                    // Kevin's copy (v3): no picture here. The name and the details start at the top of the card.
                     // Kevin's copy (v1): text that does not fit rolls slowly up to its end and back, so the
                     // whole description can be read without moving off the title.
                     val infoScroll = androidx.compose.foundation.rememberScrollState()
@@ -402,7 +383,7 @@ internal fun VodDetailsCard(info: VodTitleInfo?, hints: List<Pair<String, String
                     Column(Modifier.padding(horizontal = 4.mpx).weight(1f, fill = false).verticalScroll(infoScroll, enabled = false)) {
                         Text(
                             HeadlineTitle.of(info.title), style = stageText(24, 800), color = StageColors.Text, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 18.mpx, bottom = 8.mpx),
+                            modifier = Modifier.padding(top = 4.mpx, bottom = 8.mpx),
                         )
                         VodMeta(listOfNotNull(info.year?.toString(), info.runtimeSecs?.let { vodRuntime(it) }), info.rating, info.tags, 17)
                         if (info.genres.isNotEmpty()) {
@@ -570,8 +551,14 @@ internal fun VodOptionsMenu(
     artWidth: Dp = 52.mpx,
     artHeight: Dp = 78.mpx,
     firstFocusKey: String = "favourite",
+    /**
+     * Kevin's copy: when given, the menu opens short. Only these actions show, in this order and
+     * without group labels (ones that can't be used are left out); "More options…" shows the rest.
+     */
+    shortKeys: List<String> = emptyList(),
 ) {
     val focus = remember { FocusRequester() }
+    var showAll by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     val locale = androidx.compose.ui.text.intl.Locale.current.platformLocale
     val labels = listOf(
@@ -579,7 +566,8 @@ internal fun VodOptionsMenu(
         R.string.content_menu_group_organise, R.string.content_menu_group_details,
     ).map { stringResource(it).uppercase(locale) }
     val ordered = arranged(menu, actions)
-    val focusKey = ordered.firstOrNull { it.key == firstFocusKey && it.key !in disabled }?.key ?: ordered.firstOrNull { it.key !in disabled }?.key
+    val focusKey = shortKeys.firstOrNull { k -> ordered.any { it.key == k && it.key !in disabled } }
+        ?: ordered.firstOrNull { it.key == firstFocusKey && it.key !in disabled }?.key ?: ordered.firstOrNull { it.key !in disabled }?.key
     GuideMenuHost(x = x, top = top, width = 540.mpx, onDismiss = onDismiss) {
         StageMenuHeader(
             title = title, subtitle = subtitle,
@@ -589,15 +577,31 @@ internal fun VodOptionsMenu(
                 }
             },
         )
-        var previousGroup: Int? = null
-        ordered.forEach { action ->
-            if (action.group != previousGroup) StageGroupLabel(labels[action.group])
-            previousGroup = action.group
+        val short = shortKeys.mapNotNull { k -> ordered.firstOrNull { it.key == k && it.key !in disabled } }
+        val rest = if (short.isEmpty()) ordered else ordered.filterNot { it in short }
+        short.forEach { action ->
             StageMenuItem(
-                text = action.label, icon = action.icon, value = values[action.key],
-                enabled = action.key !in disabled, onClick = action.onClick,
+                text = action.label, icon = action.icon, value = values[action.key], onClick = action.onClick,
                 modifier = if (action.key == focusKey) Modifier.focusRequester(focus) else Modifier,
             )
+        }
+        if (short.isNotEmpty() && rest.isNotEmpty()) {
+            StageMenuItem(
+                text = stringResource(if (showAll) R.string.kevin_fewer_options else R.string.kevin_more_options),
+                icon = OwnTVIcon.MORE, onClick = { showAll = !showAll },
+            )
+        }
+        if (short.isEmpty() || showAll) {
+            var previousGroup: Int? = null
+            rest.forEach { action ->
+                if (action.group != previousGroup) StageGroupLabel(labels[action.group])
+                previousGroup = action.group
+                StageMenuItem(
+                    text = action.label, icon = action.icon, value = values[action.key],
+                    enabled = action.key !in disabled, onClick = action.onClick,
+                    modifier = if (short.isEmpty() && action.key == focusKey) Modifier.focusRequester(focus) else Modifier,
+                )
+            }
         }
     }
 }

@@ -10,6 +10,8 @@
 ## Unreleased
 
 ### ✨ New features
+- **🧹 Hold OK on a film, show or episode: a short list with Play best stream first; More options… shows the rest**
+- **🖼️ Films and Series: no big picture in the details card; the name and details start at the top**
 - **🔢 Add an add-on: the code and the phone address are now in big text, each on its own line**
 - **🧲 Play best stream now plays torrents too, after the web streams**
 - **▶️ Play best stream on a film or an episode: tries the add-ons' streams best first until one plays, in English with English subtitles**

@@ -1053,6 +1053,7 @@ fun MoviesScreen(
                 "delete_subtitles".takeIf { contextMovieSubs.isEmpty() },
             ),
             onDismiss = { contextMovie = null },
+            shortKeys = listOf("addon_play", "play_trailer", "favourite", "mark_watched", "download", "tmdb_details"),
         )
     }
 

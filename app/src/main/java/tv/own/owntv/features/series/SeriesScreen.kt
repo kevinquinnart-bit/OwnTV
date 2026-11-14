@@ -1012,6 +1012,7 @@ private fun SeriesGrid(
                 "with_actor".takeIf { tv.own.owntv.core.metadata.MetadataCast.parse(cacheForS?.castJson).isEmpty() },
             ),
             onDismiss = { contextSeries = null },
+            shortKeys = listOf("play_trailer", "favourite", "download", "tmdb_details"),
         )
     }
 
@@ -1838,6 +1839,7 @@ private fun EpisodeView(
             ),
             onDismiss = { contextEpisode = null },
             top = 250.mpx, artWidth = 112.mpx, artHeight = 63.mpx, firstFocusKey = "download",
+            shortKeys = listOf("addon_play", "play_start", "download", "mark_watched", "tmdb_details"),
         )
     }
 
@@ -1910,6 +1912,7 @@ private fun EpisodeView(
                 "tmdb_details".takeIf { !(metadataMode.enrich && seriesMeta != null) },
             ),
             onDismiss = close,
+            shortKeys = listOf("play_trailer", "favourite", "download", "tmdb_details"),
         )
     }
     // The menu, and any window it opened, returns focus to ⋯ once all of them are closed.
