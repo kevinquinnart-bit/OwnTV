@@ -1334,6 +1334,9 @@ private fun EpisodeView(
     var contextEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
     // Kevin's copy: Stremio add-on streams for an episode.
     var addonEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
+    // Kevin's copy: the window that stays up while "Play best stream" works; null = closed.
+    var bestPlay by remember { mutableStateOf<tv.own.owntv.features.stremio.BestPlayStatus?>(null) }
+    val stremioNoIdMessage = stringResource(R.string.kevin_stremio_needs_imdb)
     val stremioAddons: tv.own.owntv.features.stremio.StremioAddons = org.koin.compose.koinInject()
     val stremioFindingMessage = stringResource(R.string.kevin_stremio_finding)
     val torrentEngine: tv.own.owntv.features.stremio.TorrentEngine = org.koin.compose.koinInject()
@@ -1756,6 +1759,9 @@ private fun EpisodeView(
     }
 
     // ☰ Episode options (P6-04): WATCH, LIBRARY, DETAILS, in the order of Settings › Long-press menus.
+    bestPlay?.let { status ->
+        tv.own.owntv.features.stremio.BestPlayPopup(status) { vm.cancelBestAddonStream(); bestPlay = null }
+    }
     addonEpisode?.let { ep ->
         val imdb = seriesMeta?.imdbId?.takeIf { it.startsWith("tt") }
         tv.own.owntv.features.stremio.StremioPopup(
@@ -1779,18 +1785,18 @@ private fun EpisodeView(
                 if (stremioAddons.addons.value.isEmpty()) {
                     addonEpisode = ep
                 } else {
-                    toast.show(stremioFindingMessage)
+                    bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioFindingMessage, true)
                     vm.playBestAddonStream(
                         stremioAddons, torrentEngine, series, ep, imdb,
-                        onNoId = { addonEpisode = ep },
-                        onStarted = { goFullscreen() },
-                        onTorrentWait = { toast.show(stremioTorrentWaitMessage) },
+                        onNoId = { bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioNoIdMessage, false) },
+                        onStarted = { bestPlay = null; goFullscreen() },
+                        onTorrentWait = { bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioTorrentWaitMessage, true) },
                         onEnd = { end ->
                             when (end) {
-                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NOTHING_FOUND -> toast.show(stremioNoStreamsMessage)
-                                tv.own.owntv.features.stremio.StremioAutoPlay.End.TORRENTS_TOO_BIG -> toast.show(stremioTooBigMessage)
-                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NONE_WORKED -> toast.show(stremioNoneWorkedMessage)
-                                else -> Unit
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NOTHING_FOUND -> bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioNoStreamsMessage, false)
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.TORRENTS_TOO_BIG -> bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioTooBigMessage, false)
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NONE_WORKED -> bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioNoneWorkedMessage, false)
+                                else -> bestPlay = null
                             }
                         },
                     )

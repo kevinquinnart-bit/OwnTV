@@ -198,6 +198,9 @@ fun MoviesScreen(
     var personMovie by remember { mutableStateOf<Pair<MovieEntity, String>?>(null) }
     // Kevin's copy: Stremio add-on streams for a film (the film and its IMDb id, if known).
     var addonMovie by remember { mutableStateOf<Pair<MovieEntity, String?>?>(null) }
+    // Kevin's copy: the window that stays up while "Play best stream" works; null = closed.
+    var bestPlay by remember { mutableStateOf<tv.own.owntv.features.stremio.BestPlayStatus?>(null) }
+    val stremioNoIdMessage = stringResource(R.string.kevin_stremio_needs_imdb)
     val stremioAddons: tv.own.owntv.features.stremio.StremioAddons = org.koin.compose.koinInject()
     val stremioFindingMessage = stringResource(R.string.kevin_stremio_finding)
     val torrentEngine: tv.own.owntv.features.stremio.TorrentEngine = org.koin.compose.koinInject()
@@ -954,18 +957,18 @@ fun MoviesScreen(
                 if (stremioAddons.addons.value.isEmpty()) {
                     addonMovie = m to imdb
                 } else {
-                    toast.show(stremioFindingMessage)
+                    bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioFindingMessage, true)
                     vm.playBestAddonStream(
                         stremioAddons, torrentEngine, m, imdb,
-                        onNoId = { addonMovie = m to null },
-                        onStarted = { goFullscreen() },
-                        onTorrentWait = { toast.show(stremioTorrentWaitMessage) },
+                        onNoId = { bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioNoIdMessage, false) },
+                        onStarted = { bestPlay = null; goFullscreen() },
+                        onTorrentWait = { bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioTorrentWaitMessage, true) },
                         onEnd = { end ->
                             when (end) {
-                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NOTHING_FOUND -> toast.show(stremioNoStreamsMessage)
-                                tv.own.owntv.features.stremio.StremioAutoPlay.End.TORRENTS_TOO_BIG -> toast.show(stremioTooBigMessage)
-                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NONE_WORKED -> toast.show(stremioNoneWorkedMessage)
-                                else -> Unit
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NOTHING_FOUND -> bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioNoStreamsMessage, false)
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.TORRENTS_TOO_BIG -> bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioTooBigMessage, false)
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NONE_WORKED -> bestPlay = tv.own.owntv.features.stremio.BestPlayStatus(stremioNoneWorkedMessage, false)
+                                else -> bestPlay = null
                             }
                         },
                     )
@@ -1119,11 +1122,14 @@ fun MoviesScreen(
     }
 
     // Kevin's copy: focus goes back to the film the lists were opened from.
-    LaunchedEffect(likeMovie, castMovie, personMovie, addonMovie) {
-        if (likeMovie == null && castMovie == null && personMovie == null && addonMovie == null && contextMovieId != null) {
+    LaunchedEffect(likeMovie, castMovie, personMovie, addonMovie, bestPlay) {
+        if (likeMovie == null && castMovie == null && personMovie == null && addonMovie == null && bestPlay == null && contextMovieId != null) {
             withFrameNanos { }
             runCatching { contextFocus.requestFocus() }
         }
+    }
+    bestPlay?.let { status ->
+        tv.own.owntv.features.stremio.BestPlayPopup(status) { vm.cancelBestAddonStream(); bestPlay = null }
     }
     addonMovie?.let { (src, imdb) ->
         tv.own.owntv.features.stremio.StremioPopup(

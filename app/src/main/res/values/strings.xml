@@ -86,12 +86,13 @@
     <string name="kevin_drive_rec_failed">Couldn\'t copy “<xliff:g id="title">%1$s</xliff:g>”. It will be tried again after the next recording.</string>
     <string name="kevin_drive_rec_full">Couldn\'t copy “<xliff:g id="title">%1$s</xliff:g>”: not enough room on Google Drive.</string>
     <!-- Movies / Series (Kevin's copy): Stremio add-ons. -->
+    <string name="kevin_close">Close</string>
     <string name="kevin_more_options">More options…</string>
     <string name="kevin_fewer_options">Fewer options</string>
     <string name="kevin_stremio_streams">Add-on streams</string>
     <string name="kevin_stremio_play">Play best stream</string>
     <string name="kevin_stremio_finding">Finding the best stream…</string>
-    <string name="kevin_stremio_torrent_wait">Getting a torrent ready. This can take up to a minute.</string>
+    <string name="kevin_stremio_torrent_wait">Getting a torrent ready. This can take up to 2 minutes.</string>
     <string name="kevin_stremio_none_worked">None of the streams would play.</string>
     <string name="kevin_stremio_too_big">The only streams found are torrents too big for the free space on this box.</string>
     <string name="kevin_stremio_none_added">No add-ons yet. Add one to look for streams for this title.</string>

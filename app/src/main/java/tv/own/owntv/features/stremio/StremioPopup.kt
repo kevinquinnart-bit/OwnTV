@@ -66,6 +66,35 @@ internal fun StremioPopup(
     }
 }
 
+/** Kevin's copy: what "Play best stream" is doing ([working]) or how it ended. */
+data class BestPlayStatus(val text: String, val working: Boolean)
+
+/**
+ * Kevin's copy: the window that stays up from the press on "Play best stream" until a stream starts.
+ * While it works it shows a spinner and Cancel; when nothing would play it says why, with Close.
+ */
+@Composable
+internal fun BestPlayPopup(status: BestPlayStatus, onClose: () -> Unit) {
+    tv.own.owntv.ui.stage.StagePopup(onDismiss = onClose, title = stringResource(R.string.kevin_stremio_play)) {
+        val focus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { focus.requestFocus() } }
+        Column(Modifier.trapAllFocusExit().focusGroup()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.mpx)) {
+                if (status.working) OwnTVSpinner(sizeDp = 28)
+                Text(
+                    status.text, style = stageText(19, 500), color = StageColors.Text,
+                    modifier = Modifier.padding(start = if (status.working) 16.mpx else 0.mpx),
+                )
+            }
+            tv.own.owntv.ui.stage.StagePopupOption(
+                title = stringResource(if (status.working) R.string.common_cancel else R.string.kevin_close),
+                onClick = onClose, modifier = Modifier.focusRequester(focus),
+                leading = { tv.own.owntv.ui.stage.StagePopupIcon(OwnTVIcon.CLOSE) },
+            )
+        }
+    }
+}
+
 @Composable
 private fun StreamsView(
     addons: StremioAddons,

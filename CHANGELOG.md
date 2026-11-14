@@ -10,6 +10,7 @@
 ## Unreleased
 
 ### ✨ New features
+- **⏳ Play best stream: a window with a spinner and Cancel stays up until the stream starts, and says why when nothing would play**
 - **🔎 Play best stream and Add-on streams find the title themselves; no need to open its details first**
 - **🧹 Hold OK on a film, show or episode: a short list with Play best stream first; More options… shows the rest**
 - **🖼️ Films and Series: no big picture in the details card; the name and details start at the top**

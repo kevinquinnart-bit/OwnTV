@@ -816,6 +816,9 @@ class MovieViewModel(
 
     private var addonPlayJob: kotlinx.coroutines.Job? = null
 
+    /** Kevin's copy: Cancel on the "Play best stream" window. Stops the search and any torrent being prepared. */
+    fun cancelBestAddonStream() { addonPlayJob?.cancel(); addonPlayJob = null }
+
     /**
      * Kevin's copy: the IMDb id the add-ons need for [movie]. [known] is the one already on screen;
      * otherwise the film's details are read, and failing that Stremio's catalogue is asked by name.
