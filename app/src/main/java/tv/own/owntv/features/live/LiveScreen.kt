@@ -1317,6 +1317,26 @@ private fun ChannelContextMenu(
                         LivePlate(channel.displayLogoUrl, 70.mpx, 50.mpx)
                     },
                 )
+                // Kevin's copy: a channel one of the free UK or Irish players carries offers that player's
+                // own app, as a backup to the provider's stream. Shown only when the app is on this device.
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val playerIndex = remember(channel.name) { tv.own.owntv.features.more.PlayerForChannel.indexFor(ProviderTags.parse(channel.name).name) }
+                val playerApp by produceState<tv.own.owntv.features.more.FreePlayers.Installed?>(null, playerIndex) {
+                    value = if (playerIndex == null) null else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        tv.own.owntv.features.more.FreePlayers.find(context.applicationContext).getOrNull(playerIndex)
+                    }
+                }
+                val backupApp = playerApp
+                if (playerIndex != null && backupApp != null) {
+                    tv.own.owntv.ui.stage.StageMenuItem(
+                        text = stringResource(R.string.kevin_open_in_player, stringResource(tv.own.owntv.features.more.FreePlayers.all[playerIndex].nameRes)),
+                        icon = OwnTVIcon.EXTERNAL,
+                        onClick = {
+                            tv.own.owntv.features.more.FreePlayers.open(context, backupApp.packageName)
+                            onDismiss()
+                        },
+                    )
+                }
                 var previousGroup: Int? = null
                 arranged(ContentMenu.LIVE, actions).forEachIndexed { index, action ->
                     if (action.group != previousGroup) tv.own.owntv.ui.stage.StageGroupLabel(groupLabels[action.group])

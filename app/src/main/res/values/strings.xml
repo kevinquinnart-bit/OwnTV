@@ -33,6 +33,7 @@
     <string name="kevin_players_note">These play in their own apps. Back returns here.</string>
     <string name="kevin_players_installed">Installed. OK opens it.</string>
     <string name="kevin_players_missing">Not installed. OK finds it in the app store.</string>
+    <string name="kevin_open_in_player">Open in %1$s</string>
     <string name="kevin_players_no_store">Couldn\'t open the app or the app store.</string>
     <string name="kevin_player_bbc" translatable="false">BBC iPlayer</string>
     <string name="kevin_player_itv" translatable="false">ITVX</string>
