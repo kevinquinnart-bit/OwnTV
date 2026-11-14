@@ -950,13 +950,14 @@ fun MoviesScreen(
             add(MenuAction("addon_play", stringResource(R.string.kevin_stremio_play), OwnTVIcon.PLAY, group = VodGroupWatch) {
                 contextMovie = null
                 val imdb = cacheForM?.imdbId?.takeIf { it.startsWith("tt") }
-                // No add-ons yet, or no IMDb number: the add-ons window says what to do.
-                if (imdb == null || stremioAddons.addons.value.isEmpty()) {
+                // No add-ons yet: the add-ons window says what to do. No IMDb number on screen: it is looked up.
+                if (stremioAddons.addons.value.isEmpty()) {
                     addonMovie = m to imdb
                 } else {
                     toast.show(stremioFindingMessage)
                     vm.playBestAddonStream(
                         stremioAddons, torrentEngine, m, imdb,
+                        onNoId = { addonMovie = m to null },
                         onStarted = { goFullscreen() },
                         onTorrentWait = { toast.show(stremioTorrentWaitMessage) },
                         onEnd = { end ->
@@ -971,7 +972,8 @@ fun MoviesScreen(
                 }
             })
             add(MenuAction("addon_streams", stringResource(R.string.kevin_stremio_streams), OwnTVIcon.SPARKLE, group = VodGroupWatch) {
-                contextMovie = null; addonMovie = m to cacheForM?.imdbId?.takeIf { it.startsWith("tt") }
+                contextMovie = null
+                vm.withAddonImdbId(stremioAddons, m, cacheForM?.imdbId?.takeIf { it.startsWith("tt") }) { addonMovie = m to it }
             })
             // One-off external playback, independent of the global "External player" toggle.
             add(MenuAction("play_external", stringResource(R.string.content_play_external_short), OwnTVIcon.EXTERNAL, group = VodGroupWatch) {

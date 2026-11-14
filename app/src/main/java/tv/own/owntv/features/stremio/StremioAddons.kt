@@ -174,6 +174,26 @@ class StremioAddons(context: Context, baseClient: OkHttpClient) {
         Found(playable, torrentStreams.size, failed, torrentStreams)
     }
 
+    /**
+     * The IMDb id ("tt…") for a title when its details have none: asks Stremio's own catalogue by
+     * name. [type] is "movie" or "series"; [rawName] the provider's name, tags and all. Null when
+     * nothing matches the name (and the year, when one is known).
+     */
+    suspend fun findImdbId(type: String, rawName: String, year: Int?): String? = withContext(Dispatchers.IO) {
+        val norm = tv.own.owntv.core.metadata.TitleNormalizer.normalize(rawName)
+        if (norm.query.isBlank()) return@withContext null
+        val json = withTimeoutOrNull(ADDON_TIMEOUT_MS) {
+            runCatching { getJson("$CATALOGUE/catalog/$type/top/search=${android.net.Uri.encode(norm.query)}.json") }.getOrNull()
+        } ?: return@withContext null
+        val metas = json.optJSONArray("metas") ?: return@withContext null
+        val found = (0 until metas.length()).mapNotNull { i ->
+            val o = metas.optJSONObject(i) ?: return@mapNotNull null
+            val id = o.optString("imdb_id").ifBlank { o.optString("id") }
+            Triple(id, o.optString("name"), o.optString("releaseInfo").take(4).toIntOrNull())
+        }
+        pickImdbId(norm.query, year ?: norm.year, found).also { Log.i(TAG, "catalogue lookup type=$type found=${it != null}") }
+    }
+
     private class NotJson : IOException("not a manifest")
 
     private fun getJson(url: String): JSONObject {
@@ -195,6 +215,23 @@ class StremioAddons(context: Context, baseClient: OkHttpClient) {
         private const val PREFS = "kevin_stremio"
         private const val KEY_ADDONS = "addons"
         private const val ADDON_TIMEOUT_MS = 20_000L
+
+        private const val CATALOGUE = "https://v3-cinemeta.strem.io"
+
+        private fun plain(name: String): String = name.lowercase().filter { it.isLetterOrDigit() }
+
+        /**
+         * From the catalogue's answers (id, name, year) the one that is this title: the name must be
+         * the same apart from case and punctuation. With a [year] known, the answer's year must be
+         * within one of it; without one, the first same-named answer is taken.
+         */
+        internal fun pickImdbId(name: String, year: Int?, found: List<Triple<String, String, Int?>>): String? {
+            val want = plain(name)
+            if (want.isEmpty()) return null
+            val same = found.filter { it.first.startsWith("tt") && plain(it.second) == want }
+            return if (year == null) same.firstOrNull()?.first
+            else same.firstOrNull { it.third != null && kotlin.math.abs(it.third!! - year) <= 1 }?.first
+        }
 
         private val hexHash = Regex("[0-9a-f]{40}")
 

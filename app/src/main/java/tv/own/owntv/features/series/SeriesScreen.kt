@@ -1775,13 +1775,14 @@ private fun EpisodeView(
             add(MenuAction("addon_play", stringResource(R.string.kevin_stremio_play), OwnTVIcon.PLAY, group = VodGroupWatch) {
                 contextEpisode = null
                 val imdb = seriesMeta?.imdbId?.takeIf { it.startsWith("tt") }
-                // No add-ons yet, or no IMDb number: the add-ons window says what to do.
-                if (imdb == null || stremioAddons.addons.value.isEmpty()) {
+                // No add-ons yet: the add-ons window says what to do. No IMDb number on screen: it is looked up.
+                if (stremioAddons.addons.value.isEmpty()) {
                     addonEpisode = ep
                 } else {
                     toast.show(stremioFindingMessage)
                     vm.playBestAddonStream(
                         stremioAddons, torrentEngine, series, ep, imdb,
+                        onNoId = { addonEpisode = ep },
                         onStarted = { goFullscreen() },
                         onTorrentWait = { toast.show(stremioTorrentWaitMessage) },
                         onEnd = { end ->

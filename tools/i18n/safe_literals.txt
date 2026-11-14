@@ -355,8 +355,9 @@
 1	technical	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	MOVIE
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	OwnTVHome
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	add-on play movieId=${movie.id} web=${found?.playable?.size ?: 0} torrents=${found?.torrents ?: 0} -> $end
+1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	add-on play movieId=${movie.id}: no IMDb id
 2	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	external play history record failed movieId=${movie.id} profile=$pid
-1	technical	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	movie
+2	protocol	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	movie
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	play history record failed movieId=${movie.id} profile=$pid
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	play movieId=${movie.id} -> external player
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	play movieId=${movie.id} profile=$pid startPositionMs=$startPositionMs
@@ -365,6 +366,7 @@
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	saveProgressNow progress save failed movieId=${m.id} profile=$pid
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	stalker VOD reconnect resolve failed movieId=${movie.id}
 2	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	stalker resolve failed movieId=${movie.id}
+1	protocol	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	tt
 2	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	addon_play
 1	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	addon_streams
 2	technical	app/src/main/java/tv/own/owntv/features/movies/MoviesScreen.kt	delete_subtitles
@@ -447,6 +449,7 @@
 1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	SERIES
 1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	Series
 1	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	add-on play episodeId=${episode.id} web=${found?.playable?.size ?: 0} torrents=${found?.torrents ?: 0} -> $end
+1	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	add-on play episodeId=${episode.id}: no IMDb id
 1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	episode-${ep.episodeNumber}
 1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	episode-${episode.episodeNumber}
 2	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	external play episode history record failed episodeId=${episode.id} profile=$pid
@@ -459,7 +462,7 @@
 1	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	playEpisodeQueue seriesId=${show.id} episodeId=${episode.id} profile=$pid queue=${queue.size} startIndex=$startIndex startPositionMs=$startPositionMs
 1	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	saveEpisodeProgressNow episodeId=${ep.id} profile=$pid positionMs=$pos durationMs=$dur
 1	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	saveEpisodeProgressNow progress save failed episodeId=${ep.id} profile=$pid
-1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	series
+2	protocol	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	series
 1	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	stalker resolve failed episodeId=${episode.id}
 3	empty	app/src/main/java/tv/own/owntv/features/settings/AccentPopup.kt	\0
 4	technical	app/src/main/java/tv/own/owntv/features/settings/AccentPopup.kt	#
@@ -1089,6 +1092,7 @@
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	request failed: ${it.message}
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	url
 1	empty	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	\0
+1	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	$CATALOGUE/catalog/$type/top/search=${android.net.Uri.encode(norm.query)}.json
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	${a.base}/stream/$type/$id.json
 2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	/manifest.json
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	HTTP ${resp.code}
@@ -1097,20 +1101,25 @@
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	[]
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	addons
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	behaviorHints
+1	log	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	catalogue lookup type=$type found=${it != null}
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	description
 3	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	fileIdx
 2	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	http://
 3	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	https://
 1	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	https://$t
-2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	id
+1	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	https://v3-cinemeta.strem.io
+3	json	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	id
 2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	idPrefixes
+1	json	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	imdb_id
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	infoHash
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	kevin_stremio
-5	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	name
+1	json	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	metas
+6	json	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	name
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	not a manifest
 2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	prefixes
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	proxyHeaders
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	refused, not a manifest address
+1	json	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	releaseInfo
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	request
 2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	resources
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	sources
@@ -1119,6 +1128,7 @@
 2	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	stremio://
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	title
 2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	tracker:
+1	protocol	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	tt
 4	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	types
 3	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	url
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	videoSize

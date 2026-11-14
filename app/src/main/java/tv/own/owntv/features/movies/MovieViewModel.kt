@@ -817,6 +817,20 @@ class MovieViewModel(
     private var addonPlayJob: kotlinx.coroutines.Job? = null
 
     /**
+     * Kevin's copy: the IMDb id the add-ons need for [movie]. [known] is the one already on screen;
+     * otherwise the film's details are read, and failing that Stremio's catalogue is asked by name.
+     */
+    suspend fun addonImdbId(addons: tv.own.owntv.features.stremio.StremioAddons, movie: MovieEntity, known: String?): String? =
+        known
+            ?: runCatching { metadata.resolveMovie(movie)?.imdbId }.getOrNull()?.takeIf { it.startsWith("tt") }
+            ?: runCatching { addons.findImdbId("movie", movie.name, movie.year) }.getOrNull()
+
+    /** [then] gets the IMDb id for [movie], or null when none could be found. */
+    fun withAddonImdbId(addons: tv.own.owntv.features.stremio.StremioAddons, movie: MovieEntity, known: String?, then: (String?) -> Unit) {
+        viewModelScope.launch { then(addonImdbId(addons, movie, known)) }
+    }
+
+    /**
      * Kevin's copy: the one Play action for add-ons. Asks the add-ons for [imdbId], then tries their
      * streams best first until one plays: web streams, then torrents. [onStarted] runs once, when
      * the first stream is started; [onTorrentWait] once, before the first torrent is prepared;
@@ -826,13 +840,16 @@ class MovieViewModel(
         addons: tv.own.owntv.features.stremio.StremioAddons,
         torrents: tv.own.owntv.features.stremio.TorrentEngine,
         movie: MovieEntity,
-        imdbId: String,
+        knownImdbId: String?,
         onStarted: () -> Unit,
         onTorrentWait: () -> Unit,
+        onNoId: () -> Unit,
         onEnd: (tv.own.owntv.features.stremio.StremioAutoPlay.End) -> Unit,
     ) {
         addonPlayJob?.cancel()
         addonPlayJob = viewModelScope.launch {
+            val imdbId = addonImdbId(addons, movie, knownImdbId)
+            if (imdbId == null) { Log.i(TAG, "add-on play movieId=${movie.id}: no IMDb id"); onNoId(); return@launch }
             val found = runCatching { addons.streams("movie", imdbId) }.getOrNull()
             var shown = false
             val end = tv.own.owntv.features.stremio.StremioAutoPlay.playBest(player, found, torrents, onTorrentWait) { stream ->

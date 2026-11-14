@@ -95,7 +95,7 @@
     <string name="kevin_stremio_none_worked">None of the streams would play.</string>
     <string name="kevin_stremio_too_big">The only streams found are torrents too big for the free space on this box.</string>
     <string name="kevin_stremio_none_added">No add-ons yet. Add one to look for streams for this title.</string>
-    <string name="kevin_stremio_needs_imdb">Add-ons find a title by its IMDb number, which comes with the title\'s details. Open its details once (Menu › Details), then try again.</string>
+    <string name="kevin_stremio_needs_imdb">KueTV couldn\'t work out which title this is, so the add-ons can\'t be asked for it.</string>
     <string name="kevin_stremio_no_streams">No playable streams found.</string>
     <plurals name="kevin_stremio_torrents">
         <item quantity="one"><xliff:g id="count">%1$d</xliff:g> more was a torrent. “Play best stream” can play it.</item>

@@ -1025,13 +1025,17 @@ class SeriesViewModel(
         torrents: tv.own.owntv.features.stremio.TorrentEngine,
         series: SeriesEntity,
         episode: EpisodeEntity,
-        imdbId: String,
+        knownImdbId: String?,
         onStarted: () -> Unit,
         onTorrentWait: () -> Unit,
+        onNoId: () -> Unit,
         onEnd: (tv.own.owntv.features.stremio.StremioAutoPlay.End) -> Unit,
     ) {
         addonPlayJob?.cancel()
         addonPlayJob = viewModelScope.launch {
+            // No IMDb id with the show's details: Stremio's catalogue is asked by name.
+            val imdbId = knownImdbId ?: runCatching { addons.findImdbId("series", series.name, series.year) }.getOrNull()
+            if (imdbId == null) { Log.i(TAG, "add-on play episodeId=${episode.id}: no IMDb id"); onNoId(); return@launch }
             val id = "$imdbId:${episode.seasonNumber}:${episode.episodeNumber}"
             val found = runCatching { addons.streams("series", id) }.getOrNull()
             var shown = false

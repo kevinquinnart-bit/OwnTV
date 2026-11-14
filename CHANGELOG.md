@@ -10,6 +10,7 @@
 ## Unreleased
 
 ### ✨ New features
+- **🔎 Play best stream and Add-on streams find the title themselves; no need to open its details first**
 - **🧹 Hold OK on a film, show or episode: a short list with Play best stream first; More options… shows the rest**
 - **🖼️ Films and Series: no big picture in the details card; the name and details start at the top**
 - **🔢 Add an add-on: the code and the phone address are now in big text, each on its own line**
