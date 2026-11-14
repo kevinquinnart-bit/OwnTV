@@ -1335,7 +1335,10 @@ private fun EpisodeView(
     var addonEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
     val stremioAddons: tv.own.owntv.features.stremio.StremioAddons = org.koin.compose.koinInject()
     val stremioFindingMessage = stringResource(R.string.kevin_stremio_finding)
-    val stremioOnlyTorrentsMessage = stringResource(R.string.kevin_stremio_only_torrents)
+    val torrentEngine: tv.own.owntv.features.stremio.TorrentEngine = org.koin.compose.koinInject()
+    val stremioTorrentWaitMessage = stringResource(R.string.kevin_stremio_torrent_wait)
+    val stremioNoneWorkedMessage = stringResource(R.string.kevin_stremio_none_worked)
+    val stremioTooBigMessage = stringResource(R.string.kevin_stremio_too_big)
     val stremioNoStreamsMessage = stringResource(R.string.kevin_stremio_no_streams)
     var detailsEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
     // Downloaded subtitles for the episode whose options menu is open (subtitle plan §11).
@@ -1777,9 +1780,17 @@ private fun EpisodeView(
                 } else {
                     toast.show(stremioFindingMessage)
                     vm.playBestAddonStream(
-                        stremioAddons, series, ep, imdb,
+                        stremioAddons, torrentEngine, series, ep, imdb,
                         onStarted = { goFullscreen() },
-                        onNothing = { torrents -> toast.show(if (torrents > 0) stremioOnlyTorrentsMessage else stremioNoStreamsMessage) },
+                        onTorrentWait = { toast.show(stremioTorrentWaitMessage) },
+                        onEnd = { end ->
+                            when (end) {
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NOTHING_FOUND -> toast.show(stremioNoStreamsMessage)
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.TORRENTS_TOO_BIG -> toast.show(stremioTooBigMessage)
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NONE_WORKED -> toast.show(stremioNoneWorkedMessage)
+                                else -> Unit
+                            }
+                        },
                     )
                 }
             })

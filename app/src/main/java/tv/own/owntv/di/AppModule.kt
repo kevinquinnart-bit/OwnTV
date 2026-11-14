@@ -60,6 +60,7 @@ val appModule = module {
     // Kevin's copy: Google Drive for backups and recordings.
     single { tv.own.owntv.features.drive.GoogleDrive(get<android.content.Context>(), get()) }
     single { tv.own.owntv.features.stremio.StremioAddons(get<android.content.Context>(), get()) }
+    single { tv.own.owntv.features.stremio.TorrentEngine(get<android.content.Context>()) }
     single { tv.own.owntv.features.drive.DriveRecordings(get<android.content.Context>(), get(), get(), get(), get()) }
     single<kotlinx.coroutines.CoroutineScope> {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)

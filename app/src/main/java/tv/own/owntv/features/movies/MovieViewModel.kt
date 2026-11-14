@@ -818,27 +818,29 @@ class MovieViewModel(
 
     /**
      * Kevin's copy: the one Play action for add-ons. Asks the add-ons for [imdbId], then tries their
-     * streams best first until one plays. [onStarted] runs once, when the first stream is started;
-     * [onNothing] when there was nothing to try, with the number of torrent-only streams seen.
+     * streams best first until one plays: web streams, then torrents. [onStarted] runs once, when
+     * the first stream is started; [onTorrentWait] once, before the first torrent is prepared;
+     * [onEnd] when it is over, saying how it ended.
      */
     fun playBestAddonStream(
         addons: tv.own.owntv.features.stremio.StremioAddons,
+        torrents: tv.own.owntv.features.stremio.TorrentEngine,
         movie: MovieEntity,
         imdbId: String,
         onStarted: () -> Unit,
-        onNothing: (torrents: Int) -> Unit,
+        onTorrentWait: () -> Unit,
+        onEnd: (tv.own.owntv.features.stremio.StremioAutoPlay.End) -> Unit,
     ) {
         addonPlayJob?.cancel()
         addonPlayJob = viewModelScope.launch {
             val found = runCatching { addons.streams("movie", imdbId) }.getOrNull()
-            val ranked = tv.own.owntv.features.stremio.StremioAutoPlay.rank(found?.playable.orEmpty())
-            if (ranked.isEmpty()) { onNothing(found?.torrents ?: 0); return@launch }
             var shown = false
-            val outcome = tv.own.owntv.features.stremio.StremioAutoPlay.playFirstWorking(player, ranked) { stream ->
+            val end = tv.own.owntv.features.stremio.StremioAutoPlay.playBest(player, found, torrents, onTorrentWait) { stream ->
                 playAddonStream(movie, stream)
                 if (!shown) { shown = true; onStarted() }
             }
-            Log.i(TAG, "add-on play movieId=${movie.id} tried up to ${ranked.size} -> ${outcome::class.simpleName}")
+            Log.i(TAG, "add-on play movieId=${movie.id} web=${found?.playable?.size ?: 0} torrents=${found?.torrents ?: 0} -> $end")
+            onEnd(end)
         }
     }
 

@@ -200,7 +200,10 @@ fun MoviesScreen(
     var addonMovie by remember { mutableStateOf<Pair<MovieEntity, String?>?>(null) }
     val stremioAddons: tv.own.owntv.features.stremio.StremioAddons = org.koin.compose.koinInject()
     val stremioFindingMessage = stringResource(R.string.kevin_stremio_finding)
-    val stremioOnlyTorrentsMessage = stringResource(R.string.kevin_stremio_only_torrents)
+    val torrentEngine: tv.own.owntv.features.stremio.TorrentEngine = org.koin.compose.koinInject()
+    val stremioTorrentWaitMessage = stringResource(R.string.kevin_stremio_torrent_wait)
+    val stremioNoneWorkedMessage = stringResource(R.string.kevin_stremio_none_worked)
+    val stremioTooBigMessage = stringResource(R.string.kevin_stremio_too_big)
     val stremioNoStreamsMessage = stringResource(R.string.kevin_stremio_no_streams)
     // "Set TMDB name" dialog target (§11.2 U5b); null = closed.
     var setTmdbNameMovie by remember { mutableStateOf<MovieEntity?>(null) }
@@ -953,9 +956,17 @@ fun MoviesScreen(
                 } else {
                     toast.show(stremioFindingMessage)
                     vm.playBestAddonStream(
-                        stremioAddons, m, imdb,
+                        stremioAddons, torrentEngine, m, imdb,
                         onStarted = { goFullscreen() },
-                        onNothing = { torrents -> toast.show(if (torrents > 0) stremioOnlyTorrentsMessage else stremioNoStreamsMessage) },
+                        onTorrentWait = { toast.show(stremioTorrentWaitMessage) },
+                        onEnd = { end ->
+                            when (end) {
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NOTHING_FOUND -> toast.show(stremioNoStreamsMessage)
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.TORRENTS_TOO_BIG -> toast.show(stremioTooBigMessage)
+                                tv.own.owntv.features.stremio.StremioAutoPlay.End.NONE_WORKED -> toast.show(stremioNoneWorkedMessage)
+                                else -> Unit
+                            }
+                        },
                     )
                 }
             })

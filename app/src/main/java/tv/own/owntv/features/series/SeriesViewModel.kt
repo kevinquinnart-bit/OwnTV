@@ -1022,24 +1022,25 @@ class SeriesViewModel(
     /** Kevin's copy: the one Play action for add-ons, for an episode. See the film version. */
     fun playBestAddonStream(
         addons: tv.own.owntv.features.stremio.StremioAddons,
+        torrents: tv.own.owntv.features.stremio.TorrentEngine,
         series: SeriesEntity,
         episode: EpisodeEntity,
         imdbId: String,
         onStarted: () -> Unit,
-        onNothing: (torrents: Int) -> Unit,
+        onTorrentWait: () -> Unit,
+        onEnd: (tv.own.owntv.features.stremio.StremioAutoPlay.End) -> Unit,
     ) {
         addonPlayJob?.cancel()
         addonPlayJob = viewModelScope.launch {
             val id = "$imdbId:${episode.seasonNumber}:${episode.episodeNumber}"
             val found = runCatching { addons.streams("series", id) }.getOrNull()
-            val ranked = tv.own.owntv.features.stremio.StremioAutoPlay.rank(found?.playable.orEmpty())
-            if (ranked.isEmpty()) { onNothing(found?.torrents ?: 0); return@launch }
             var shown = false
-            val outcome = tv.own.owntv.features.stremio.StremioAutoPlay.playFirstWorking(player, ranked) { stream ->
+            val end = tv.own.owntv.features.stremio.StremioAutoPlay.playBest(player, found, torrents, onTorrentWait) { stream ->
                 playAddonStream(series, episode, stream)
                 if (!shown) { shown = true; onStarted() }
             }
-            Log.i(TAG, "add-on play episodeId=${episode.id} tried up to ${ranked.size} -> ${outcome::class.simpleName}")
+            Log.i(TAG, "add-on play episodeId=${episode.id} web=${found?.playable?.size ?: 0} torrents=${found?.torrents ?: 0} -> $end")
+            onEnd(end)
         }
     }
 

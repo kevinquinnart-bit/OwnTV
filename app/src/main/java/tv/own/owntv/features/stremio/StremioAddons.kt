@@ -22,8 +22,8 @@ import java.io.IOException
  *
  * An add-on is added by its manifest address (".../manifest.json"). For a title, every add-on that
  * offers streams for that kind of title is asked at `<base>/stream/<movie|series>/<id>.json`, where the
- * id is the IMDb id ("tt0111161") or, for an episode, "tt0944947:1:2". Only streams with a web address
- * can play here; torrent-only streams are counted, not shown.
+ * id is the IMDb id ("tt0111161") or, for an episode, "tt0944947:1:2". Streams with a web address play
+ * directly; torrent streams are kept apart and play through [TorrentEngine].
  *
  * The app ships with no add-ons. Addresses are kept on this box only.
  */
@@ -41,9 +41,31 @@ class StremioAddons(context: Context, baseClient: OkHttpClient) {
         val base: String get() = manifestUrl.substringBeforeLast("/manifest.json")
     }
 
-    data class Stream(val addon: String, val title: String, val detail: String?, val url: String, val headers: Map<String, String>)
+    /**
+     * One answer from an add-on. A web stream has a [url]; a torrent has an [infoHash] and an empty
+     * [url], with the file to play ([fileIdx]) and the trackers the add-on named when it gave them.
+     */
+    data class Stream(
+        val addon: String,
+        val title: String,
+        val detail: String?,
+        val url: String,
+        val headers: Map<String, String>,
+        val infoHash: String? = null,
+        val fileIdx: Int? = null,
+        val trackers: List<String> = emptyList(),
+        val sizeBytes: Long? = null,
+    ) {
+        val isTorrent: Boolean get() = infoHash != null
+    }
 
-    data class Found(val playable: List<Stream>, val torrents: Int, val failedAddons: Int)
+    /** [playable] are the web streams; [torrentStreams] the torrents ([torrents] is how many). */
+    data class Found(
+        val playable: List<Stream>,
+        val torrents: Int,
+        val failedAddons: Int,
+        val torrentStreams: List<Stream> = emptyList(),
+    )
 
     private val _addons = MutableStateFlow(load())
     val addons: StateFlow<List<Addon>> = _addons.asStateFlow()
@@ -123,7 +145,7 @@ class StremioAddons(context: Context, baseClient: OkHttpClient) {
             }
         }.awaitAll()
         val playable = ArrayList<Stream>()
-        var torrents = 0
+        val torrentStreams = ArrayList<Stream>()
         var failed = 0
         for ((addon, json) in answers) {
             val arr = json?.optJSONArray("streams")
@@ -131,17 +153,25 @@ class StremioAddons(context: Context, baseClient: OkHttpClient) {
             for (i in 0 until arr.length()) {
                 val s = arr.optJSONObject(i) ?: continue
                 val url = s.optString("url")
+                val hints = s.optJSONObject("behaviorHints")
+                val title = s.optString("name").ifBlank { addon.name }.replace('\n', ' ').trim()
+                val detail = (s.optString("title").ifBlank { s.optString("description") }).replace('\n', ' ').trim().ifBlank { null }
                 if (url.startsWith("http://") || url.startsWith("https://")) {
-                    val headers = s.optJSONObject("behaviorHints")?.optJSONObject("proxyHeaders")?.optJSONObject("request")
-                    val title = s.optString("name").ifBlank { addon.name }.replace('\n', ' ').trim()
-                    val detail = (s.optString("title").ifBlank { s.optString("description") }).replace('\n', ' ').trim().ifBlank { null }
+                    val headers = hints?.optJSONObject("proxyHeaders")?.optJSONObject("request")
                     playable += Stream(addon.name, title, detail, url, headers?.toMap().orEmpty())
-                } else if (s.optString("infoHash").isNotBlank()) {
-                    torrents++
+                } else {
+                    val hash = cleanInfoHash(s.optString("infoHash")) ?: continue
+                    torrentStreams += Stream(
+                        addon = addon.name, title = title, detail = detail, url = "", headers = emptyMap(),
+                        infoHash = hash,
+                        fileIdx = if (s.has("fileIdx") && !s.isNull("fileIdx")) s.optInt("fileIdx", -1).takeIf { it >= 0 } else null,
+                        trackers = trackersFrom(s.optJSONArray("sources").strings()),
+                        sizeBytes = hints?.optLong("videoSize", 0L)?.takeIf { it > 0L },
+                    )
                 }
             }
         }
-        Found(playable, torrents, failed)
+        Found(playable, torrentStreams.size, failed, torrentStreams)
     }
 
     private class NotJson : IOException("not a manifest")
@@ -165,6 +195,15 @@ class StremioAddons(context: Context, baseClient: OkHttpClient) {
         private const val PREFS = "kevin_stremio"
         private const val KEY_ADDONS = "addons"
         private const val ADDON_TIMEOUT_MS = 20_000L
+
+        private val hexHash = Regex("[0-9a-f]{40}")
+
+        /** A torrent's 40-character id in lower case, or null when it isn't one. */
+        internal fun cleanInfoHash(raw: String): String? = raw.trim().lowercase().takeIf { hexHash.matches(it) }
+
+        /** Add-ons list trackers as "tracker:udp://…"; other entries ("dht:…") aren't tracker addresses. */
+        internal fun trackersFrom(sources: List<String>): List<String> =
+            sources.filter { it.startsWith("tracker:") }.map { it.removePrefix("tracker:") }.filter { it.isNotBlank() }
 
         /** "stremio://host/…/manifest.json" → https; anything without "/manifest.json" is refused. */
         fun normalise(raw: String): String? {

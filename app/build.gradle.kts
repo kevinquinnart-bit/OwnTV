@@ -423,6 +423,12 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.zxing.core) // QR generation for the Remote (companion) add-source flow
     implementation(libs.juniversalchardet) // local subtitle charset detection (subtitle plan §7.2)
+    // Kevin's copy: the torrent engine behind "Play best stream". The android-* jars carry the
+    // native library for each kind of box; the abiFilters above keep only the ones a build ships.
+    implementation(libs.libtorrent4j)
+    implementation(libs.libtorrent4j.android.arm)
+    implementation(libs.libtorrent4j.android.arm64)
+    implementation(libs.libtorrent4j.android.x8664)
 
     // Media playback — libmpv (FFmpeg) is NOT declared here. `:player-core` exposes it as `api`, so it
     // arrives with core, on core's version. Two hosts each naming their own copy is exactly the

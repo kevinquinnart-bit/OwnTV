@@ -66,6 +66,7 @@ zxing = "3.5.4"
 # Charset detection for local subtitle files (subtitle plan §7.2 / review R6) — tiny, pure-Java
 # Mozilla universalchardet port; local .srt files are frequently Windows-125x, not UTF-8.
 juniversalchardet = "2.5.0"
+libtorrent4j = "2.1.0-39"
 
 # --- Test ---
 junit = "4.13.2"
@@ -142,6 +143,10 @@ zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" 
 
 # Charset detection for local subtitle files (subtitle plan §7.2 / review R6).
 juniversalchardet = { group = "com.github.albfernandez", name = "juniversalchardet", version.ref = "juniversalchardet" }
+libtorrent4j = { group = "org.libtorrent4j", name = "libtorrent4j", version.ref = "libtorrent4j" }
+libtorrent4j-android-arm = { group = "org.libtorrent4j", name = "libtorrent4j-android-arm", version.ref = "libtorrent4j" }
+libtorrent4j-android-arm64 = { group = "org.libtorrent4j", name = "libtorrent4j-android-arm64", version.ref = "libtorrent4j" }
+libtorrent4j-android-x8664 = { group = "org.libtorrent4j", name = "libtorrent4j-android-x86_64", version.ref = "libtorrent4j" }
 
 # Networking (M3U/Xtream fetch)
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }

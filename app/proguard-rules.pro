@@ -8,6 +8,9 @@
 # --- libmpv JNI: native code resolves MPVLib and its event callbacks by name ---
 -keep class dev.jdtech.mpv.** { *; }
 
+# --- Torrent engine (Kevin's copy): its native code calls back into these classes by name ---
+-keep class org.libtorrent4j.** { *; }
+
 # --- WorkManager: workers are re-instantiated by FQCN string (KoinWorkerFactory matches
 #     workerClassName against ::class.java.name, and WorkManager persists the name in its DB
 #     across app updates) ---

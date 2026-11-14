@@ -95,6 +95,9 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         // repository instead of relying on core to guess it, the same as the phone app does. A
         // default that happens to be right for one app is a trap for every other one.
         tv.own.owntv.core.CoreBuildInfo.releaseRepo = "kevinquinnart-bit/OwnTV"
+        // Kevin's copy: a torrent's download is only for the film being watched. Clear anything left
+        // behind if the app was closed mid-film.
+        appScope.launch { tv.own.owntv.features.stremio.TorrentEngine.clearLeftovers(this@OwnTVApp) }
         // First thing after the context exists: a crash from here on leaves a trace on disk that the
         // user can export from Settings, instead of being lost with the process.
         tv.own.owntv.core.util.CrashRecorder.diagnostics = { tv.own.owntv.player.LiveDiagnosticsLog.snapshot() }

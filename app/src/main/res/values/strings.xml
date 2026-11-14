@@ -89,13 +89,15 @@
     <string name="kevin_stremio_streams">Add-on streams</string>
     <string name="kevin_stremio_play">Play best stream</string>
     <string name="kevin_stremio_finding">Finding the best stream…</string>
-    <string name="kevin_stremio_only_torrents">Only torrent streams were found. Torrents can\'t play here yet.</string>
+    <string name="kevin_stremio_torrent_wait">Getting a torrent ready. This can take up to a minute.</string>
+    <string name="kevin_stremio_none_worked">None of the streams would play.</string>
+    <string name="kevin_stremio_too_big">The only streams found are torrents too big for the free space on this box.</string>
     <string name="kevin_stremio_none_added">No add-ons yet. Add one to look for streams for this title.</string>
     <string name="kevin_stremio_needs_imdb">Add-ons find a title by its IMDb number, which comes with the title\'s details. Open its details once (Menu › Details), then try again.</string>
     <string name="kevin_stremio_no_streams">No playable streams found.</string>
     <plurals name="kevin_stremio_torrents">
-        <item quantity="one"><xliff:g id="count">%1$d</xliff:g> more was a torrent link, which can\'t play here.</item>
-        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> more were torrent links, which can\'t play here.</item>
+        <item quantity="one"><xliff:g id="count">%1$d</xliff:g> more was a torrent. “Play best stream” can play it.</item>
+        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> more were torrents. “Play best stream” can play them.</item>
     </plurals>
     <plurals name="kevin_stremio_failed">
         <item quantity="one"><xliff:g id="count">%1$d</xliff:g> add-on didn\'t answer.</item>

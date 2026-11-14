@@ -354,7 +354,7 @@
 1	technical	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	${StorageAccess.sanitize(movie.name)}.${movie.containerExt ?: StorageAccess.extOf(movie.streamUrl)}
 1	technical	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	MOVIE
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	OwnTVHome
-1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	add-on play movieId=${movie.id} tried up to ${ranked.size} -> ${outcome::class.simpleName}
+1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	add-on play movieId=${movie.id} web=${found?.playable?.size ?: 0} torrents=${found?.torrents ?: 0} -> $end
 2	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	external play history record failed movieId=${movie.id} profile=$pid
 1	technical	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	movie
 1	log	app/src/main/java/tv/own/owntv/features/movies/MovieViewModel.kt	play history record failed movieId=${movie.id} profile=$pid
@@ -446,7 +446,7 @@
 1	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	OwnTVHome
 1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	SERIES
 1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	Series
-1	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	add-on play episodeId=${episode.id} tried up to ${ranked.size} -> ${outcome::class.simpleName}
+1	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	add-on play episodeId=${episode.id} web=${found?.playable?.size ?: 0} torrents=${found?.torrents ?: 0} -> $end
 1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	episode-${ep.episodeNumber}
 1	technical	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	episode-${episode.episodeNumber}
 2	log	app/src/main/java/tv/own/owntv/features/series/SeriesViewModel.kt	external play episode history record failed episodeId=${episode.id} profile=$pid
@@ -1088,14 +1088,17 @@
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	code
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	request failed: ${it.message}
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/AddonInbox.kt	url
+1	empty	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	${a.base}/stream/$type/$id.json
 2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	/manifest.json
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	HTTP ${resp.code}
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	KevinStremio
+1	regex	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	[0-9a-f]{40}
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	[]
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	addons
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	behaviorHints
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	description
+3	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	fileIdx
 2	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	http://
 3	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	https://
 1	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	https://$t
@@ -1110,13 +1113,17 @@
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	refused, not a manifest address
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	request
 2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	resources
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	sources
 2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	stream
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	streams
 2	url	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	stremio://
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	title
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	tracker:
 4	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	types
 3	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	url
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAddons.kt	videoSize
 2	empty	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	\0
+1	regex	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	(\\d+(?:\\.\\d+)?)\\s*(gb|mb)\\b
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	1080p
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	1440p
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	2160p
@@ -1149,6 +1156,7 @@
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	forced
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	fre
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	french
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	gb
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	ger
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	german
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	gre
@@ -1221,8 +1229,65 @@
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	🇹🇷
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	🇺🇦
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	🇺🇸
+1	regex	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	👤\\s*(\\d+)
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioAutoPlay.kt	💾
 1	technical	app/src/main/java/tv/own/owntv/features/stremio/StremioPopup.kt	://
 1	url	app/src/main/java/tv/own/owntv/features/stremio/StremioPopup.kt	http://$it:${inbox.port}/
+4	empty	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	\0
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	&tr=
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	/t/${active.hash}/
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	127.0.0.1
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	Accept-Ranges: bytes
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	Connection: close
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	Content-Length: ${end - start + 1}
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	Content-Range: bytes $start-$end/${active.fileSize}
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	Content-Type: ${contentType(parts[1])}
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	GET
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	HEAD
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	HTTP/1.1 200 OK
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	HTTP/1.1 206 Partial Content
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	HTTP/1.1 404 Not Found Content-Length: 0 Connection: close
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	HTTP/1.1 416 Range Not Satisfiable Content-Range: bytes */${active.fileSize} Content-Length: 0 Connection: close
+1	log	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	KevinTorrent
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	UTF-8
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	application/octet-stream
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	avi
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	bytes=
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	http://127.0.0.1:$port/t/$hash/video.${extension(names[index])}
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	kevin-torrent-conn
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	kevin-torrent-http
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	kevin-torrent-watch
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	kevin_torrent
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	m2ts
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	m4v
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	magnet:?xt=urn:btih:$hash
+3	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	mkv
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	mov
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	mp4
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	mpeg
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	mpg
+1	log	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	no torrent details within ${METADATA_TIMEOUT_SECS}s
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	r
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	range:
+1	log	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	torrent engine stopped after a quiet spell
+1	log	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	torrent failed to open
+1	log	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	torrent file needs $size bytes, free ${freeBytes()}
+1	log	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	torrent ready in ${SystemClock.elapsedRealtime() - started}ms, file ${size / 1_048_576} MB
+1	log	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	torrent start didn't arrive within ${FIRST_DATA_TIMEOUT_MS}ms
+1	log	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	torrent stopped
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	ts
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	udp://exodus.desync.com:6969/announce
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	udp://open.demonii.com:1337/announce
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	udp://open.stealth.si:80/announce
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	udp://tracker.opentrackr.org:1337/announce
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	udp://tracker.torrent.eu.org:451/announce
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	video/mp2t
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	video/mp4
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	video/webm
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	video/x-matroska
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	video/x-msvideo
+2	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	webm
+1	technical	app/src/main/java/tv/own/owntv/features/stremio/TorrentEngine.kt	wmv
 1	json	app/src/main/java/tv/own/owntv/features/subtitles/SubtitleSearchViewModel.kt	ai_translated
 1	json	app/src/main/java/tv/own/owntv/features/subtitles/SubtitleSearchViewModel.kt	attributes
 1	json	app/src/main/java/tv/own/owntv/features/subtitles/SubtitleSearchViewModel.kt	data
