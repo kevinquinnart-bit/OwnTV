@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
@@ -175,9 +176,9 @@ private fun AddView(addons: StremioAddons, onDone: () -> Unit) {
                 if (url != null) {
                     // Each thing to read is on its own line, and the code is big enough to read from the sofa.
                     Text(stringResource(R.string.kevin_stremio_add_open), style = stageText(19, 500), color = StageColors.Text)
-                    Text(url.removePrefix("http://").removeSuffix("/"), style = stageText(28, 700), color = StageColors.Text)
+                    Text(java.net.URI(url).authority.orEmpty(), style = stageText(28, 700), color = StageColors.Text)
                     Text(stringResource(R.string.kevin_stremio_add_code), style = stageText(19, 500), color = StageColors.Text)
-                    Text(inbox.code.toList().joinToString(" "), style = stageText(64, 800), color = StageColors.Text)
+                    Text(inbox.code, style = stageText(64, 800, letterSpacing = 10.sp), color = StageColors.Text)
                 } else if (started == false) {
                     Text(stringResource(R.string.kevin_stremio_server_failed), style = stageText(17, 500), color = StageColors.Danger)
                 }
