@@ -198,6 +198,10 @@ fun MoviesScreen(
     var personMovie by remember { mutableStateOf<Pair<MovieEntity, String>?>(null) }
     // Kevin's copy: Stremio add-on streams for a film (the film and its IMDb id, if known).
     var addonMovie by remember { mutableStateOf<Pair<MovieEntity, String?>?>(null) }
+    val stremioAddons: tv.own.owntv.features.stremio.StremioAddons = org.koin.compose.koinInject()
+    val stremioFindingMessage = stringResource(R.string.kevin_stremio_finding)
+    val stremioOnlyTorrentsMessage = stringResource(R.string.kevin_stremio_only_torrents)
+    val stremioNoStreamsMessage = stringResource(R.string.kevin_stremio_no_streams)
     // "Set TMDB name" dialog target (§11.2 U5b); null = closed.
     var setTmdbNameMovie by remember { mutableStateOf<MovieEntity?>(null) }
     // In-app trailer playback (§7.3 U4); non-null = fullscreen player open with this YouTube key.
@@ -939,6 +943,21 @@ fun MoviesScreen(
         val actions = buildList {
             add(MenuAction("play_trailer", stringResource(R.string.content_play_trailer), OwnTVIcon.PLAY_CIRCLE, group = VodGroupWatch) {
                 trailerKey?.let { contextMovie = null; trailerTitle = m.name; trailerVideoKey = it }
+            })
+            add(MenuAction("addon_play", stringResource(R.string.kevin_stremio_play), OwnTVIcon.PLAY, group = VodGroupWatch) {
+                contextMovie = null
+                val imdb = cacheForM?.imdbId?.takeIf { it.startsWith("tt") }
+                // No add-ons yet, or no IMDb number: the add-ons window says what to do.
+                if (imdb == null || stremioAddons.addons.value.isEmpty()) {
+                    addonMovie = m to imdb
+                } else {
+                    toast.show(stremioFindingMessage)
+                    vm.playBestAddonStream(
+                        stremioAddons, m, imdb,
+                        onStarted = { goFullscreen() },
+                        onNothing = { torrents -> toast.show(if (torrents > 0) stremioOnlyTorrentsMessage else stremioNoStreamsMessage) },
+                    )
+                }
             })
             add(MenuAction("addon_streams", stringResource(R.string.kevin_stremio_streams), OwnTVIcon.SPARKLE, group = VodGroupWatch) {
                 contextMovie = null; addonMovie = m to cacheForM?.imdbId?.takeIf { it.startsWith("tt") }

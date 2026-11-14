@@ -1017,6 +1017,32 @@ class SeriesViewModel(
         )
     }
 
+    private var addonPlayJob: kotlinx.coroutines.Job? = null
+
+    /** Kevin's copy: the one Play action for add-ons, for an episode. See the film version. */
+    fun playBestAddonStream(
+        addons: tv.own.owntv.features.stremio.StremioAddons,
+        series: SeriesEntity,
+        episode: EpisodeEntity,
+        imdbId: String,
+        onStarted: () -> Unit,
+        onNothing: (torrents: Int) -> Unit,
+    ) {
+        addonPlayJob?.cancel()
+        addonPlayJob = viewModelScope.launch {
+            val id = "$imdbId:${episode.seasonNumber}:${episode.episodeNumber}"
+            val found = runCatching { addons.streams("series", id) }.getOrNull()
+            val ranked = tv.own.owntv.features.stremio.StremioAutoPlay.rank(found?.playable.orEmpty())
+            if (ranked.isEmpty()) { onNothing(found?.torrents ?: 0); return@launch }
+            var shown = false
+            val outcome = tv.own.owntv.features.stremio.StremioAutoPlay.playFirstWorking(player, ranked) { stream ->
+                playAddonStream(series, episode, stream)
+                if (!shown) { shown = true; onStarted() }
+            }
+            Log.i(TAG, "add-on play episodeId=${episode.id} tried up to ${ranked.size} -> ${outcome::class.simpleName}")
+        }
+    }
+
     fun playEpisode(episode: EpisodeEntity, startPositionMs: Long = 0) {
         val show = _openedSeries.value ?: return
         val seasonEpisodes = episodes.value

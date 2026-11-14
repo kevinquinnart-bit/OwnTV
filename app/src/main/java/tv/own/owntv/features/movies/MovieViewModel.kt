@@ -814,6 +814,34 @@ class MovieViewModel(
         )
     }
 
+    private var addonPlayJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Kevin's copy: the one Play action for add-ons. Asks the add-ons for [imdbId], then tries their
+     * streams best first until one plays. [onStarted] runs once, when the first stream is started;
+     * [onNothing] when there was nothing to try, with the number of torrent-only streams seen.
+     */
+    fun playBestAddonStream(
+        addons: tv.own.owntv.features.stremio.StremioAddons,
+        movie: MovieEntity,
+        imdbId: String,
+        onStarted: () -> Unit,
+        onNothing: (torrents: Int) -> Unit,
+    ) {
+        addonPlayJob?.cancel()
+        addonPlayJob = viewModelScope.launch {
+            val found = runCatching { addons.streams("movie", imdbId) }.getOrNull()
+            val ranked = tv.own.owntv.features.stremio.StremioAutoPlay.rank(found?.playable.orEmpty())
+            if (ranked.isEmpty()) { onNothing(found?.torrents ?: 0); return@launch }
+            var shown = false
+            val outcome = tv.own.owntv.features.stremio.StremioAutoPlay.playFirstWorking(player, ranked) { stream ->
+                playAddonStream(movie, stream)
+                if (!shown) { shown = true; onStarted() }
+            }
+            Log.i(TAG, "add-on play movieId=${movie.id} tried up to ${ranked.size} -> ${outcome::class.simpleName}")
+        }
+    }
+
     fun playById(movieId: Long, startPositionMs: Long = 0) {
         viewModelScope.launch {
             val movie = movieDao.getById(movieId) ?: return@launch

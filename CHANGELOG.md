@@ -10,6 +10,7 @@
 ## Unreleased
 
 ### ✨ New features
+- **▶️ Play best stream on a film or an episode: tries the add-ons' streams best first until one plays, in English with English subtitles**
 - **📋 One left panel everywhere on Live TV, Films and Series (also when categories open as a pop-up); ◀ opens it, ▶ closes it**
 - **⏯️ Player pop-up opens with nothing chosen: ▼ to reach its buttons; ▶ does nothing**
 - **📺 More: ▶ moves onto the mini screen and its controls**

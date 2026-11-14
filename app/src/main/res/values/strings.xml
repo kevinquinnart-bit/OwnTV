@@ -87,6 +87,9 @@
     <string name="kevin_drive_rec_full">Couldn\'t copy “<xliff:g id="title">%1$s</xliff:g>”: not enough room on Google Drive.</string>
     <!-- Movies / Series (Kevin's copy): Stremio add-ons. -->
     <string name="kevin_stremio_streams">Add-on streams</string>
+    <string name="kevin_stremio_play">Play best stream</string>
+    <string name="kevin_stremio_finding">Finding the best stream…</string>
+    <string name="kevin_stremio_only_torrents">Only torrent streams were found. Torrents can\'t play here yet.</string>
     <string name="kevin_stremio_none_added">No add-ons yet. Add one to look for streams for this title.</string>
     <string name="kevin_stremio_needs_imdb">Add-ons find a title by its IMDb number, which comes with the title\'s details. Open its details once (Menu › Details), then try again.</string>
     <string name="kevin_stremio_no_streams">No playable streams found.</string>

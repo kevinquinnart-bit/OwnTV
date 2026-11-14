@@ -1333,6 +1333,10 @@ private fun EpisodeView(
     var contextEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
     // Kevin's copy: Stremio add-on streams for an episode.
     var addonEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
+    val stremioAddons: tv.own.owntv.features.stremio.StremioAddons = org.koin.compose.koinInject()
+    val stremioFindingMessage = stringResource(R.string.kevin_stremio_finding)
+    val stremioOnlyTorrentsMessage = stringResource(R.string.kevin_stremio_only_torrents)
+    val stremioNoStreamsMessage = stringResource(R.string.kevin_stremio_no_streams)
     var detailsEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
     // Downloaded subtitles for the episode whose options menu is open (subtitle plan §11).
     var contextEpisodeSubs by remember { mutableStateOf<List<tv.own.owntv.core.database.dao.LinkedSubtitle>>(emptyList()) }
@@ -1763,6 +1767,21 @@ private fun EpisodeView(
         val actions = buildList {
             add(MenuAction("play_start", stringResource(R.string.content_play_from_start), OwnTVIcon.PLAY, group = VodGroupWatch) {
                 contextEpisode = null; vm.playEpisode(ep, 0); goFullscreen()
+            })
+            add(MenuAction("addon_play", stringResource(R.string.kevin_stremio_play), OwnTVIcon.PLAY, group = VodGroupWatch) {
+                contextEpisode = null
+                val imdb = seriesMeta?.imdbId?.takeIf { it.startsWith("tt") }
+                // No add-ons yet, or no IMDb number: the add-ons window says what to do.
+                if (imdb == null || stremioAddons.addons.value.isEmpty()) {
+                    addonEpisode = ep
+                } else {
+                    toast.show(stremioFindingMessage)
+                    vm.playBestAddonStream(
+                        stremioAddons, series, ep, imdb,
+                        onStarted = { goFullscreen() },
+                        onNothing = { torrents -> toast.show(if (torrents > 0) stremioOnlyTorrentsMessage else stremioNoStreamsMessage) },
+                    )
+                }
             })
             add(MenuAction("addon_streams", stringResource(R.string.kevin_stremio_streams), OwnTVIcon.SPARKLE, group = VodGroupWatch) {
                 contextEpisode = null; addonEpisode = ep
