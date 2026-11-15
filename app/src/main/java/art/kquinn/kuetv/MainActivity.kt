@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
@@ -266,7 +267,7 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
 
 // --------------------------------------------------------------------------------------------- main
 
-private enum class Section(val label: String) { LIVE("Live TV"), FILMS("Films"), SETTINGS("Settings") }
+private enum class Section(val label: String) { LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SETTINGS("Settings") }
 
 private const val ALL = "\u0000all"
 
@@ -280,8 +281,27 @@ private class BrowseState(startOnFilms: Boolean) {
     val channelList = LazyListState()
     val filmGrid = LazyGridState()
 
+    val guide = ChannelPick()
+    val catchUp = ChannelPick()
+
     /** The row or poster that was sent to the player; focus returns to it. */
     var resumeKey by mutableStateOf<String?>(null)
+}
+
+/** Where the TV Guide (or Catch-up) is: the category, the channel opened, and any date-and-time step. */
+private class ChannelPick {
+    var category by mutableStateOf(ALL)
+    val categoryList = LazyListState()
+    val channelList = LazyListState()
+    val programmeList = LazyListState()
+    var open by mutableStateOf<Channel?>(null)
+
+    /** Null: the programme list. -1: choosing a day. Otherwise: choosing a time on the day that starts then. */
+    var pickDay by mutableStateOf<Long?>(null)
+
+    /** Set when a channel's page has just been closed, so focus goes back to that channel's row. */
+    var justClosed by mutableStateOf(false)
+    val loaded = HashMap<String, List<Programme>>()
 }
 
 @Composable
@@ -376,6 +396,8 @@ private fun MainScreen(
                     }
                 }
             }
+            Section.GUIDE -> ChannelGuide(library, false, state.guide, state, resume, onPlay)
+            Section.CATCHUP -> ChannelGuide(library, true, state.catchUp, state, resume, onPlay)
             Section.SETTINGS -> Column(Modifier.width(520.dp).fillMaxHeight()) {
                 Heading("Settings")
                 FocusRow("Change provider details", onEdit)
@@ -433,5 +455,249 @@ private fun Poster(film: Film, onClick: () -> Unit, modifier: Modifier = Modifie
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 6.dp).height(46.dp),
         )
+    }
+}
+
+// --------------------------------------------------------------------------------------------- guide and catch-up
+
+private const val DAY_MS = 24L * 60 * 60 * 1000
+private const val CHOOSING_DAY = -1L
+
+@Composable
+private fun Note(text: String) {
+    Text(text, color = Soft, fontSize = 22.sp, modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
+}
+
+/**
+ * TV Guide and Catch-up share one screen. Pick a channel (OK) and its page opens in place of the lists:
+ * the guide shows what is on now and next, and OK watches the channel; catch-up shows what has been on,
+ * newest first, under "Pick a date and time", and OK plays from the start. Back returns to the channels.
+ */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.ChannelGuide(
+    library: Library,
+    catchUp: Boolean,
+    pick: ChannelPick,
+    state: BrowseState,
+    resume: FocusRequester,
+    onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+) {
+    val account = library.account
+    if (account == null) {
+        Column(Modifier.weight(1f)) { Note("The guide and catch-up need a login: server address, username and password. A playlist link on its own doesn't give them.") }
+        return
+    }
+    val channels = remember(library, catchUp) { if (catchUp) library.channels.filter { it.catchupDays > 0 } else library.channels }
+    if (channels.isEmpty()) {
+        Column(Modifier.weight(1f)) { Note(if (catchUp) "Your provider marks no channel as having catch-up." else "Your provider listed no channels.") }
+        return
+    }
+    val opened = pick.open
+    if (opened != null) {
+        ProgrammePage(opened, catchUp, account, library.serverAheadSec, pick, state, resume, onPlay)
+        return
+    }
+    val scope = rememberCoroutineScope()
+    val categories = remember(library, channels) {
+        val used = channels.mapTo(HashSet()) { it.categoryId }
+        library.liveCategories.filter { it.id in used }
+    }
+    Categories(categories, pick.category, pick.categoryList) {
+        if (it != pick.category) {
+            pick.category = it
+            scope.launch { pick.channelList.scrollToItem(0) }
+        }
+    }
+    val shown = remember(channels, pick.category) { if (pick.category == ALL) channels else channels.filter { it.categoryId == pick.category } }
+    LaunchedEffect(Unit) {
+        if (!pick.justClosed) return@LaunchedEffect
+        pick.justClosed = false
+        withFrameNanos { }
+        withFrameNanos { }
+        runCatching { resume.requestFocus() }
+    }
+    Column(Modifier.weight(1f).fillMaxHeight()) {
+        Heading(if (catchUp) "Pick a channel to catch up on" else "Pick a channel to see its guide")
+        LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = pick.channelList) {
+            itemsIndexed(shown, key = { _, c -> c.id }) { _, channel ->
+                val key = "pick:" + channel.id
+                FocusRow(
+                    channel.name,
+                    {
+                        state.resumeKey = key
+                        pick.pickDay = null
+                        scope.launch { pick.programmeList.scrollToItem(0) }
+                        pick.open = channel
+                    },
+                    if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                    leading = { Logo(channel.logo) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.ProgrammePage(
+    channel: Channel,
+    catchUp: Boolean,
+    account: Account,
+    serverAheadSec: Int,
+    pick: ChannelPick,
+    state: BrowseState,
+    resume: FocusRequester,
+    onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+) {
+    val now = remember(channel.id) { System.currentTimeMillis() }
+    val windowMs = channel.catchupDays * DAY_MS
+    val dayText = remember { java.text.SimpleDateFormat("EEE d MMM", java.util.Locale.getDefault()) }
+    val timeText = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+    val day: (Long) -> String = { dayText.format(java.util.Date(it)) }
+    val time: (Long) -> String = { timeText.format(java.util.Date(it)) }
+    val step = pick.pickDay
+
+    BackHandler {
+        when (step) {
+            null -> { pick.justClosed = true; pick.open = null }
+            CHOOSING_DAY -> pick.pickDay = null
+            else -> pick.pickDay = CHOOSING_DAY
+        }
+    }
+
+    // null while loading; a failure carries the sentence to show.
+    val loaded by produceState<Result<List<Programme>>?>(pick.loaded[channel.id]?.let { Result.success(it) }, channel.id) {
+        if (value != null) return@produceState
+        value = withContext(Dispatchers.IO) {
+            try {
+                Result.success(Provider.guide(account, channel.id))
+            } catch (e: ProviderProblem) {
+                Result.failure(e)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Result.failure(ProviderProblem("Couldn't load the guide for this channel."))
+            }
+        }
+        value?.getOrNull()?.let { pick.loaded[channel.id] = it }
+    }
+
+    val first = remember { FocusRequester() }
+    LaunchedEffect(loaded != null, step) {
+        if (loaded == null) return@LaunchedEffect
+        withFrameNanos { }
+        withFrameNanos { }
+        val back = step == null && state.resumeKey?.startsWith("prog:") == true && runCatching { resume.requestFocus() }.getOrDefault(false)
+        if (!back) runCatching { first.requestFocus() }
+    }
+
+    Column(Modifier.weight(1f).fillMaxHeight()) {
+        Heading(channel.name + if (catchUp) " · catch-up" else " · guide")
+        val result = loaded
+        when {
+            result == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
+
+            // Choosing a day: today back to the oldest day the provider keeps.
+            step == CHOOSING_DAY -> {
+                val today = startOfDay(now)
+                val days = (0..channel.catchupDays).map { startOfDay(today - it * DAY_MS + DAY_MS / 2) }.filter { it + DAY_MS > now - windowMs }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    itemsIndexed(days) { i, start ->
+                        val label = when (i) { 0 -> "Today"; 1 -> "Yesterday"; else -> day(start) }
+                        FocusRow(label, { pick.pickDay = start }, if (i == 0) Modifier.focusRequester(first) else Modifier)
+                    }
+                }
+            }
+
+            // Choosing a time on that day: every half hour that has already gone and is still kept, latest first.
+            step != null -> {
+                val slots = (47 downTo 0).map { step + it * 30L * 60 * 1000 }.filter { it < now - 60_000 && it >= now - windowMs }
+                if (slots.isEmpty()) Note("Nothing is kept for that day.")
+                LazyColumn(Modifier.fillMaxSize()) {
+                    itemsIndexed(slots) { i, at ->
+                        FocusRow(
+                            day(at) + "  " + time(at),
+                            {
+                                val minutes = ((now - at) / 60_000).toInt().coerceIn(5, 240)
+                                val url = Provider.catchupUrlAt(account, channel.id, at, minutes, serverAheadSec)
+                                state.resumeKey = null
+                                onPlay(listOf(Playable(channel.name + " · " + day(at) + " " + time(at), url)), 0, false, "time:$at")
+                            },
+                            if (i == 0) Modifier.focusRequester(first) else Modifier,
+                        )
+                    }
+                }
+            }
+
+            else -> {
+                val all = result.getOrNull()
+                val rows = when {
+                    all == null -> emptyList()
+                    catchUp -> all.filter { it.startMs < now && it.startMs >= now - windowMs }.sortedByDescending { it.startMs }
+                    else -> all.filter { it.stopMs > now }
+                }
+                val lead = if (catchUp) 1 else 0
+                LazyColumn(Modifier.fillMaxSize(), state = pick.programmeList) {
+                    if (catchUp) item(key = "pick") {
+                        FocusRow("Pick a date and time", { pick.pickDay = CHOOSING_DAY }, Modifier.focusRequester(first))
+                    }
+                    if (all == null) item(key = "problem") { Note(result.exceptionOrNull()?.message ?: "Couldn't load the guide for this channel.") }
+                    else if (rows.isEmpty()) item(key = "none") {
+                        Note(if (catchUp) "Your provider sent no past programmes for this channel. Pick a date and time instead." else "Your provider sent no guide for this channel.")
+                    }
+                    if (!catchUp && rows.isEmpty()) item(key = "watch") {
+                        FocusRow("Watch " + channel.name, { onPlay(listOf(Playable(channel.name, channel.url)), 0, true, "pick:" + channel.id) }, Modifier.focusRequester(first))
+                    }
+                    itemsIndexed(rows, key = { _, p -> p.startMs }) { i, programme ->
+                        val key = "prog:" + programme.startMs
+                        val onNow = programme.startMs <= now && programme.stopMs > now
+                        ProgrammeRow(
+                            whenText = (if (onNow) "Now · " else day(programme.startMs) + " · ") + time(programme.startMs) + " to " + time(programme.stopMs),
+                            title = programme.title.ifBlank { "No title" },
+                            description = programme.description,
+                            onClick = {
+                                if (catchUp) {
+                                    val url = Provider.catchupUrl(account, channel.id, programme, serverAheadSec)
+                                    onPlay(listOf(Playable(channel.name + " · " + programme.title, url)), 0, false, key)
+                                } else {
+                                    onPlay(listOf(Playable(channel.name, channel.url)), 0, true, key)
+                                }
+                            },
+                            modifier = (if (i == 0 && lead == 0) Modifier.focusRequester(first) else Modifier)
+                                .then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun startOfDay(ms: Long): Long {
+    val c = java.util.Calendar.getInstance()
+    c.timeInMillis = ms
+    c.set(java.util.Calendar.HOUR_OF_DAY, 0)
+    c.set(java.util.Calendar.MINUTE, 0)
+    c.set(java.util.Calendar.SECOND, 0)
+    c.set(java.util.Calendar.MILLISECOND, 0)
+    return c.timeInMillis
+}
+
+/** A programme: when it is on, its title, and its description while the row is focused. */
+@Composable
+private fun ProgrammeRow(whenText: String, title: String, description: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    var focused by remember { mutableStateOf(false) }
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (focused) Accent else Color.Transparent)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        Text(whenText, color = if (focused) Color.Black else Soft, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, color = if (focused) Color.Black else Color.White, fontSize = 22.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (focused && description.isNotBlank()) {
+            Text(description, color = Color.Black, fontSize = 17.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+        }
     }
 }

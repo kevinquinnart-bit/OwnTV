@@ -36,7 +36,14 @@ class Library(
     val channels: List<Channel>,
     val filmCategories: List<Category>,
     val films: List<Film>,
+    /** The login these came from; null for a playlist link, which has no guide or catch-up to ask for. */
+    val account: Account? = null,
+    /** How far the provider's own clock is ahead of world time, in seconds. Catch-up is asked for on its clock. */
+    val serverAheadSec: Int = 0,
 )
+
+/** One programme in a channel's guide. [startText] is the start exactly as the provider wrote it, on its own clock. */
+data class Programme(val title: String, val description: String, val startMs: Long, val stopMs: Long, val startText: String)
 
 /** A problem the user can read on screen. */
 class ProviderProblem(message: String) : Exception(message)
@@ -159,7 +166,8 @@ object Provider {
         }
     }
 
-    private fun checkLogin(account: Account) {
+    /** Checks the login; returns how far the provider's clock is ahead of world time, in seconds. */
+    private fun checkLogin(account: Account): Int {
         val text = open(api(account, null)).use { it.body.string() }
         val info = runCatching { JsonParser.parseString(text).asJsonObject.getAsJsonObject("user_info") }.getOrNull()
             ?: throw ProviderProblem("That server didn't answer like an IPTV provider. Check the server address.")
@@ -171,13 +179,82 @@ object Provider {
         if (status.isNotEmpty() && !status.equals("Active", ignoreCase = true)) {
             throw ProviderProblem("Your provider says this account is \"$status\".")
         }
+        return runCatching {
+            val serverInfo = JsonParser.parseString(text).asJsonObject.getAsJsonObject("server_info")
+            val world = serverInfo.get("timestamp_now").asString.toLong()
+            val wall = parseWall(serverInfo.get("time_now").asString) ?: return@runCatching 0
+            // Clocks differ by whole quarter hours; rounding removes the seconds the two readings are apart.
+            (Math.round((wall / 1000 - world) / 900.0) * 900).toInt()
+        }.getOrDefault(0)
+    }
+
+    /** "2026-11-15 20:00:00" read as if it were world time, in milliseconds. */
+    private fun parseWall(text: String): Long? = runCatching {
+        val f = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+        f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        f.parse(text.trim())?.time
+    }.getOrNull()
+
+    private fun who(account: Account): String {
+        val part: (String) -> String = { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+        return part(account.user) + "/" + part(account.pass)
+    }
+
+    private fun decode(text: String): String = runCatching {
+        String(java.util.Base64.getDecoder().decode(text.trim()), Charsets.UTF_8)
+    }.getOrDefault(text).trim()
+
+    /** A channel's guide, oldest first: what the provider holds, past and coming. Call off the main thread. */
+    fun guide(account: Account, channelId: String): List<Programme> {
+        val url = (account.server + "/player_api.php").toHttpUrlOrNull()?.newBuilder()
+            ?.addQueryParameter("username", account.user)
+            ?.addQueryParameter("password", account.pass)
+            ?.addQueryParameter("action", "get_simple_data_table")
+            ?.addQueryParameter("stream_id", channelId)
+            ?.build()?.toString() ?: throw ProviderProblem("That server address isn't a web address.")
+        val text = open(url).use { it.body.string() }
+        val rows = runCatching { JsonParser.parseString(text).asJsonObject.getAsJsonArray("epg_listings") }.getOrNull()
+            ?: return emptyList()
+        val out = ArrayList<Programme>()
+        for (row in rows) {
+            val o = runCatching { row.asJsonObject }.getOrNull() ?: continue
+            val field: (String) -> String = { name -> o.get(name)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty() }
+            val start = field("start_timestamp").toLongOrNull() ?: continue
+            val stop = field("stop_timestamp").toLongOrNull() ?: continue
+            if (stop <= start) continue
+            out += Programme(decode(field("title")), decode(field("description")), start * 1000, stop * 1000, field("start"))
+        }
+        return out.sortedBy { it.startMs }.distinctBy { it.startMs }
+    }
+
+    /** The address that replays [channelId] from a programme's start, for its length plus a little. */
+    fun catchupUrl(account: Account, channelId: String, programme: Programme, serverAheadSec: Int): String {
+        val minutes = ((programme.stopMs - programme.startMs) / 60_000 + 5).coerceAtLeast(5)
+        // The provider's own wording of the start is on its own clock already, which is what it wants back.
+        val stamp = wallStamp(programme.startText) ?: stampFor(programme.startMs, serverAheadSec)
+        return account.server + "/timeshift/" + who(account) + "/" + minutes + "/" + stamp + "/" + channelId + ".ts"
+    }
+
+    /** The address that replays [channelId] from a moment the user picked, for [minutes]. */
+    fun catchupUrlAt(account: Account, channelId: String, startMs: Long, minutes: Int, serverAheadSec: Int): String =
+        account.server + "/timeshift/" + who(account) + "/" + minutes + "/" + stampFor(startMs, serverAheadSec) + "/" + channelId + ".ts"
+
+    /** "2026-11-15 20:00:00" as the "2026-11-15:20-00" a catch-up address uses; null when it isn't that shape. */
+    private fun wallStamp(text: String): String? {
+        val m = Regex("(\\d{4}-\\d{2}-\\d{2})[ T](\\d{2}):(\\d{2})").find(text) ?: return null
+        return m.groupValues[1] + ":" + m.groupValues[2] + "-" + m.groupValues[3]
+    }
+
+    private fun stampFor(worldMs: Long, serverAheadSec: Int): String {
+        val f = java.text.SimpleDateFormat("yyyy-MM-dd:HH-mm", java.util.Locale.US)
+        f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        return f.format(java.util.Date(worldMs + serverAheadSec * 1000L))
     }
 
     private fun loadLogin(account: Account): Library {
-        checkLogin(account)
+        val ahead = checkLogin(account)
         val base = account.server
-        val part: (String) -> String = { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
-        val who = part(account.user) + "/" + part(account.pass)
+        val who = who(account)
 
         val liveCategories = ArrayList<Category>()
         records(api(account, "get_live_categories"), setOf("category_id", "category_name")) { r ->
@@ -218,7 +295,10 @@ object Provider {
         }
         if (channels.isEmpty() && films.isEmpty()) throw ProviderProblem("Your provider signed you in but listed no channels or films.")
         // A provider that lists the same id twice must not break the lists, which tell rows apart by id.
-        return Library(liveCategories.distinctBy { it.id }, channels.distinctBy { it.id }, filmCategories.distinctBy { it.id }, films.distinctBy { it.id })
+        return Library(
+            liveCategories.distinctBy { it.id }, channels.distinctBy { it.id }, filmCategories.distinctBy { it.id }, films.distinctBy { it.id },
+            account = account, serverAheadSec = ahead,
+        )
     }
 
     // ---------------------------------------------------------------- one playlist link

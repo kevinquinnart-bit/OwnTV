@@ -23,7 +23,12 @@ class ProviderTest {
             val q = ex.requestURI.rawQuery.orEmpty().split('&').associate { it.substringBefore('=') to java.net.URLDecoder.decode(it.substringAfter('=', ""), "UTF-8") }
             val body = when {
                 q["password"] != "p w/1" -> """{"user_info":{"auth":0}}"""
-                q["action"] == null -> """{"user_info":{"auth":1,"status":"Active"},"server_info":{}}"""
+                q["action"] == null -> """{"user_info":{"auth":1,"status":"Active"},"server_info":{"timezone":"Europe/Berlin","timestamp_now":1794772803,"time_now":"2026-11-15 21:00:01"}}"""
+                q["action"] == "get_simple_data_table" && q["stream_id"] == "101" -> """{"epg_listings":[
+                    {"id":"2","title":"VGhlIE5ld3M=","description":"SGVhZGxpbmVzLCB0aGVuIHdlYXRoZXIu","start":"2026-11-15 19:00:00","end":"2026-11-15 19:30:00","start_timestamp":"1794765600","stop_timestamp":"1794767400","has_archive":1},
+                    {"id":"1","title":"RWFybHkgU2hvdw==","description":"","start":"2026-11-15 18:00:00","end":"2026-11-15 19:00:00","start_timestamp":1794762000,"stop_timestamp":1794765600,"has_archive":1},
+                    {"id":"3","title":"QnJva2Vu","start":"x","start_timestamp":"5","stop_timestamp":"5"}]}"""
+                q["action"] == "get_simple_data_table" -> """{"epg_listings":[]}"""
                 q["action"] == "get_live_categories" -> """[{"category_id":"1","category_name":"UK","parent_id":0},{"category_id":"2","category_name":"Sport","parent_id":0}]"""
                 q["action"] == "get_live_streams" -> """[
                     {"num":1,"name":" BBC One ","stream_id":101,"stream_icon":"http://x/l.png","category_id":"1","tv_archive":1,"tv_archive_duration":"7","category_ids":[1]},
@@ -55,6 +60,21 @@ class ProviderTest {
         assertEquals("", lib.channels[1].logo)
         assertEquals("$base/movie/kev/p%20w%2F1/555.mkv", lib.films.single().url)
         assertEquals("Drama", lib.filmCategories.single().name)
+    }
+
+    @Test fun guideAndCatchUpAddresses() {
+        val account = Account(base, "kev", "p w/1", "")
+        val lib = Provider.load(account)
+        assertEquals("the provider's clock is an hour ahead of world time", 3600, lib.serverAheadSec)
+        val guide = Provider.guide(account, "101")
+        assertEquals(listOf("Early Show", "The News"), guide.map { it.title })
+        assertEquals("Headlines, then weather.", guide[1].description)
+        assertEquals(1794765600000L, guide[1].startMs)
+        // A programme: the provider's own wording of the start, 30 minutes plus 5.
+        assertEquals("$base/timeshift/kev/p%20w%2F1/35/2026-11-15:19-00/101.ts", Provider.catchupUrl(account, "101", guide[1], lib.serverAheadSec))
+        // A picked moment: 18:00 world time is 19:00 on the provider's clock.
+        assertEquals("$base/timeshift/kev/p%20w%2F1/240/2026-11-15:19-00/101.ts", Provider.catchupUrlAt(account, "101", 1794765600000L, 240, lib.serverAheadSec))
+        assertTrue(Provider.guide(account, "102").isEmpty())
     }
 
     @Test fun wrongPasswordSaysSo() {
