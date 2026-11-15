@@ -10,6 +10,8 @@
 ## Unreleased
 
 ### ✨ New features
+- **📋 Settings: with the small player showing, a setting's choices open in the middle of the screen, not in the short panel**
+- **📺 UK & Irish players is now called TV apps**
 - **⏳ Play best stream: a window with a spinner and Cancel stays up until the stream starts, and says why when nothing would play**
 - **🔎 Play best stream and Add-on streams find the title themselves; no need to open its details first**
 - **🧹 Hold OK on a film, show or episode: a short list with Play best stream first; More options… shows the rest**

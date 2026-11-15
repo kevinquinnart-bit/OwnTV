@@ -147,6 +147,11 @@ class SettingsPanelState {
     var editor by mutableStateOf<PanelEditor?>(null)
     /** The row that opened [editor]: focus goes back to it when the list closes. */
     var opener: FocusRequester? = null
+    /**
+     * Kevin's copy: the panel starts below the small player, so it is too short for a list of choices
+     * (one row showed). A row's editor then opens as a popup in the middle of the screen instead.
+     */
+    var tooShortForEditors = false
 }
 
 val LocalSettingsPanel = staticCompositionLocalOf<SettingsPanelState?> { null }
@@ -265,6 +270,7 @@ fun StageSettingsPage(
 ) {
     val searching = searchQuery.isNotBlank()
     androidx.compose.runtime.LaunchedEffect(searching) { if (searching) panel.help = null }
+    panel.tooShortForEditors = panelTopAt > 240.mpx
     // Popups opened from this page are labelled with its path, "SETTINGS · PLAYER" (P1-06).
     val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val from = ((if (settingsRoot) listOf(stringResource(R.string.common_nav_settings)) else emptyList()) + parents).lastOrNull()
@@ -403,6 +409,14 @@ private fun SettingPanelBody(help: SettingHelp) {
 fun panelEditor(onDismiss: () -> Unit, content: @Composable androidx.compose.foundation.layout.ColumnScope.(help: SettingHelp?) -> Unit): Boolean {
     val panel = LocalSettingsPanel.current
     if (panel == null || tv.own.owntv.ui.components.LocalStagePopup.current) return false
+    if (panel.tooShortForEditors) {
+        // Kevin's copy: no room in the panel (the small player is above it): the same editor, in a popup.
+        val help = panel.help
+        val view = androidx.compose.ui.platform.LocalView.current
+        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { view.post { panel.opener?.let { r -> runCatching { r.requestFocus() } } } } }
+        tv.own.owntv.ui.stage.StagePopup(onDismiss = onDismiss, title = help?.title?.takeIf { it.isNotEmpty() }, scroll = false) { content(help) }
+        return true
+    }
     val token = remember { Any() }
     val editor = PanelEditor(token, onDismiss, content)
     androidx.compose.runtime.SideEffect { panel.editor = editor }
