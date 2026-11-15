@@ -131,8 +131,23 @@ fun MoreScreen(
     var settingsGroup by rememberSaveable { mutableIntStateOf(0) }
     val itemFocus = remember { MoreItem.entries.associateWith { FocusRequester() } }
     val groupFocus = remember { List(SettingsGroup.entries.size) { FocusRequester() } }
+    // Kevin's copy (v4): Settings, Keep it safe and App are closed until OK on their heading; one is open
+    // at a time, so the panel is short. 0 = all closed, else the open section (SECTION_*).
+    var openSection by rememberSaveable { mutableIntStateOf(0) }
+    val sectionFocus = remember { List(4) { FocusRequester() } }
+    val sectionOf: (MoreItem) -> Int = {
+        when (it) {
+            MoreItem.SETTINGS -> SECTION_SETTINGS
+            MoreItem.BACKUP, MoreItem.LOCAL_SYNC -> SECTION_SAFE
+            MoreItem.ERROR_LOG, MoreItem.ABOUT, MoreItem.DEVELOPER -> SECTION_APP
+            else -> 0
+        }
+    }
     val focusOfSelected: () -> FocusRequester = {
-        if (selected == MoreItem.SETTINGS) groupFocus[settingsGroup.coerceIn(0, groupFocus.size - 1)] else itemFocus.getValue(selected)
+        val section = sectionOf(selected)
+        // The chosen item is inside a closed section: its heading stands in for it.
+        if (section != 0 && openSection != section) sectionFocus[section]
+        else if (selected == MoreItem.SETTINGS) groupFocus[settingsGroup.coerceIn(0, groupFocus.size - 1)] else itemFocus.getValue(selected)
     }
     // While a settings full page (a sub-screen) is open it covers everything, this panel included.
     var subPage by remember { mutableStateOf(false) }
@@ -272,8 +287,20 @@ fun MoreScreen(
                     onClick = { onMenu(section) },
                 )
             }
-            GroupLabel(stringResource(R.string.common_nav_settings))
-            SettingsGroup.entries.forEachIndexed { i, g ->
+            val heading = @Composable { section: Int, label: String, count: Int ->
+                val open = openSection == section
+                StageGroupItem(
+                    text = label,
+                    icon = if (open) OwnTVIcon.CHEVRON_DOWN else OwnTVIcon.CHEVRON,
+                    value = count.toString(),
+                    // Closed with the page on show inside it: marked, so it is clear where that page lives.
+                    selected = !open && sectionOf(selected) == section,
+                    onClick = { openSection = if (open) 0 else section },
+                    modifier = Modifier.padding(top = 6.mpx).focusRequester(sectionFocus[section]),
+                )
+            }
+            heading(SECTION_SETTINGS, stringResource(R.string.common_nav_settings), SettingsGroup.entries.size)
+            if (openSection == SECTION_SETTINGS) SettingsGroup.entries.forEachIndexed { i, g ->
                 StageGroupItem(
                     text = stringResource(g.titleRes),
                     icon = SettingsCategoryIcons.getOrElse(i) { OwnTVIcon.SETTINGS },
@@ -294,17 +321,17 @@ fun MoreScreen(
             item(MoreItem.HISTORY, OwnTVIcon.HISTORY, stringResource(R.string.content_category_history), history.total.toString(), false)
             // Kevin's copy (v1): the free UK and Irish players, each opening its own app.
             item(MoreItem.PLAYERS, OwnTVIcon.PLAY_CIRCLE, stringResource(R.string.kevin_players_title), null, false)
-            GroupLabel(stringResource(R.string.more_group_keep_safe))
-            item(
+            heading(SECTION_SAFE, stringResource(R.string.more_group_keep_safe), 2)
+            if (openSection == SECTION_SAFE) item(
                 MoreItem.BACKUP, OwnTVIcon.DOWNLOADS, stringResource(R.string.settings_backup_restore),
                 lastBackup?.let { relativeShort(it.at) } ?: stringResource(R.string.common_never), lastBackup == null,
             )
-            item(MoreItem.LOCAL_SYNC, OwnTVIcon.PHONE, stringResource(R.string.local_sync_title), stringResource(if (sync.listening) R.string.common_on else R.string.common_off), false)
-            GroupLabel(stringResource(R.string.settings_app_group))
-            item(MoreItem.ERROR_LOG, OwnTVIcon.WARNING, stringResource(R.string.settings_playback_error_log), logCount.toString(), false)
-            item(MoreItem.ABOUT, OwnTVIcon.INFO, stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, false)
+            if (openSection == SECTION_SAFE) item(MoreItem.LOCAL_SYNC, OwnTVIcon.PHONE, stringResource(R.string.local_sync_title), stringResource(if (sync.listening) R.string.common_on else R.string.common_off), false)
+            heading(SECTION_APP, stringResource(R.string.settings_app_group), 2)
+            if (openSection == SECTION_APP) item(MoreItem.ERROR_LOG, OwnTVIcon.WARNING, stringResource(R.string.settings_playback_error_log), logCount.toString(), false)
+            if (openSection == SECTION_APP) item(MoreItem.ABOUT, OwnTVIcon.INFO, stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, false)
             // Maintainer-only; DEV_TOOLS is a compile-time constant, so R8 removes it from published APKs.
-            if (BuildConfig.DEV_TOOLS) item(MoreItem.DEVELOPER, OwnTVIcon.GEAR, "Developer", "DEV", false)
+            if (BuildConfig.DEV_TOOLS && openSection == SECTION_APP) item(MoreItem.DEVELOPER, OwnTVIcon.GEAR, "Developer", "DEV", false)
             }
             StageKeyHints(
                 listOf(
@@ -383,6 +410,10 @@ private fun ProfileRow(name: String, playlistLabel: String, playlists: Int, avat
 }
 
 /** `.gsheet .gl`: 12.5/800 +0.13em in dim, upper-cased in the user's own locale. */
+private const val SECTION_SETTINGS = 1
+private const val SECTION_SAFE = 2
+private const val SECTION_APP = 3
+
 @Composable
 private fun GroupLabel(text: String) {
     Text(

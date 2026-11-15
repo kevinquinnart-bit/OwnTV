@@ -10,6 +10,7 @@
 ## Unreleased
 
 ### ✨ New features
+- **🗂️ More: Settings, Keep it safe and App are closed until OK on their heading, one open at a time, so the panel is short**
 - **📋 Settings: with the small player showing, a setting's choices open in the middle of the screen, not in the short panel**
 - **📺 UK & Irish players is now called TV apps**
 - **⏳ Play best stream: a window with a spinner and Cancel stays up until the stream starts, and says why when nothing would play**
