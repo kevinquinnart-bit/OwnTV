@@ -61,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
 import tv.own.owntv.R
+import tv.own.owntv.features.shell.components.menuLabelRes
 import tv.own.owntv.features.shell.components.stageIcon
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.epg.displayLogoUrl
@@ -500,7 +501,8 @@ internal fun LiveCategories(
     val menu = tv.own.owntv.features.shell.components.LocalPanelMenu.current
     val ownFocus = remember { FocusRequester() }
     // The rows before the search field: the "Menu" label and its items.
-    val head = if (menu == null) 0 else 1 + menu.sections.size + (if (menu.onNowPlaying != null) 1 else 0)
+    val menuRows = remember(menu?.sections) { menu?.let { tv.own.owntv.features.shell.components.menuRows(it.sections) }.orEmpty() }
+    val head = if (menu == null) 0 else 1 + menuRows.size + (if (menu.onNowPlaying != null) 1 else 0)
     androidx.compose.runtime.DisposableEffect(menu != null) {
         if (menu != null) {
             tv.own.owntv.features.shell.components.PanelMenuHost.active = true
@@ -563,7 +565,7 @@ internal fun LiveCategories(
     // Kevin's copy (v1): ◀ anywhere below the menu jumps straight up to it, on the screen you are on,
     // instead of scrolling back past every category.
     val menuFocus = remember { FocusRequester() }
-    val menuCurrentRow = menu?.let { m -> 1 + (if (m.onNowPlaying != null) 1 else 0) + m.sections.indexOf(m.current).coerceAtLeast(0) } ?: 0
+    val menuCurrentRow = menu?.let { m -> 1 + (if (m.onNowPlaying != null) 1 else 0) + menuRows.indexOf(tv.own.owntv.features.shell.components.MenuRow.Screen(m.current)).coerceAtLeast(0) } ?: 0
     val leftToMenu = Modifier.onPreviewKeyEvent { e ->
         if (menu != null && e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft) {
             if (!runCatching { menuFocus.requestFocus() }.getOrDefault(false)) {
@@ -639,15 +641,28 @@ internal fun LiveCategories(
                         )
                     }
                 }
-                menu.sections.forEach { section ->
-                    item(key = "__menu_" + section.name) {
-                        tv.own.owntv.ui.stage.StageGroupItem(
-                            text = stringResource(section.labelRes),
-                            icon = section.stageIcon,
-                            selected = section == menu.current,
-                            onClick = { menu.onSelect(section) },
-                            modifier = if (section == menu.current) rightKey.focusRequester(menuFocus) else rightKey,
-                        )
+                menuRows.forEach { row ->
+                    when (row) {
+                        is tv.own.owntv.features.shell.components.MenuRow.Screen -> {
+                            val section = row.section
+                            item(key = "__menu_" + section.name) {
+                                tv.own.owntv.ui.stage.StageGroupItem(
+                                    text = stringResource(section.menuLabelRes),
+                                    icon = section.stageIcon,
+                                    selected = section == menu.current,
+                                    onClick = { menu.onSelect(section) },
+                                    modifier = if (section == menu.current) rightKey.focusRequester(menuFocus) else rightKey,
+                                )
+                            }
+                        }
+                        is tv.own.owntv.features.shell.components.MenuRow.Extra -> item(key = "__menu_x_" + row.extra.key) {
+                            tv.own.owntv.ui.stage.StageGroupItem(
+                                text = stringResource(row.extra.labelRes),
+                                icon = row.extra.icon,
+                                onClick = { menu.onExtra(row.extra.key) },
+                                modifier = rightKey,
+                            )
+                        }
                     }
                 }
             }

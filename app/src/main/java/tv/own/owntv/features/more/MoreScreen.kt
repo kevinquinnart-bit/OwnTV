@@ -103,6 +103,8 @@ fun MoreScreen(
     /** Kevin's copy (v3): the menu (Search, Home, Live TV…) — More shows it in place of the rail. */
     menuSections: List<tv.own.owntv.core.nav.MainSection> = emptyList(),
     onMenu: (tv.own.owntv.core.nav.MainSection) -> Unit = {},
+    /** Kevin's copy (v5): OK on Catch-up in the menu (TV apps is this screen's own page). */
+    onMenuExtra: (String) -> Unit = {},
     /** The player's "Now playing" entry, while something plays. */
     onNowPlaying: (() -> Unit)? = null,
     /**
@@ -127,22 +129,20 @@ fun MoreScreen(
 ) {
     // Kevin's copy (v3): one panel — Settings' categories are listed here with the rest of More, and the
     // chosen one's settings show on the right. [selected] SETTINGS means category [settingsGroup].
-    var selected by rememberSaveable { mutableStateOf(MoreItem.SETTINGS) }
+    // Kevin's copy (v5): TV apps chosen in the menu on another screen opens here on that page.
+    val host = tv.own.owntv.features.shell.components.MenuExtraHost
+    var selected by rememberSaveable {
+        mutableStateOf(if (host.pendingMore == tv.own.owntv.features.shell.components.MENU_EXTRA_TV_APPS) MoreItem.PLAYERS else MoreItem.SETTINGS)
+    }
     var settingsGroup by rememberSaveable { mutableIntStateOf(0) }
     val itemFocus = remember { MoreItem.entries.associateWith { FocusRequester() } }
     val groupFocus = remember { List(SettingsGroup.entries.size) { FocusRequester() } }
-    // Kevin's copy (v4): Settings, Keep it safe and App are closed until OK on their heading; one is open
-    // at a time, so the panel is short. 0 = all closed, else the open section (SECTION_*).
-    var openSection by rememberSaveable { mutableIntStateOf(0) }
-    val sectionFocus = remember { List(4) { FocusRequester() } }
-    val sectionOf: (MoreItem) -> Int = {
-        when (it) {
-            MoreItem.SETTINGS -> SECTION_SETTINGS
-            MoreItem.BACKUP, MoreItem.LOCAL_SYNC -> SECTION_SAFE
-            MoreItem.ERROR_LOG, MoreItem.ABOUT, MoreItem.DEVELOPER -> SECTION_APP
-            else -> 0
-        }
-    }
+    // Kevin's copy (v5): everything that is not a screen is filed under the one Settings heading: the
+    // settings categories, then Favourites, History, Backup & Restore, Local sync, the error log and
+    // About. OK on the heading closes and opens it. 0 = closed, else SECTION_SETTINGS.
+    var openSection by rememberSaveable { mutableIntStateOf(if (selected == MoreItem.PLAYERS) 0 else SECTION_SETTINGS) }
+    val sectionFocus = remember { List(2) { FocusRequester() } }
+    val sectionOf: (MoreItem) -> Int = { if (it == MoreItem.PLAYERS) 0 else SECTION_SETTINGS }
     val focusOfSelected: () -> FocusRequester = {
         val section = sectionOf(selected)
         // The chosen item is inside a closed section: its heading stands in for it.
@@ -179,6 +179,14 @@ fun MoreScreen(
     DisposableEffect(onEntryHook) {
         onEntryHook?.invoke { runCatching { focusOfSelected().requestFocus() }.isSuccess }
         onDispose { onEntryHook?.invoke(null) }
+    }
+    LaunchedEffect(host.pendingMore) {
+        if (host.pendingMore != tv.own.owntv.features.shell.components.MENU_EXTRA_TV_APPS) return@LaunchedEffect
+        host.pendingMore = null
+        if (selected != MoreItem.PLAYERS) { selected = MoreItem.PLAYERS; pageEntry = null }
+        withFrameNanos { }
+        withFrameNanos { }
+        runCatching { itemFocus.getValue(MoreItem.PLAYERS).requestFocus() }
     }
     // The rail is hidden while More is open, so focus starts on this panel's chosen item.
     LaunchedEffect(Unit) {
@@ -280,12 +288,23 @@ fun MoreScreen(
             onNowPlaying?.let { play ->
                 StageGroupItem(text = stringResource(R.string.shell_now_playing), icon = OwnTVIcon.PLAY_CIRCLE, onClick = play)
             }
-            menuSections.forEach { section ->
-                StageGroupItem(
-                    text = stringResource(section.labelRes),
-                    icon = section.stageIcon,
-                    onClick = { onMenu(section) },
-                )
+            tv.own.owntv.features.shell.components.menuRows(menuSections).forEach { row ->
+                when (row) {
+                    is tv.own.owntv.features.shell.components.MenuRow.Screen -> StageGroupItem(
+                        text = stringResource(row.section.labelRes),
+                        icon = row.section.stageIcon,
+                        onClick = { onMenu(row.section) },
+                    )
+                    is tv.own.owntv.features.shell.components.MenuRow.Extra ->
+                        // TV apps is a page of this screen: it shows on the right, like a settings category.
+                        if (row.extra.key == tv.own.owntv.features.shell.components.MENU_EXTRA_TV_APPS) {
+                            item(MoreItem.PLAYERS, row.extra.icon, stringResource(row.extra.labelRes), null, false)
+                        } else StageGroupItem(
+                            text = stringResource(row.extra.labelRes),
+                            icon = row.extra.icon,
+                            onClick = { onMenuExtra(row.extra.key) },
+                        )
+                }
             }
             val heading = @Composable { section: Int, label: String, count: Int ->
                 val open = openSection == section
@@ -299,7 +318,7 @@ fun MoreScreen(
                     modifier = Modifier.padding(top = 6.mpx).focusRequester(sectionFocus[section]),
                 )
             }
-            heading(SECTION_SETTINGS, stringResource(R.string.common_nav_settings), SettingsGroup.entries.size)
+            heading(SECTION_SETTINGS, stringResource(R.string.common_nav_settings), SettingsGroup.entries.size + if (BuildConfig.DEV_TOOLS) 7 else 6)
             if (openSection == SECTION_SETTINGS) SettingsGroup.entries.forEachIndexed { i, g ->
                 StageGroupItem(
                     text = stringResource(g.titleRes),
@@ -316,22 +335,19 @@ fun MoreScreen(
                         .onFocusChanged { f -> if (f.isFocused) focusTarget = MoreItem.SETTINGS to i },
                 )
             }
-            GroupLabel(stringResource(R.string.more_group_your_things))
-            item(MoreItem.FAVORITES, OwnTVIcon.FAVORITE, stringResource(R.string.content_category_favorites), favorites.total.toString(), false)
-            item(MoreItem.HISTORY, OwnTVIcon.HISTORY, stringResource(R.string.content_category_history), history.total.toString(), false)
-            // Kevin's copy (v1): the free UK and Irish players, each opening its own app.
-            item(MoreItem.PLAYERS, OwnTVIcon.PLAY_CIRCLE, stringResource(R.string.kevin_players_title), null, false)
-            heading(SECTION_SAFE, stringResource(R.string.more_group_keep_safe), 2)
-            if (openSection == SECTION_SAFE) item(
-                MoreItem.BACKUP, OwnTVIcon.DOWNLOADS, stringResource(R.string.settings_backup_restore),
-                lastBackup?.let { relativeShort(it.at) } ?: stringResource(R.string.common_never), lastBackup == null,
-            )
-            if (openSection == SECTION_SAFE) item(MoreItem.LOCAL_SYNC, OwnTVIcon.PHONE, stringResource(R.string.local_sync_title), stringResource(if (sync.listening) R.string.common_on else R.string.common_off), false)
-            heading(SECTION_APP, stringResource(R.string.settings_app_group), 2)
-            if (openSection == SECTION_APP) item(MoreItem.ERROR_LOG, OwnTVIcon.WARNING, stringResource(R.string.settings_playback_error_log), logCount.toString(), false)
-            if (openSection == SECTION_APP) item(MoreItem.ABOUT, OwnTVIcon.INFO, stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, false)
-            // Maintainer-only; DEV_TOOLS is a compile-time constant, so R8 removes it from published APKs.
-            if (BuildConfig.DEV_TOOLS && openSection == SECTION_APP) item(MoreItem.DEVELOPER, OwnTVIcon.GEAR, "Developer", "DEV", false)
+            if (openSection == SECTION_SETTINGS) {
+                item(MoreItem.FAVORITES, OwnTVIcon.FAVORITE, stringResource(R.string.content_category_favorites), favorites.total.toString(), false)
+                item(MoreItem.HISTORY, OwnTVIcon.HISTORY, stringResource(R.string.content_category_history), history.total.toString(), false)
+                item(
+                    MoreItem.BACKUP, OwnTVIcon.DOWNLOADS, stringResource(R.string.settings_backup_restore),
+                    lastBackup?.let { relativeShort(it.at) } ?: stringResource(R.string.common_never), lastBackup == null,
+                )
+                item(MoreItem.LOCAL_SYNC, OwnTVIcon.PHONE, stringResource(R.string.local_sync_title), stringResource(if (sync.listening) R.string.common_on else R.string.common_off), false)
+                item(MoreItem.ERROR_LOG, OwnTVIcon.WARNING, stringResource(R.string.settings_playback_error_log), logCount.toString(), false)
+                item(MoreItem.ABOUT, OwnTVIcon.INFO, stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, false)
+                // Maintainer-only; DEV_TOOLS is a compile-time constant, so R8 removes it from published APKs.
+                if (BuildConfig.DEV_TOOLS) item(MoreItem.DEVELOPER, OwnTVIcon.GEAR, "Developer", "DEV", false)
+            }
             }
             StageKeyHints(
                 listOf(
@@ -411,8 +427,6 @@ private fun ProfileRow(name: String, playlistLabel: String, playlists: Int, avat
 
 /** `.gsheet .gl`: 12.5/800 +0.13em in dim, upper-cased in the user's own locale. */
 private const val SECTION_SETTINGS = 1
-private const val SECTION_SAFE = 2
-private const val SECTION_APP = 3
 
 @Composable
 private fun GroupLabel(text: String) {

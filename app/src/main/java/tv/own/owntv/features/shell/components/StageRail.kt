@@ -146,6 +146,8 @@ fun StageRail(
     selected: MainSection,
     visibleSections: Set<MainSection>,
     onSelect: (MainSection) -> Unit,
+    /** Kevin's copy (v2): OK on Catch-up or TV apps. */
+    onExtra: (String) -> Unit = {},
     count: (MainSection) -> Int?,
     detail: @Composable (MainSection) -> String?,
     profileName: String,
@@ -177,7 +179,7 @@ fun StageRail(
         selected == MainSection.SEARCH || selected in visibleSections -> selected
         else -> StageRailOrder.firstOrNull { it in visibleSections } ?: MainSection.MORE
     }
-    val items = StageRailOrder.filter { it == MainSection.SEARCH || it in visibleSections } + MainSection.MORE
+    val items = menuRows(StageRailOrder.filter { it == MainSection.SEARCH || it in visibleSections } + MainSection.MORE)
 
     // Slide in from the edge (320 ms, or a snap with animations off): the capsule when it leaves
     // HIDDEN, the open rail each time it opens.
@@ -267,18 +269,32 @@ fun StageRail(
                 )
                 RailSeparator(open)
             }
-            items.forEach { section ->
-                RailItem(
-                    icon = section.stageIcon,
-                    label = stringResource(section.labelRes),
-                    trailing = if (counts) count(section)?.let { NumberFormat.getIntegerInstance(LocalConfiguration.current.locales[0]).format(it) } else null,
-                    detail = if (details) detail(section) else null,
-                    open = open,
-                    active = section == selected ||
-                        (section == MainSection.MORE && selected == MainSection.SETTINGS),
-                    onClick = { onSelect(section) },
-                    modifier = if (section == focusSection) Modifier.focusRequester(selectedItemFocusRequester) else Modifier,
-                )
+            items.forEach { row ->
+                when (row) {
+                    is MenuRow.Extra -> RailItem(
+                        icon = row.extra.icon,
+                        label = stringResource(row.extra.labelRes),
+                        trailing = null,
+                        detail = null,
+                        open = open,
+                        active = false,
+                        onClick = { onExtra(row.extra.key) },
+                    )
+                    is MenuRow.Screen -> {
+                        val section = row.section
+                        RailItem(
+                            icon = section.stageIcon,
+                            label = stringResource(section.menuLabelRes),
+                            trailing = if (counts) count(section)?.let { NumberFormat.getIntegerInstance(LocalConfiguration.current.locales[0]).format(it) } else null,
+                            detail = if (details) detail(section) else null,
+                            open = open,
+                            active = section == selected ||
+                                (section == MainSection.MORE && selected == MainSection.SETTINGS),
+                            onClick = { onSelect(section) },
+                            modifier = if (section == focusSection) Modifier.focusRequester(selectedItemFocusRequester) else Modifier,
+                        )
+                    }
+                }
             }
             // Full height: the profile sits at the bottom, after the last separator.
             if (full) Spacer(Modifier.weight(1f))
@@ -287,6 +303,10 @@ fun StageRail(
         }
     }
 }
+
+/** Kevin's copy (v2): the menu calls More "Settings": everything behind it is filed under Settings now. */
+internal val MainSection.menuLabelRes: Int
+    get() = if (this == MainSection.MORE) R.string.common_nav_settings else labelRes
 
 internal val MainSection.stageIcon: OwnTVIcon
     get() = when (this) {

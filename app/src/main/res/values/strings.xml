@@ -30,6 +30,8 @@
     <string name="kevin_variant_reason_buffering">kept buffering</string>
     <string name="kevin_variant_reason_no_start">did not start within 12 seconds</string>
     <string name="kevin_players_title">TV apps</string>
+    <string name="kevin_menu_catchup">Catch-up</string>
+    <string name="kevin_menu_catchup_none">Your provider\'s list marks no channel as having catch-up.</string>
     <string name="kevin_players_note">These play in their own apps. Back returns here.</string>
     <string name="kevin_players_installed">Installed. OK opens it.</string>
     <string name="kevin_players_missing">Not installed. OK finds it in the app store.</string>

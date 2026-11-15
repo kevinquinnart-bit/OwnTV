@@ -1116,6 +1116,27 @@ fun OwnTVShell(
               }
               onSelectSection(section)
           }
+          // Kevin's copy (v2): Catch-up and TV apps in the menu. Catch-up is Live TV on its Catch-up list,
+          // which exists only when the provider's list marks channels as having it; TV apps is a page of More.
+          val menuContext = androidx.compose.ui.platform.LocalContext.current
+          val noCatchupText = stringResource(R.string.kevin_menu_catchup_none)
+          val onMenuExtra: (String) -> Unit = { key ->
+              when (key) {
+                  tv.own.owntv.features.shell.components.MENU_EXTRA_TV_APPS -> {
+                      tv.own.owntv.features.shell.components.MenuExtraHost.pendingMore = key
+                      selectFromNav(MainSection.MORE)
+                  }
+                  tv.own.owntv.features.shell.components.MENU_EXTRA_CATCHUP -> {
+                      if (browserRailItems.any { it.key == LiveKey.Catchup }) {
+                          liveVm.select(LiveKey.Catchup)
+                          focusRailAfterMore = true
+                          selectFromNav(MainSection.LIVE_TV)
+                      } else {
+                          android.widget.Toast.makeText(menuContext, noCatchupText, android.widget.Toast.LENGTH_LONG).show()
+                      }
+                  }
+              }
+          }
           // Kevin's copy (v1): the menu for the screens that show their categories as a column — listed at
           // the top of that column, which then stands in for the rail.
           val panelMenu = if (selectedSection == MainSection.LIVE_TV || selectedSection == MainSection.MOVIES || selectedSection == MainSection.SERIES) {
@@ -1124,6 +1145,7 @@ fun OwnTVShell(
                   current = selectedSection,
                   onSelect = { section -> focusRailAfterMore = true; selectFromNav(section) },
                   onNowPlaying = if (nowPlayingRail != null) ({ enterNowPlaying() }) else null,
+                  onExtra = onMenuExtra,
               )
           } else null
           // Audio Mode: the now-playing bar — in the top bar left of the weather chip, or in the Stage
@@ -1256,6 +1278,7 @@ fun OwnTVShell(
                             // Kevin's copy (v3): the menu, at the top of More's panel (the rail is hidden there).
                             menuSections = tv.own.owntv.features.shell.components.StageRailOrder.filter { it == MainSection.SEARCH || it in visibleSections },
                             onMenu = { section -> focusRailAfterMore = true; selectFromNav(section) },
+                            onMenuExtra = onMenuExtra,
                             onNowPlaying = if (nowPlayingRail != null) enterNowPlaying else null,
                             // Kevin's copy (v3): the mini player plays in a box top right, the programme under it.
                             showPlayer = playerMode == PlayerMode.MINI && multiview == null,
@@ -1559,6 +1582,7 @@ fun OwnTVShell(
                 selected = selectedSection,
                 visibleSections = visibleSections,
                 onSelect = selectFromNav,
+                onExtra = onMenuExtra,
                 count = { section -> railCounts[section]?.takeIf { it > 0 } },
                 detail = { section -> railDetail(section, railDetails) },
                 profileName = profileName.ifBlank { stringResource(R.string.common_own_tv_user) },
@@ -1686,10 +1710,9 @@ fun OwnTVShell(
         val isFull = playerMode == PlayerMode.FULLSCREEN
         // Kevin's copy: a live channel in the mini player fills Live TV's or the Guide's own video box
         // while that screen is showing (in the Guide with its LIVE badge and channel line on top).
-        // Everywhere else (Settings, More, Home, films) it docks in the band along the top, just left of
-        // the Last channel / playlist pills, clear of the page below; it opens to the chosen mini size
-        // while it holds focus, so its buttons fit. Both are measured against this layer's own origin,
-        // so they line up whatever lies around them.
+        // Everywhere else (Home, Downloads, Search, More's own pages) it docks in the bottom right corner
+        // (v2), the size of the Films / Series box; it opens to the chosen mini size while it holds
+        // focus when that is bigger. Both are measured against this layer's own origin.
         val slot = tv.own.owntv.features.live.LiveVideoSlot.bounds
         androidx.compose.runtime.SideEffect {
             tv.own.owntv.features.live.LiveVideoSlot.miniShown = !isFull
@@ -1704,11 +1727,13 @@ fun OwnTVShell(
             )
         var layerOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
         var layerWidth by remember { mutableStateOf(0) }
+        var layerHeight by remember { mutableStateOf(0) }
         if (!isFull) {
             Spacer(
                 Modifier.matchParentSize().onGloballyPositioned {
                     layerOrigin = it.positionInRoot()
                     layerWidth = it.size.width
+                    layerHeight = it.size.height
                 },
             )
         }
@@ -1725,22 +1750,21 @@ fun OwnTVShell(
                 }
             } else {
                 with(slotDensity) {
-                    val top = MINI_DOCK_TOP_MPX.mpx.toPx()
-                    val gap = MINI_DOCK_GAP_MPX.mpx.toPx()
-                    // At rest it fits the top band; with focus it opens to the chosen mini size.
+                    // Kevin's copy (v2): bottom right corner, the size and shape of the Films / Series box;
+                    // with focus it opens to the chosen mini size when that is bigger, so its buttons fit.
+                    val base = layerWidth * MINI_DOCK_WIDTH_FRACTION
                     val w = if (miniHasFocus && layerWidth > 0) {
-                        layerWidth * tv.own.owntv.core.player.MiniPlayerSize.fraction(miniSizePct)
+                        maxOf(base, layerWidth * tv.own.owntv.core.player.MiniPlayerSize.fraction(miniSizePct))
                     } else {
-                        MINI_DOCK_HEIGHT_MPX.mpx.toPx() * 16f / 9f
+                        base
                     }
                     val h = w * 9f / 16f
-                    // No pills measured yet: where they always start, 64 in from the right edge.
-                    val right = (statusClusterLeft?.minus(layerOrigin.x) ?: (layerWidth - 64.mpx.toPx())) - gap
-                    val x = (right - w).coerceAtLeast(0f)
+                    val x = (layerWidth - MINI_DOCK_EDGE_MPX.mpx.toPx() - w).coerceAtLeast(0f)
+                    val y = (layerHeight - MINI_DOCK_BOTTOM_MPX.mpx.toPx() - h).coerceAtLeast(0f)
                     Modifier
-                        .offset { androidx.compose.ui.unit.IntOffset(x.roundToInt(), top.roundToInt()) }
+                        .offset { androidx.compose.ui.unit.IntOffset(x.roundToInt(), y.roundToInt()) }
                         .size(w.toDp(), h.toDp())
-                        .clip(RoundedCornerShape(14.dp)).background(Color.Black)
+                        .clip(RoundedCornerShape(20.mpx)).background(Color.Black)
                 }
             },
         ) {
@@ -2393,10 +2417,10 @@ private fun railDetail(section: MainSection, d: RailDetails): String? = when (se
 /** How recently ◀ / ▶ or [focusRail] must have happened for a rail visit to open the rail. */
 private const val RAIL_KEY_WINDOW_MS = 400L
 
-/** Kevin's copy: the docked mini player at rest, in mockup pixels: its top, its height, its gap to the pills. */
-private const val MINI_DOCK_TOP_MPX = 22
-private const val MINI_DOCK_HEIGHT_MPX = 94
-private const val MINI_DOCK_GAP_MPX = 22
+/** Kevin's copy (v2): the docked mini player at rest: its share of the width (the More box's 566 of 1920), and its gaps to the right and bottom edges in mockup pixels. */
+private const val MINI_DOCK_WIDTH_FRACTION = 566f / 1920f
+private const val MINI_DOCK_EDGE_MPX = 64
+private const val MINI_DOCK_BOTTOM_MPX = 44
 
 /** Kevin's copy (v3): where Settings' explanation panel starts inside More while the player shows above it. */
 private const val MORE_HELP_TOP_MPX = 566
