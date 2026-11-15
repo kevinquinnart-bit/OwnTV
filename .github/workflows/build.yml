@@ -1,0 +1,57 @@
+name: KueTV 2
+
+# Every push to this branch: test, build, and put the app on the "kuetv2" download.
+on:
+  push:
+    branches: [ kuetv2 ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kuetv2-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: 0.1.${{ github.run_number }}
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Test
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Build
+        run: |
+          ./gradlew :app:assembleRelease --stacktrace
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/KueTV2.apk
+          printf 'KueTV 2, version %s\n' "$VERSION_NAME" > dist/NOTES.md
+
+      - name: Publish
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: kuetv2
+          target_commitish: ${{ github.sha }}
+          name: KueTV 2 (${{ env.VERSION_NAME }})
+          files: dist/KueTV2.apk
+          body_path: dist/NOTES.md
+          prerelease: true
+          make_latest: false
