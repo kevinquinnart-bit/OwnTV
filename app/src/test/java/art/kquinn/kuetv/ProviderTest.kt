@@ -96,6 +96,16 @@ class ProviderTest {
         assertEquals("the list-of-lists shape", "Only", Provider.episodes(account, "78").single().title)
     }
 
+    @Test fun searchMatchesEveryWordInAnyOrder() {
+        val lib = Provider.load(Account(base, "kev", "p w/1", ""))
+        assertEquals(listOf("BBC One"), Finder.search(lib, "one BBC").channels.map { it.name })
+        assertEquals(listOf("Sky Sports, Main Event"), Finder.search(lib, "  sports  ").channels.map { it.name })
+        assertEquals(listOf("A Film (2024)"), Finder.search(lib, "film").films.map { it.name })
+        assertEquals(listOf("A Show", "B Show"), Finder.search(lib, "SHOW").shows.map { it.name })
+        assertTrue("one letter is too little to search on", Finder.search(lib, "b").isEmpty)
+        assertTrue(Finder.search(lib, "zzz").isEmpty)
+    }
+
     @Test fun wrongPasswordSaysSo() {
         try {
             Provider.load(Account(base, "kev", "nope", ""))

@@ -1,6 +1,8 @@
 package art.kquinn.kuetv
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.google.gson.JsonParser
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
@@ -50,6 +52,48 @@ class Library(
 
 /** One programme in a channel's guide. [startText] is the start exactly as the provider wrote it, on its own clock. */
 data class Programme(val title: String, val description: String, val startMs: Long, val stopMs: Long, val startText: String)
+
+/** What a search found, at most [Finder.LIMIT] of each kind. */
+class Found(val channels: List<Channel>, val films: List<Film>, val shows: List<Show>) {
+    val isEmpty: Boolean get() = channels.isEmpty() && films.isEmpty() && shows.isEmpty()
+}
+
+object Finder {
+    const val LIMIT = 40
+
+    /** Every word typed must be somewhere in the name, in any order, whatever the capitals. */
+    fun search(library: Library, typed: String): Found {
+        val words = typed.lowercase().split(' ').filter { it.isNotBlank() }
+        if (words.isEmpty() || words.sumOf { it.length } < 2) return Found(emptyList(), emptyList(), emptyList())
+        val hit: (String) -> Boolean = { name -> val n = name.lowercase(); words.all { n.contains(it) } }
+        return Found(
+            library.channels.asSequence().filter { hit(it.name) }.take(LIMIT).toList(),
+            library.films.asSequence().filter { hit(it.name) }.take(LIMIT).toList(),
+            library.shows.asSequence().filter { hit(it.name) }.take(LIMIT).toList(),
+        )
+    }
+}
+
+/**
+ * The user's favourites, kept on the TV. A channel or film from a login is known by its number there;
+ * from a playlist link it is known by its address, because a playlist's numbering changes when it does.
+ */
+class Favourites(context: Context) {
+    private val prefs = context.getSharedPreferences("favourites", Context.MODE_PRIVATE)
+    var keys by androidx.compose.runtime.mutableStateOf(prefs.getStringSet("keys", emptySet()).orEmpty().toSet())
+        private set
+
+    fun toggle(key: String) {
+        keys = if (key in keys) keys - key else keys + key
+        prefs.edit().putStringSet("keys", keys).apply()
+    }
+
+    companion object {
+        fun key(channel: Channel, login: Boolean) = "live:" + if (login) channel.id else channel.url
+        fun key(film: Film, login: Boolean) = "film:" + if (login) film.id else film.url
+        fun key(show: Show) = "show:" + show.id
+    }
+}
 
 /** A problem the user can read on screen. */
 class ProviderProblem(message: String) : Exception(message)

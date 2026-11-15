@@ -52,10 +52,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +101,7 @@ private fun App() {
     // What the browsing screen was showing, kept while the player covers it, so closing the player
     // comes back to the same list, at the same place, on the row or poster that was playing.
     val browse = remember(library) { library?.let { BrowseState(startOnFilms = it.channels.isEmpty()) } }
+    val favourites = remember { Favourites(context.applicationContext) }
 
     LaunchedEffect(account, reload) {
         if (!account.isSet) return@LaunchedEffect
@@ -131,6 +138,7 @@ private fun App() {
             else -> MainScreen(
                 library = lib,
                 state = browse,
+                favourites = favourites,
                 onPlay = { items, index, live, key -> browse.resumeKey = key; playing = Playing(items, index, live) },
                 onEdit = { editing = true },
                 onReload = { reload++ },
@@ -149,6 +157,7 @@ private fun FocusRow(
     modifier: Modifier = Modifier,
     chosen: Boolean = false,
     onFocus: () -> Unit = {},
+    onHold: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -162,6 +171,7 @@ private fun FocusRow(
                 if (now && !focused) onFocus()
                 focused = now
             }
+            .holdOk(onHold)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -176,6 +186,27 @@ private fun FocusRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * Holding OK for half a second does [onHold] once, and the release that follows is swallowed so it
+ * does not also count as a press.
+ */
+@Composable
+private fun Modifier.holdOk(onHold: (() -> Unit)?): Modifier {
+    if (onHold == null) return this
+    val held = remember { booleanArrayOf(false) }
+    return this.onPreviewKeyEvent { e ->
+        if (e.key != Key.DirectionCenter && e.key != Key.Enter && e.key != Key.NumPadEnter) return@onPreviewKeyEvent false
+        val native = e.nativeKeyEvent
+        when {
+            e.type == KeyEventType.KeyDown && native.repeatCount == 0 -> { held[0] = false; false }
+            e.type == KeyEventType.KeyDown && !held[0] && native.eventTime - native.downTime >= 500 -> { held[0] = true; onHold(); true }
+            e.type == KeyEventType.KeyDown && held[0] -> true
+            e.type == KeyEventType.KeyUp && held[0] -> { held[0] = false; true }
+            else -> false
+        }
     }
 }
 
@@ -267,9 +298,11 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
 
 // --------------------------------------------------------------------------------------------- main
 
-private enum class Section(val label: String) { LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SERIES("Series"), SETTINGS("Settings") }
+private enum class Section(val label: String) { SEARCH("Search"), LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SERIES("Series"), SETTINGS("Settings") }
 
 private const val ALL = "\u0000all"
+private const val FAVOURITES = "\u0000favourites"
+private const val HOLD_HINT = " · hold OK for favourite"
 
 /** Where the browsing screen is: the section, the category in each, how far each list is scrolled. */
 private class BrowseState(startOnFilms: Boolean) {
@@ -283,6 +316,9 @@ private class BrowseState(startOnFilms: Boolean) {
 
     val guide = ChannelPick()
     val catchUp = ChannelPick()
+
+    var query by mutableStateOf("")
+    val searchList = LazyListState()
 
     var showCategory by mutableStateOf(ALL)
     val showCategoryList = LazyListState()
@@ -316,6 +352,7 @@ private class ChannelPick {
 private fun MainScreen(
     library: Library,
     state: BrowseState,
+    favourites: Favourites,
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
     onEdit: () -> Unit,
     onReload: () -> Unit,
@@ -323,6 +360,8 @@ private fun MainScreen(
     var section by state::section
     val liveCategory = state.liveCategory
     val filmCategory = state.filmCategory
+    val login = library.account != null
+    val favs = favourites.keys
     val resumeKey = state.resumeKey
     val scope = rememberCoroutineScope()
     val menuFocus = remember { FocusRequester() }
@@ -354,19 +393,25 @@ private fun MainScreen(
                         scope.launch { state.channelList.scrollToItem(0) }
                     }
                 }
-                val shown = remember(library, liveCategory) {
-                    if (liveCategory == ALL) library.channels else library.channels.filter { it.categoryId == liveCategory }
+                val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null) {
+                    when (liveCategory) {
+                        ALL -> library.channels
+                        FAVOURITES -> library.channels.filter { Favourites.key(it, login) in favs }
+                        else -> library.channels.filter { it.categoryId == liveCategory }
+                    }
                 }
                 val playables = remember(shown) { shown.map { Playable(it.name, it.url) } }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Heading(if (shown.size == 1) "1 channel" else "${shown.size} channels")
+                    Heading((if (shown.size == 1) "1 channel" else "${shown.size} channels") + HOLD_HINT)
                     LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = state.channelList) {
                         itemsIndexed(shown, key = { _, c -> c.id }) { i, channel ->
                             val key = "live:" + channel.id
+                            val favKey = Favourites.key(channel, login)
                             FocusRow(
-                                channel.name,
+                                (if (favKey in favs) "★ " else "") + channel.name,
                                 { onPlay(playables, i, true, key) },
                                 if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
+                                onHold = { favourites.toggle(favKey) },
                                 leading = { Logo(channel.logo) },
                             )
                         }
@@ -380,11 +425,15 @@ private fun MainScreen(
                         scope.launch { state.filmGrid.scrollToItem(0) }
                     }
                 }
-                val shown = remember(library, filmCategory) {
-                    if (filmCategory == ALL) library.films else library.films.filter { it.categoryId == filmCategory }
+                val shown = remember(library, filmCategory, if (filmCategory == FAVOURITES) favs else null) {
+                    when (filmCategory) {
+                        ALL -> library.films
+                        FAVOURITES -> library.films.filter { Favourites.key(it, login) in favs }
+                        else -> library.films.filter { it.categoryId == filmCategory }
+                    }
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Heading(if (shown.size == 1) "1 film" else "${shown.size} films")
+                    Heading((if (shown.size == 1) "1 film" else "${shown.size} films") + HOLD_HINT)
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(4),
                         state = state.filmGrid,
@@ -395,18 +444,25 @@ private fun MainScreen(
                     ) {
                         itemsIndexed(shown, key = { _, f -> f.id }) { _, film ->
                             val key = "film:" + film.id
+                            val favKey = Favourites.key(film, login)
                             Poster(
                                 film.name, film.poster,
                                 { onPlay(listOf(Playable(film.name, film.url)), 0, false, key) },
                                 if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
+                                favourite = favKey in favs,
+                                onHold = { favourites.toggle(favKey) },
                             )
                         }
                     }
                 }
             }
-            Section.SERIES -> SeriesPane(library, state, resume, onPlay)
-            Section.GUIDE -> ChannelGuide(library, false, state.guide, state, resume, onPlay)
-            Section.CATCHUP -> ChannelGuide(library, true, state.catchUp, state, resume, onPlay)
+            Section.SERIES -> SeriesPane(library, state, favourites, resume, onPlay)
+            Section.GUIDE -> ChannelGuide(library, false, state.guide, state, favs, resume, onPlay)
+            Section.CATCHUP -> ChannelGuide(library, true, state.catchUp, state, favs, resume, onPlay)
+            Section.SEARCH -> SearchPane(library, state, resume, onPlay) { show ->
+                state.openShow = show
+                section = Section.SERIES
+            }
             Section.SETTINGS -> Column(Modifier.width(520.dp).fillMaxHeight()) {
                 Heading("Settings")
                 FocusRow("Change provider details", onEdit)
@@ -420,16 +476,31 @@ private fun MainScreen(
     }
 }
 
-/** The category column: "All" first, then the provider's own, in its order. Moving onto one shows it. */
+/**
+ * The category column: "All", then Favourites, then the provider's own in its order. Moving onto one
+ * shows it. Coming into the column always lands on the one being shown, so arriving never changes it.
+ */
 @Composable
 private fun Categories(categories: List<Category>, chosen: String, list: LazyListState, onChoose: (String) -> Unit) {
+    val chosenFocus = remember { FocusRequester() }
+    val row: @Composable (String, String) -> Unit = { id, name ->
+        FocusRow(
+            name, { onChoose(id) },
+            if (chosen == id) Modifier.focusRequester(chosenFocus) else Modifier,
+            chosen = chosen == id, onFocus = { onChoose(id) },
+        )
+    }
     Column(Modifier.width(270.dp).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp)) {
         Heading("Categories")
-        LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = list) {
-            item(key = ALL) { FocusRow("All", { onChoose(ALL) }, chosen = chosen == ALL, onFocus = { onChoose(ALL) }) }
-            itemsIndexed(categories, key = { _, c -> c.id }) { _, c ->
-                FocusRow(c.name, { onChoose(c.id) }, chosen = chosen == c.id, onFocus = { onChoose(c.id) })
-            }
+        LazyColumn(
+            Modifier.fillMaxSize()
+                .focusProperties { onEnter = { runCatching { chosenFocus.requestFocus() } } }
+                .focusGroup(),
+            state = list,
+        ) {
+            item(key = ALL) { row(ALL, "All") }
+            item(key = FAVOURITES) { row(FAVOURITES, "★ Favourites") }
+            itemsIndexed(categories, key = { _, c -> c.id }) { _, c -> row(c.id, c.name) }
         }
     }
 }
@@ -442,18 +513,32 @@ private fun Logo(url: String) {
 }
 
 @Composable
-private fun Poster(name: String, poster: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun Poster(
+    name: String,
+    poster: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    favourite: Boolean = false,
+    onHold: (() -> Unit)? = null,
+) {
     var focused by remember { mutableStateOf(false) }
     Column(
         modifier
             .clip(RoundedCornerShape(12.dp))
             .border(3.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
+            .holdOk(onHold)
             .clickable(onClick = onClick)
             .padding(6.dp),
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Panel)) {
             if (poster.isNotBlank()) AsyncImage(model = poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            if (favourite) {
+                Text(
+                    "★", color = Accent, fontSize = 22.sp,
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(Color(0xCC0E1626), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 1.dp),
+                )
+            }
         }
         Text(
             name,
@@ -488,6 +573,7 @@ private fun androidx.compose.foundation.layout.RowScope.ChannelGuide(
     catchUp: Boolean,
     pick: ChannelPick,
     state: BrowseState,
+    favs: Set<String>,
     resume: FocusRequester,
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
 ) {
@@ -517,7 +603,13 @@ private fun androidx.compose.foundation.layout.RowScope.ChannelGuide(
             scope.launch { pick.channelList.scrollToItem(0) }
         }
     }
-    val shown = remember(channels, pick.category) { if (pick.category == ALL) channels else channels.filter { it.categoryId == pick.category } }
+    val shown = remember(channels, pick.category, if (pick.category == FAVOURITES) favs else null) {
+        when (pick.category) {
+            ALL -> channels
+            FAVOURITES -> channels.filter { Favourites.key(it, true) in favs }
+            else -> channels.filter { it.categoryId == pick.category }
+        }
+    }
     LaunchedEffect(Unit) {
         if (!pick.justClosed) return@LaunchedEffect
         pick.justClosed = false
@@ -531,7 +623,7 @@ private fun androidx.compose.foundation.layout.RowScope.ChannelGuide(
             itemsIndexed(shown, key = { _, c -> c.id }) { _, channel ->
                 val key = "pick:" + channel.id
                 FocusRow(
-                    channel.name,
+                    (if (Favourites.key(channel, true) in favs) "★ " else "") + channel.name,
                     {
                         state.resumeKey = key
                         pick.pickDay = null
@@ -722,9 +814,11 @@ private fun ProgrammeRow(whenText: String, title: String, description: String, o
 private fun androidx.compose.foundation.layout.RowScope.SeriesPane(
     library: Library,
     state: BrowseState,
+    favourites: Favourites,
     resume: FocusRequester,
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
 ) {
+    val favs = favourites.keys
     val account = library.account
     if (account == null || library.shows.isEmpty()) {
         Column(Modifier.weight(1f)) {
@@ -744,8 +838,12 @@ private fun androidx.compose.foundation.layout.RowScope.SeriesPane(
             scope.launch { state.showGrid.scrollToItem(0) }
         }
     }
-    val shown = remember(library, state.showCategory) {
-        if (state.showCategory == ALL) library.shows else library.shows.filter { it.categoryId == state.showCategory }
+    val shown = remember(library, state.showCategory, if (state.showCategory == FAVOURITES) favs else null) {
+        when (state.showCategory) {
+            ALL -> library.shows
+            FAVOURITES -> library.shows.filter { Favourites.key(it) in favs }
+            else -> library.shows.filter { it.categoryId == state.showCategory }
+        }
     }
     LaunchedEffect(Unit) {
         if (!state.showJustClosed) return@LaunchedEffect
@@ -755,7 +853,7 @@ private fun androidx.compose.foundation.layout.RowScope.SeriesPane(
         runCatching { resume.requestFocus() }
     }
     Column(Modifier.weight(1f).fillMaxHeight()) {
-        Heading(if (shown.size == 1) "1 series" else "${shown.size} series")
+        Heading((if (shown.size == 1) "1 series" else "${shown.size} series") + HOLD_HINT)
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
             state = state.showGrid,
@@ -774,6 +872,8 @@ private fun androidx.compose.foundation.layout.RowScope.SeriesPane(
                         state.openShow = show
                     },
                     if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                    favourite = Favourites.key(show) in favs,
+                    onHold = { favourites.toggle(Favourites.key(show)) },
                 )
             }
         }
@@ -844,6 +944,62 @@ private fun androidx.compose.foundation.layout.RowScope.EpisodePage(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------- search
+
+/**
+ * Search: one box, and under it what matches in channels, films and series, in that order. OK on a
+ * channel or film plays it; OK on a series opens its episodes.
+ */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.SearchPane(
+    library: Library,
+    state: BrowseState,
+    resume: FocusRequester,
+    onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+    onOpenShow: (Show) -> Unit,
+) {
+    val found = remember(library, state.query) { Finder.search(library, state.query) }
+    Column(Modifier.weight(1f).fillMaxHeight()) {
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = { state.query = it },
+            label = { Text("Search channels, films and series", fontSize = 16.sp) },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
+        )
+        when {
+            state.query.trim().length < 2 -> Note("Press OK on the box and type at least two letters.")
+            found.isEmpty -> Note("Nothing matches \"" + state.query.trim() + "\".")
+            else -> LazyColumn(Modifier.fillMaxSize(), state = state.searchList) {
+                if (found.channels.isNotEmpty()) item(key = "h:live") { Heading("Channels") }
+                itemsIndexed(found.channels, key = { _, c -> "live:" + c.id }) { _, channel ->
+                    val key = "live:" + channel.id
+                    FocusRow(
+                        channel.name,
+                        { onPlay(listOf(Playable(channel.name, channel.url)), 0, true, key) },
+                        if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                        leading = { Logo(channel.logo) },
+                    )
+                }
+                if (found.films.isNotEmpty()) item(key = "h:film") { Box(Modifier.padding(top = 14.dp)) { Heading("Films") } }
+                itemsIndexed(found.films, key = { _, f -> "film:" + f.id }) { _, film ->
+                    val key = "film:" + film.id
+                    FocusRow(
+                        film.name,
+                        { onPlay(listOf(Playable(film.name, film.url)), 0, false, key) },
+                        if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                    )
+                }
+                if (found.shows.isNotEmpty()) item(key = "h:show") { Box(Modifier.padding(top = 14.dp)) { Heading("Series") } }
+                itemsIndexed(found.shows, key = { _, s -> "show:" + s.id }) { _, show ->
+                    FocusRow(show.name, { state.resumeKey = "show:" + show.id; onOpenShow(show) })
                 }
             }
         }
