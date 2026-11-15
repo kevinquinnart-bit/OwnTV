@@ -6,6 +6,7 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -57,6 +58,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -84,6 +86,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent { MaterialTheme(colorScheme = darkColorScheme(primary = Accent)) { App() } }
     }
+
+    override fun onResume() {
+        super.onResume()
+        Resumes.count++
+    }
+}
+
+/** Goes up each time KueTV comes back to the front, for example back from another app or the app store. */
+private object Resumes {
+    var count by mutableIntStateOf(0)
 }
 
 /** What is playing: the list it came from (so ▲ ▼ can change channel), where in it, and its kind. */
@@ -298,7 +310,7 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
 
 // --------------------------------------------------------------------------------------------- main
 
-private enum class Section(val label: String) { SEARCH("Search"), LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SERIES("Series"), SETTINGS("Settings") }
+private enum class Section(val label: String) { SEARCH("Search"), LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SERIES("Series"), APPS("TV apps"), SETTINGS("Settings") }
 
 private const val ALL = "\u0000all"
 private const val FAVOURITES = "\u0000favourites"
@@ -463,6 +475,7 @@ private fun MainScreen(
                 state.openShow = show
                 section = Section.SERIES
             }
+            Section.APPS -> TvAppsPane()
             Section.SETTINGS -> Column(Modifier.width(520.dp).fillMaxHeight()) {
                 Heading("Settings")
                 FocusRow("Change provider details", onEdit)
@@ -1002,6 +1015,72 @@ private fun androidx.compose.foundation.layout.RowScope.SearchPane(
                     FocusRow(show.name, { state.resumeKey = "show:" + show.id; onOpenShow(show) })
                 }
             }
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------- TV apps
+
+/**
+ * TV apps: the free UK and Irish players. Each row says whether the app is on this TV. OK opens it
+ * if it is, or the TV's app store on a search for it if not. Back in the other app returns here.
+ */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.TvAppsPane() {
+    val context = LocalContext.current
+    // Looked at again each time KueTV comes back to the front, so an app just installed shows as installed.
+    val found by produceState<List<TvAppsOnDevice.Found?>?>(null, Resumes.count) {
+        value = withContext(Dispatchers.IO) { TvAppsOnDevice.find(context.applicationContext) }
+    }
+    Column(Modifier.weight(1f).fillMaxHeight()) {
+        Heading("TV apps · these play in their own apps")
+        val apps = found
+        if (apps == null) {
+            Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
+            return@Column
+        }
+        LazyColumn(Modifier.fillMaxSize().focusRestorer()) {
+            itemsIndexed(TvAppList.all, key = { _, a -> a.title }) { i, app ->
+                val here = apps.getOrNull(i)
+                TvAppRow(
+                    title = app.title,
+                    line = if (here != null) "Installed. OK opens it." else "Not installed. OK finds it in the app store.",
+                    icon = here?.icon,
+                    onClick = {
+                        val opened = if (here != null) TvAppsOnDevice.open(context, here.packageName) else TvAppsOnDevice.openStore(context, app.storeSearch)
+                        if (!opened) android.widget.Toast.makeText(context, "Couldn't open the app or the app store.", android.widget.Toast.LENGTH_LONG).show()
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvAppRow(title: String, line: String, icon: android.graphics.Bitmap?, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (focused) Accent else Color.Transparent)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Box(Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+            if (icon != null) {
+                val picture = remember(icon) { icon.asImageBitmap() }
+                Image(bitmap = picture, contentDescription = null, modifier = Modifier.fillMaxSize())
+            } else {
+                Text("▶", color = if (focused) Color.Black else Soft, fontSize = 24.sp)
+            }
+        }
+        Column {
+            Text(title, color = if (focused) Color.Black else Color.White, fontSize = 22.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(line, color = if (focused) Color.Black else Soft, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
