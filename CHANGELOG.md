@@ -12,7 +12,7 @@
 ### ✨ New features
 - **🗂️ Menu: Favourites, History, Backup & Restore, Local sync, Error log and About are filed under Settings; no Your things, Keep it safe or App lists**
 - **📺 TV apps is in the menu with Live TV, Films and Series**
-- **⏪ Catch-up is in the menu: Live TV on its catch-up channels**
+- **⏪ Catch-up page: pick a channel, then a past programme by day, or pick a date and time**
 - **📺 Small player sits bottom right, the size of the Films and Series box**
 - **🗂️ More: Settings, Keep it safe and App are closed until OK on their heading, one open at a time, so the panel is short**
 - **📋 Settings: with the small player showing, a setting's choices open in the middle of the screen, not in the short panel**

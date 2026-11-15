@@ -368,6 +368,7 @@ class LiveEpgReader(
         cust: SectionCustomizations,
         globalShiftMinutes: Int,
         liveSourceIds: List<Long>,
+        limit: Int = 80,
     ): List<EpgProgrammeEntity> = withContext(Dispatchers.IO) {
         if (!ch.catchup) return@withContext emptyList()
         val epgKey = (cust.epgMatchResolver.epgIdFor(ch) ?: ch.epgChannelId)
@@ -383,7 +384,7 @@ class LiveEpgReader(
         epgDao.programmesForChannel(epgKey, at - windowMs, at + 60 * 60 * 1000)
             .filter { it.startMs <= at }           // already started → catch-up applies
             .sortedByDescending { it.startMs }      // most recent first
-            .take(80)
+            .take(limit)
             .map { EpgShift.apply(it, shift) }
     }
 

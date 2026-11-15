@@ -31,6 +31,10 @@
     <string name="kevin_variant_reason_no_start">did not start within 12 seconds</string>
     <string name="kevin_players_title">TV apps</string>
     <string name="kevin_menu_catchup">Catch-up</string>
+    <string name="kevin_catchup_channels">Channels</string>
+    <string name="kevin_catchup_pick_time">Pick a date and time</string>
+    <string name="kevin_catchup_no_guide">No guide for this channel. Pick a date and time.</string>
+    <string name="kevin_catchup_time_range"><xliff:g id="start">%1$s</xliff:g> to <xliff:g id="end">%2$s</xliff:g></string>
     <string name="kevin_menu_catchup_none">Your provider\'s list marks no channel as having catch-up.</string>
     <string name="kevin_players_note">These play in their own apps. Back returns here.</string>
     <string name="kevin_players_installed">Installed. OK opens it.</string>

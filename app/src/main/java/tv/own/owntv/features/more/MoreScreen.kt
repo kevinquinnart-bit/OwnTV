@@ -77,7 +77,7 @@ import tv.own.owntv.ui.theme.stageAccent
 import tv.own.owntv.ui.theme.stageText
 
 /** The sheet's items, top to bottom. [DEVELOPER] exists only in local builds (BuildConfig.DEV_TOOLS). */
-private enum class MoreItem { SETTINGS, FAVORITES, HISTORY, PLAYERS, BACKUP, LOCAL_SYNC, ERROR_LOG, ABOUT, DEVELOPER }
+private enum class MoreItem { SETTINGS, FAVORITES, HISTORY, PLAYERS, CATCHUP, BACKUP, LOCAL_SYNC, ERROR_LOG, ABOUT, DEVELOPER }
 
 /**
  * More (Stage P8-01 … P8-08): the glass section sheet, topped by the profile, and one page on the right
@@ -103,8 +103,8 @@ fun MoreScreen(
     /** Kevin's copy (v3): the menu (Search, Home, Live TV…) — More shows it in place of the rail. */
     menuSections: List<tv.own.owntv.core.nav.MainSection> = emptyList(),
     onMenu: (tv.own.owntv.core.nav.MainSection) -> Unit = {},
-    /** Kevin's copy (v5): OK on Catch-up in the menu (TV apps is this screen's own page). */
-    onMenuExtra: (String) -> Unit = {},
+    /** Kevin's copy (v6): the Catch-up page (the shell holds what it plays with); [entry] is its first row. */
+    catchupPage: (@Composable (entry: FocusRequester) -> Unit)? = null,
     /** The player's "Now playing" entry, while something plays. */
     onNowPlaying: (() -> Unit)? = null,
     /**
@@ -129,20 +129,25 @@ fun MoreScreen(
 ) {
     // Kevin's copy (v3): one panel — Settings' categories are listed here with the rest of More, and the
     // chosen one's settings show on the right. [selected] SETTINGS means category [settingsGroup].
-    // Kevin's copy (v5): TV apps chosen in the menu on another screen opens here on that page.
+    // Kevin's copy (v5): TV apps or Catch-up chosen in the menu on another screen opens here on that page.
     val host = tv.own.owntv.features.shell.components.MenuExtraHost
-    var selected by rememberSaveable {
-        mutableStateOf(if (host.pendingMore == tv.own.owntv.features.shell.components.MENU_EXTRA_TV_APPS) MoreItem.PLAYERS else MoreItem.SETTINGS)
+    val extraItem: (String?) -> MoreItem? = {
+        when (it) {
+            tv.own.owntv.features.shell.components.MENU_EXTRA_TV_APPS -> MoreItem.PLAYERS
+            tv.own.owntv.features.shell.components.MENU_EXTRA_CATCHUP -> MoreItem.CATCHUP
+            else -> null
+        }
     }
+    var selected by rememberSaveable { mutableStateOf(extraItem(host.pendingMore) ?: MoreItem.SETTINGS) }
     var settingsGroup by rememberSaveable { mutableIntStateOf(0) }
     val itemFocus = remember { MoreItem.entries.associateWith { FocusRequester() } }
     val groupFocus = remember { List(SettingsGroup.entries.size) { FocusRequester() } }
     // Kevin's copy (v5): everything that is not a screen is filed under the one Settings heading: the
     // settings categories, then Favourites, History, Backup & Restore, Local sync, the error log and
     // About. OK on the heading closes and opens it. 0 = closed, else SECTION_SETTINGS.
-    var openSection by rememberSaveable { mutableIntStateOf(if (selected == MoreItem.PLAYERS) 0 else SECTION_SETTINGS) }
+    var openSection by rememberSaveable { mutableIntStateOf(if (selected == MoreItem.PLAYERS || selected == MoreItem.CATCHUP) 0 else SECTION_SETTINGS) }
     val sectionFocus = remember { List(2) { FocusRequester() } }
-    val sectionOf: (MoreItem) -> Int = { if (it == MoreItem.PLAYERS) 0 else SECTION_SETTINGS }
+    val sectionOf: (MoreItem) -> Int = { if (it == MoreItem.PLAYERS || it == MoreItem.CATCHUP) 0 else SECTION_SETTINGS }
     val focusOfSelected: () -> FocusRequester = {
         val section = sectionOf(selected)
         // The chosen item is inside a closed section: its heading stands in for it.
@@ -181,12 +186,12 @@ fun MoreScreen(
         onDispose { onEntryHook?.invoke(null) }
     }
     LaunchedEffect(host.pendingMore) {
-        if (host.pendingMore != tv.own.owntv.features.shell.components.MENU_EXTRA_TV_APPS) return@LaunchedEffect
+        val wanted = extraItem(host.pendingMore) ?: return@LaunchedEffect
         host.pendingMore = null
-        if (selected != MoreItem.PLAYERS) { selected = MoreItem.PLAYERS; pageEntry = null }
+        if (selected != wanted) { selected = wanted; pageEntry = null }
         withFrameNanos { }
         withFrameNanos { }
-        runCatching { itemFocus.getValue(MoreItem.PLAYERS).requestFocus() }
+        runCatching { itemFocus.getValue(wanted).requestFocus() }
     }
     // The rail is hidden while More is open, so focus starts on this panel's chosen item.
     LaunchedEffect(Unit) {
@@ -296,14 +301,8 @@ fun MoreScreen(
                         onClick = { onMenu(row.section) },
                     )
                     is tv.own.owntv.features.shell.components.MenuRow.Extra ->
-                        // TV apps is a page of this screen: it shows on the right, like a settings category.
-                        if (row.extra.key == tv.own.owntv.features.shell.components.MENU_EXTRA_TV_APPS) {
-                            item(MoreItem.PLAYERS, row.extra.icon, stringResource(row.extra.labelRes), null, false)
-                        } else StageGroupItem(
-                            text = stringResource(row.extra.labelRes),
-                            icon = row.extra.icon,
-                            onClick = { onMenuExtra(row.extra.key) },
-                        )
+                        // TV apps and Catch-up are pages of this screen: each shows on the right, like a settings category.
+                        extraItem(row.extra.key)?.let { item(it, row.extra.icon, stringResource(row.extra.labelRes), null, false) }
                 }
             }
             val heading = @Composable { section: Int, label: String, count: Int ->
@@ -383,6 +382,7 @@ fun MoreScreen(
                     onPlayChannel = onPlayChannel, onPlayMovie = onPlayMovie, onPlayEpisode = onPlayEpisode, onOpenSeries = onOpenSeries,
                 )
                 MoreItem.PLAYERS -> PlayersPage(entry = pageTarget)
+                MoreItem.CATCHUP -> catchupPage?.invoke(pageTarget)
                 MoreItem.BACKUP -> BackupScreen(entry = pageTarget, modifier = Modifier.fillMaxSize())
                 MoreItem.LOCAL_SYNC -> LocalSyncScreen(entry = pageTarget, modifier = Modifier.fillMaxSize())
                 MoreItem.ERROR_LOG -> ErrorLogPage(setEntry = setEntry, onCountChanged = { logVersion++ })

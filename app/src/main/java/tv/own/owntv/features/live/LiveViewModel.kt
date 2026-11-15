@@ -1716,6 +1716,18 @@ class LiveViewModel(
     suspend fun catchupProgrammes(ch: ChannelEntity): List<tv.own.owntv.core.database.entity.EpgProgrammeEntity> =
         epgReader.catchupProgrammes(ch, custom.value, epgOffset.value, ctx.value.sourceIds)
 
+    /** Kevin's copy: the same list, longer, for the Catch-up page (every programme the guide still holds). */
+    suspend fun catchupProgrammes(ch: ChannelEntity, limit: Int): List<tv.own.owntv.core.database.entity.EpgProgrammeEntity> =
+        epgReader.catchupProgrammes(ch, custom.value, epgOffset.value, ctx.value.sourceIds, limit)
+
+    /** Kevin's copy: the channels the provider marks as having catch-up, in its order, for the Catch-up page. */
+    suspend fun catchupChannelList(): List<ChannelEntity> {
+        val sources = ctx.value.sourceIds.ifEmpty { listOf(-1L) }
+        val hidden = hiddenCategoryIds.value
+        return withContext(Dispatchers.IO) { channelDao.snapshotCatchup(sources, ZAP_LIST_LIMIT) }
+            .filter { it.categoryId == null || it.categoryId !in hidden }
+    }
+
     /** Full description for a programme picked in the catch-up dialog. The list query drops it to stay
      *  under the CursorWindow limit, so the detail popup fetches it on demand (same as the Guide). */
     suspend fun programmeDescription(programmeId: Long): String? = epgReader.programmeDescription(programmeId)

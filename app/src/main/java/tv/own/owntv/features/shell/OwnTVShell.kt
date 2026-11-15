@@ -1116,26 +1116,10 @@ fun OwnTVShell(
               }
               onSelectSection(section)
           }
-          // Kevin's copy (v2): Catch-up and TV apps in the menu. Catch-up is Live TV on its Catch-up list,
-          // which exists only when the provider's list marks channels as having it; TV apps is a page of More.
-          val menuContext = androidx.compose.ui.platform.LocalContext.current
-          val noCatchupText = stringResource(R.string.kevin_menu_catchup_none)
+          // Kevin's copy (v3): Catch-up and TV apps in the menu. Both are pages of More, which opens on them.
           val onMenuExtra: (String) -> Unit = { key ->
-              when (key) {
-                  tv.own.owntv.features.shell.components.MENU_EXTRA_TV_APPS -> {
-                      tv.own.owntv.features.shell.components.MenuExtraHost.pendingMore = key
-                      selectFromNav(MainSection.MORE)
-                  }
-                  tv.own.owntv.features.shell.components.MENU_EXTRA_CATCHUP -> {
-                      if (browserRailItems.any { it.key == LiveKey.Catchup }) {
-                          liveVm.select(LiveKey.Catchup)
-                          focusRailAfterMore = true
-                          selectFromNav(MainSection.LIVE_TV)
-                      } else {
-                          android.widget.Toast.makeText(menuContext, noCatchupText, android.widget.Toast.LENGTH_LONG).show()
-                      }
-                  }
-              }
+              tv.own.owntv.features.shell.components.MenuExtraHost.pendingMore = key
+              selectFromNav(MainSection.MORE)
           }
           // Kevin's copy (v1): the menu for the screens that show their categories as a column — listed at
           // the top of that column, which then stands in for the rail.
@@ -1278,7 +1262,16 @@ fun OwnTVShell(
                             // Kevin's copy (v3): the menu, at the top of More's panel (the rail is hidden there).
                             menuSections = tv.own.owntv.features.shell.components.StageRailOrder.filter { it == MainSection.SEARCH || it in visibleSections },
                             onMenu = { section -> focusRailAfterMore = true; selectFromNav(section) },
-                            onMenuExtra = onMenuExtra,
+                            catchupPage = { entry ->
+                                tv.own.owntv.features.more.CatchupPage(
+                                    entry = entry,
+                                    loadChannels = { liveVm.catchupChannelList() },
+                                    loadProgrammes = { liveVm.catchupProgrammes(it, CATCHUP_PAGE_PROGRAMMES) },
+                                    windowSecOf = { liveVm.catchupWindowOf(it) },
+                                    onPlayProgramme = { ch, programme -> liveVm.playCatchupProgramme(ch, programme); openFullscreen(MainSection.LIVE_TV) },
+                                    onPlayAt = { ch, offset -> liveVm.playCatchupAt(ch, offset); openFullscreen(MainSection.LIVE_TV) },
+                                )
+                            },
                             onNowPlaying = if (nowPlayingRail != null) enterNowPlaying else null,
                             // Kevin's copy (v3): the mini player plays in a box top right, the programme under it.
                             showPlayer = playerMode == PlayerMode.MINI && multiview == null,
@@ -2416,6 +2409,9 @@ private fun railDetail(section: MainSection, d: RailDetails): String? = when (se
 
 /** How recently ◀ / ▶ or [focusRail] must have happened for a rail visit to open the rail. */
 private const val RAIL_KEY_WINDOW_MS = 400L
+
+/** Kevin's copy: how many past programmes the Catch-up page lists for a channel at most. */
+private const val CATCHUP_PAGE_PROGRAMMES = 400
 
 /** Kevin's copy (v2): the docked mini player at rest: its share of the width (the More box's 566 of 1920), and its gaps to the right and bottom edges in mockup pixels. */
 private const val MINI_DOCK_WIDTH_FRACTION = 566f / 1920f
