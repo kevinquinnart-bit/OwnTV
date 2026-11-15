@@ -31,11 +31,17 @@ data class Channel(
 
 data class Film(val id: String, val name: String, val poster: String, val categoryId: String, val url: String)
 
+data class Show(val id: String, val name: String, val poster: String, val categoryId: String)
+
+data class Episode(val id: String, val season: Int, val number: Int, val title: String, val url: String)
+
 class Library(
     val liveCategories: List<Category>,
     val channels: List<Channel>,
     val filmCategories: List<Category>,
     val films: List<Film>,
+    val showCategories: List<Category> = emptyList(),
+    val shows: List<Show> = emptyList(),
     /** The login these came from; null for a playlist link, which has no guide or catch-up to ask for. */
     val account: Account? = null,
     /** How far the provider's own clock is ahead of world time, in seconds. Catch-up is asked for on its clock. */
@@ -204,6 +210,37 @@ object Provider {
         String(java.util.Base64.getDecoder().decode(text.trim()), Charsets.UTF_8)
     }.getOrDefault(text).trim()
 
+    /** A series' episodes, in season then episode order. Call off the main thread. */
+    fun episodes(account: Account, showId: String): List<Episode> {
+        val url = (account.server + "/player_api.php").toHttpUrlOrNull()?.newBuilder()
+            ?.addQueryParameter("username", account.user)
+            ?.addQueryParameter("password", account.pass)
+            ?.addQueryParameter("action", "get_series_info")
+            ?.addQueryParameter("series_id", showId)
+            ?.build()?.toString() ?: throw ProviderProblem("That server address isn't a web address.")
+        val text = open(url).use { it.body.string() }
+        val holder = runCatching { JsonParser.parseString(text).asJsonObject.get("episodes") }.getOrNull() ?: return emptyList()
+        // Providers send the seasons either as named lists ("1": [...], "2": [...]) or as a list of lists.
+        val seasons: List<com.google.gson.JsonElement> = when {
+            holder.isJsonObject -> holder.asJsonObject.entrySet().map { it.value }
+            holder.isJsonArray -> holder.asJsonArray.toList()
+            else -> emptyList()
+        }
+        val base = account.server + "/series/" + who(account) + "/"
+        val out = ArrayList<Episode>()
+        for (season in seasons) {
+            if (!season.isJsonArray) continue
+            for (row in season.asJsonArray) {
+                val o = runCatching { row.asJsonObject }.getOrNull() ?: continue
+                val field: (String) -> String = { name -> o.get(name)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty() }
+                val id = field("id").ifBlank { continue }
+                val ext = field("container_extension").ifBlank { "mp4" }
+                out += Episode(id, field("season").toIntOrNull() ?: 0, field("episode_num").toIntOrNull() ?: 0, field("title").trim(), "$base$id.$ext")
+            }
+        }
+        return out.distinctBy { it.id }.sortedWith(compareBy({ it.season }, { it.number }))
+    }
+
     /** A channel's guide, oldest first: what the provider holds, past and coming. Call off the main thread. */
     fun guide(account: Account, channelId: String): List<Programme> {
         val url = (account.server + "/player_api.php").toHttpUrlOrNull()?.newBuilder()
@@ -293,10 +330,22 @@ object Provider {
                 films += Film(id, r["name"].orEmpty().trim(), r["stream_icon"].orEmpty(), r["category_id"].orEmpty(), "$base/movie/$who/$id.$ext")
             }
         }
-        if (channels.isEmpty() && films.isEmpty()) throw ProviderProblem("Your provider signed you in but listed no channels or films.")
+        val showCategories = ArrayList<Category>()
+        val shows = ArrayList<Show>()
+        runCatching {
+            records(api(account, "get_series_categories"), setOf("category_id", "category_name")) { r ->
+                showCategories += Category(r["category_id"].orEmpty(), r["category_name"].orEmpty())
+            }
+            records(api(account, "get_series"), setOf("series_id", "name", "cover", "category_id")) { r ->
+                val id = r["series_id"] ?: return@records
+                shows += Show(id, r["name"].orEmpty().trim(), r["cover"].orEmpty(), r["category_id"].orEmpty())
+            }
+        }
+        if (channels.isEmpty() && films.isEmpty() && shows.isEmpty()) throw ProviderProblem("Your provider signed you in but listed no channels, films or series.")
         // A provider that lists the same id twice must not break the lists, which tell rows apart by id.
         return Library(
             liveCategories.distinctBy { it.id }, channels.distinctBy { it.id }, filmCategories.distinctBy { it.id }, films.distinctBy { it.id },
+            showCategories.distinctBy { it.id }, shows.distinctBy { it.id },
             account = account, serverAheadSec = ahead,
         )
     }

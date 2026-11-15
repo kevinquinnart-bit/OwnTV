@@ -34,6 +34,12 @@ class ProviderTest {
                     {"num":1,"name":" BBC One ","stream_id":101,"stream_icon":"http://x/l.png","category_id":"1","tv_archive":1,"tv_archive_duration":"7","category_ids":[1]},
                     {"num":2,"name":"Sky Sports, Main Event","stream_id":"102","stream_icon":null,"category_id":"2","tv_archive":0,"tv_archive_duration":0},
                     {"num":3,"name":"BBC One copy","stream_id":101,"category_id":"1"}]"""
+                q["action"] == "get_series_categories" -> """[{"category_id":"5","category_name":"Crime"}]"""
+                q["action"] == "get_series" -> """[{"num":1,"name":"A Show","series_id":77,"cover":"http://x/c.jpg","category_id":"5","backdrop_path":["a"]},{"name":"B Show","series_id":78,"cover":"","category_id":"5"}]"""
+                q["action"] == "get_series_info" && q["series_id"] == "77" -> """{"seasons":[],"info":{"name":"A Show"},"episodes":{
+                    "2":[{"id":"903","episode_num":1,"title":"A Show - S02E01","container_extension":"mkv","season":2,"info":{"duration":"00:45:00"}}],
+                    "1":[{"id":"902","episode_num":"2","title":"Two","container_extension":"mp4","season":1},{"id":"901","episode_num":1,"title":"One","container_extension":"","season":1}]}}"""
+                q["action"] == "get_series_info" && q["series_id"] == "78" -> """{"episodes":[[{"id":"911","episode_num":1,"title":"Only","container_extension":"mp4","season":1}]]}"""
                 q["action"] == "get_vod_categories" -> """[{"category_id":"9","category_name":"Drama"}]"""
                 q["action"] == "get_vod_streams" -> """[{"name":"A Film (2024)","stream_id":555,"stream_icon":"http://x/p.jpg","category_id":"9","container_extension":"mkv","rating_5based":3.5}]"""
                 else -> "[]"
@@ -75,6 +81,19 @@ class ProviderTest {
         // A picked moment: 18:00 world time is 19:00 on the provider's clock.
         assertEquals("$base/timeshift/kev/p%20w%2F1/240/2026-11-15:19-00/101.ts", Provider.catchupUrlAt(account, "101", 1794765600000L, 240, lib.serverAheadSec))
         assertTrue(Provider.guide(account, "102").isEmpty())
+    }
+
+    @Test fun seriesAndEpisodes() {
+        val account = Account(base, "kev", "p w/1", "")
+        val lib = Provider.load(account)
+        assertEquals(listOf("A Show", "B Show"), lib.shows.map { it.name })
+        assertEquals("Crime", lib.showCategories.single().name)
+        val eps = Provider.episodes(account, "77")
+        assertEquals("season then episode order", listOf("901", "902", "903"), eps.map { it.id })
+        assertEquals(listOf(1, 1, 2), eps.map { it.season })
+        assertEquals("$base/series/kev/p%20w%2F1/901.mp4", eps[0].url)
+        assertEquals("$base/series/kev/p%20w%2F1/903.mkv", eps[2].url)
+        assertEquals("the list-of-lists shape", "Only", Provider.episodes(account, "78").single().title)
     }
 
     @Test fun wrongPasswordSaysSo() {

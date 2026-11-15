@@ -267,7 +267,7 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
 
 // --------------------------------------------------------------------------------------------- main
 
-private enum class Section(val label: String) { LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SETTINGS("Settings") }
+private enum class Section(val label: String) { LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SERIES("Series"), SETTINGS("Settings") }
 
 private const val ALL = "\u0000all"
 
@@ -283,6 +283,14 @@ private class BrowseState(startOnFilms: Boolean) {
 
     val guide = ChannelPick()
     val catchUp = ChannelPick()
+
+    var showCategory by mutableStateOf(ALL)
+    val showCategoryList = LazyListState()
+    val showGrid = LazyGridState()
+    var openShow by mutableStateOf<Show?>(null)
+    val episodeList = LazyListState()
+    var showJustClosed by mutableStateOf(false)
+    val loadedEpisodes = HashMap<String, List<Episode>>()
 
     /** The row or poster that was sent to the player; focus returns to it. */
     var resumeKey by mutableStateOf<String?>(null)
@@ -388,7 +396,7 @@ private fun MainScreen(
                         itemsIndexed(shown, key = { _, f -> f.id }) { _, film ->
                             val key = "film:" + film.id
                             Poster(
-                                film,
+                                film.name, film.poster,
                                 { onPlay(listOf(Playable(film.name, film.url)), 0, false, key) },
                                 if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
                             )
@@ -396,6 +404,7 @@ private fun MainScreen(
                     }
                 }
             }
+            Section.SERIES -> SeriesPane(library, state, resume, onPlay)
             Section.GUIDE -> ChannelGuide(library, false, state.guide, state, resume, onPlay)
             Section.CATCHUP -> ChannelGuide(library, true, state.catchUp, state, resume, onPlay)
             Section.SETTINGS -> Column(Modifier.width(520.dp).fillMaxHeight()) {
@@ -433,7 +442,7 @@ private fun Logo(url: String) {
 }
 
 @Composable
-private fun Poster(film: Film, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun Poster(name: String, poster: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     Column(
         modifier
@@ -444,10 +453,10 @@ private fun Poster(film: Film, onClick: () -> Unit, modifier: Modifier = Modifie
             .padding(6.dp),
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Panel)) {
-            if (film.poster.isNotBlank()) AsyncImage(model = film.poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            if (poster.isNotBlank()) AsyncImage(model = poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
         Text(
-            film.name,
+            name,
             color = if (focused) Accent else Color.White,
             fontSize = 17.sp,
             fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal,
@@ -698,6 +707,145 @@ private fun ProgrammeRow(whenText: String, title: String, description: String, o
         Text(title, color = if (focused) Color.Black else Color.White, fontSize = 22.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (focused && description.isNotBlank()) {
             Text(description, color = Color.Black, fontSize = 17.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------- series
+
+/**
+ * Series: posters by category, like Films. OK on one opens its page in place of the posters: its
+ * episodes under a heading for each season. OK plays an episode, and the next one follows when it
+ * ends. Back returns to the posters.
+ */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.SeriesPane(
+    library: Library,
+    state: BrowseState,
+    resume: FocusRequester,
+    onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+) {
+    val account = library.account
+    if (account == null || library.shows.isEmpty()) {
+        Column(Modifier.weight(1f)) {
+            Note(if (account == null) "Series need a login: server address, username and password. A playlist link on its own doesn't list them." else "Your provider listed no series.")
+        }
+        return
+    }
+    val opened = state.openShow
+    if (opened != null) {
+        EpisodePage(opened, account, state, resume, onPlay)
+        return
+    }
+    val scope = rememberCoroutineScope()
+    Categories(library.showCategories, state.showCategory, state.showCategoryList) {
+        if (it != state.showCategory) {
+            state.showCategory = it
+            scope.launch { state.showGrid.scrollToItem(0) }
+        }
+    }
+    val shown = remember(library, state.showCategory) {
+        if (state.showCategory == ALL) library.shows else library.shows.filter { it.categoryId == state.showCategory }
+    }
+    LaunchedEffect(Unit) {
+        if (!state.showJustClosed) return@LaunchedEffect
+        state.showJustClosed = false
+        withFrameNanos { }
+        withFrameNanos { }
+        runCatching { resume.requestFocus() }
+    }
+    Column(Modifier.weight(1f).fillMaxHeight()) {
+        Heading(if (shown.size == 1) "1 series" else "${shown.size} series")
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            state = state.showGrid,
+            modifier = Modifier.fillMaxSize().focusRestorer(),
+            contentPadding = PaddingValues(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            itemsIndexed(shown, key = { _, s -> s.id }) { _, show ->
+                val key = "show:" + show.id
+                Poster(
+                    show.name, show.poster,
+                    {
+                        state.resumeKey = key
+                        scope.launch { state.episodeList.scrollToItem(0) }
+                        state.openShow = show
+                    },
+                    if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.EpisodePage(
+    show: Show,
+    account: Account,
+    state: BrowseState,
+    resume: FocusRequester,
+    onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+) {
+    BackHandler { state.showJustClosed = true; state.openShow = null }
+
+    val loaded by produceState<Result<List<Episode>>?>(state.loadedEpisodes[show.id]?.let { Result.success(it) }, show.id) {
+        if (value != null) return@produceState
+        value = withContext(Dispatchers.IO) {
+            try {
+                Result.success(Provider.episodes(account, show.id))
+            } catch (e: ProviderProblem) {
+                Result.failure(e)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Result.failure(ProviderProblem("Couldn't load the episodes for this series."))
+            }
+        }
+        value?.getOrNull()?.let { state.loadedEpisodes[show.id] = it }
+    }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(loaded != null) {
+        if (loaded == null) return@LaunchedEffect
+        withFrameNanos { }
+        withFrameNanos { }
+        val back = state.resumeKey?.startsWith("episode:") == true && runCatching { resume.requestFocus() }.getOrDefault(false)
+        if (!back) runCatching { first.requestFocus() }
+    }
+
+    Column(Modifier.weight(1f).fillMaxHeight()) {
+        Heading(show.name)
+        val result = loaded
+        val episodes = result?.getOrNull()
+        when {
+            result == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
+            episodes == null -> Note(result.exceptionOrNull()?.message ?: "Couldn't load the episodes for this series.")
+            episodes.isEmpty() -> Note("Your provider listed no episodes for this series.")
+            else -> {
+                val label: (Episode) -> String = { e ->
+                    val plain = "Episode " + e.number
+                    if (e.title.isBlank() || e.title.equals(plain, ignoreCase = true)) plain else e.number.toString() + ". " + e.title
+                }
+                val playables = remember(episodes) { episodes.map { Playable(show.name + " · S" + it.season + " E" + it.number, it.url) } }
+                LazyColumn(Modifier.fillMaxSize(), state = state.episodeList) {
+                    episodes.forEachIndexed { i, episode ->
+                        if (i == 0 || episodes[i - 1].season != episode.season) {
+                            item(key = "season:" + episode.season) {
+                                Box(Modifier.padding(top = if (i == 0) 0.dp else 14.dp)) { Heading("Season " + episode.season) }
+                            }
+                        }
+                        item(key = episode.id) {
+                            val key = "episode:" + episode.id
+                            FocusRow(
+                                label(episode),
+                                { onPlay(playables, i, false, key) },
+                                (if (i == 0) Modifier.focusRequester(first) else Modifier)
+                                    .then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

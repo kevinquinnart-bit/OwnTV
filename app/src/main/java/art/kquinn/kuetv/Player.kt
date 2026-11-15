@@ -54,7 +54,8 @@ private const val MAX_TRIES = 6
  * The full-screen player.
  *
  * Live: ▲ / CH+ is the next channel, ▼ / CH− the one before, OK shows the channel's name, Back closes.
- * A film: the player's own bar handles play, pause and skipping; Back closes.
+ * A film or an episode: the player's own bar handles play, pause and skipping; Back closes. When an
+ * episode ends, the next one in the list starts.
  *
  * English audio and English subtitles are chosen whenever the stream carries them. When a stream
  * drops, the player reconnects by itself and says so; after [MAX_TRIES] failures in a row it says the
@@ -97,6 +98,8 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) { tries = 0; note = null }
+                // An episode has finished and another follows it in the list: play that one.
+                if (state == Player.STATE_ENDED && !live && index < items.size - 1) index += 1
             }
 
             override fun onPlayerError(error: PlaybackException) {
