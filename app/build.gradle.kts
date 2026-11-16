@@ -69,5 +69,9 @@ dependencies {
     implementation("com.google.code.gson:gson:2.13.1")
     implementation("io.coil-kt.coil3:coil-compose:3.6.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.0")
+    // The torrent engine, and its machinery for the two kinds of chip in Fire TVs, Android TVs and phones.
+    implementation("org.libtorrent4j:libtorrent4j:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm64:2.1.0-39")
     testImplementation("junit:junit:4.13.2")
 }

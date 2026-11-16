@@ -103,19 +103,49 @@ class AddOnsTest {
     @Test fun linesUpStreamsBestEnglishFirstAndLeavesOutWhatCantPlay() {
         val search = AddOns.streamsFor(listOf(good, subs), "movie", "The Thing (2011)")
         assertEquals(
-            listOf("http://cdn/best", "http://cdn/second", "http://cdn/720", "http://cdn/dts", "http://cdn/4k", "http://cdn/cam", "http://cdn/ita"),
-            search.streams.map { it.url },
+            listOf("http://cdn/best", "http://cdn/second", "http://cdn/720", "http://cdn/dts", "http://cdn/4k", "magnet", "http://cdn/cam", "http://cdn/ita"),
+            search.streams.map { if (it.url.startsWith("magnet:?xt=urn:btih:abc&tr=")) "magnet" else it.url },
         )
-        assertFalse(search.torrentsOnly)
         assertEquals("the stream's own English subtitles", "http://subs/own.srt", search.streams[0].subtitle)
         assertEquals(mapOf("Referer" to "http://x/"), search.streams[0].headers)
         assertEquals("the subtitle add-on's English ones, where the stream has none", "http://subs/spare.srt", search.streams[1].subtitle)
     }
 
-    @Test fun saysWhenThereWereOnlyTorrents() {
+    @Test fun torrentsAreLinedUpTooWithTheFileTheAddOnNamed() {
         val search = AddOns.streamsFor(listOf(good), "movie", "A Film (2024)")
-        assertTrue(search.streams.isEmpty())
-        assertTrue(search.torrentsOnly)
+        assertEquals(2, search.streams.size)
+        assertEquals(null, AddOns.readMagnet(search.streams[0].url).file)
+        assertEquals(1, AddOns.readMagnet(search.streams[1].url).file)
+        assertTrue(search.streams[1].url.startsWith("magnet:?xt=urn:btih:def&tr="))
+    }
+
+    @Test fun aTorrentsAddressCarriesWhatIsWantedAndGivesItBack() {
+        val address = AddOns.magnet("ABC123", listOf("tracker:udp://one.example:80/announce", "dht:abc123"), null, 2, 3)
+        assertTrue(address.startsWith("magnet:?xt=urn:btih:abc123&tr=udp%3A%2F%2Fone.example%3A80%2Fannounce&tr="))
+        val read = AddOns.readMagnet(address)
+        assertEquals(null, read.file)
+        assertEquals(2, read.season)
+        assertEquals(3, read.episode)
+        assertFalse("KueTV's own notes are taken off before the torrent engine sees it", read.magnet.contains("x.kue"))
+        assertTrue(read.magnet.startsWith("magnet:?xt=urn:btih:abc123&tr="))
+    }
+
+    @Test fun picksTheFilmOutOfATorrentsFiles() {
+        val film = listOf("Film/sample.mkv", "Film/Film.1080p.mkv", "Film/readme.txt", "Film/extras.mp4")
+        assertEquals(1, AddOns.pickFile(film, listOf(50, 4000, 1, 300), null, null, null))
+        assertEquals("the one the add-on named, whatever its size", 3, AddOns.pickFile(film, listOf(50, 4000, 1, 300), 3, null, null))
+        val season = listOf("Show/Show.S02E03.mkv", "Show/Show.S02E13.mkv", "Show/Show.S02E30.mkv", "Show/show.2x03.sample.mkv", "Show/Show.S12E03.mkv")
+        assertEquals(0, AddOns.pickFile(season, listOf(900, 950, 990, 10, 999), null, 2, 3))
+        assertEquals(1, AddOns.pickFile(season, listOf(900, 950, 990, 10, 999), null, 2, 13))
+        assertNull("a whole season with no such episode: none, not the wrong one", AddOns.pickFile(season, listOf(900, 950, 990, 10, 999), null, 2, 9))
+        assertEquals("one film file is taken to be the episode", 0, AddOns.pickFile(listOf("ep.mkv", "a.nfo"), listOf(700, 1), null, 2, 9))
+        assertNull(AddOns.pickFile(listOf("a.txt", "b.jpg"), listOf(1, 2), null, null, null))
+    }
+
+    @Test fun aTorrentNobodySharesOrTooBigToHoldGoesBehind() {
+        assertEquals(-10, AddOns.torrentScore("FILM 1080P \uD83D\uDC64 120 \uD83D\uDCBE 2.1 GB"))
+        assertEquals(-310, AddOns.torrentScore("FILM 1080P \uD83D\uDC64 1 \uD83D\uDCBE 900 MB"))
+        assertEquals(-160, AddOns.torrentScore("FILM 2160P \uD83D\uDC64 80 \uD83D\uDCBE 14.3 GB"))
     }
 
     @Test fun asksAboutAnEpisodeBySeasonAndNumber() {
@@ -128,7 +158,6 @@ class AddOnsTest {
         assertTrue(AddOns.streamsFor(listOf(subs), "movie", "The Thing (2011)").streams.isEmpty())
         val unknown = AddOns.streamsFor(listOf(good), "movie", "No Such Film (2020)")
         assertTrue(unknown.streams.isEmpty())
-        assertFalse(unknown.torrentsOnly)
         assertFalse(synchronized(asked) { asked.any { it.startsWith("/good/stream/") } })
     }
 }

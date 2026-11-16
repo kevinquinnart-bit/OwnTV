@@ -157,6 +157,8 @@ private fun App() {
     var addOnsOpen by remember { mutableStateOf(false) }
     // Each time KueTV comes to the front: carry on copying any recordings that are waiting for Google Drive.
     LaunchedEffect(Resumes.count) { Recordings.wake(context) }
+    // Anything a torrent left behind, if the app was closed while one played, is cleared when the app opens.
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { runCatching { Torrents.folder(context).deleteRecursively() } } }
 
     LaunchedEffect(account, reload) {
         if (!account.isSet) return@LaunchedEffect

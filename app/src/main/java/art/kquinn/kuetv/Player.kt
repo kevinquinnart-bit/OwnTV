@@ -65,8 +65,30 @@ data class Stream(
 /** The last thing tried for a film when add-ons are in use: the copy the provider itself lists. */
 const val PROVIDER_COPY = "Your provider's copy"
 
-/** A film that hasn't started after this long on one stream moves to the next. */
+/** A film that hasn't started after this long on one stream moves to the next. A torrent is given longer. */
 private const val SLOW_START_MS = 25_000L
+private const val SLOW_TORRENT_MS = 80_000L
+
+/** Sends the player's reading to the torrent engine for a torrent's address, and to the internet for any other. */
+@OptIn(UnstableApi::class)
+private class Either(private val web: DataSource, private val torrent: DataSource) : DataSource {
+    private var using: DataSource = web
+
+    override fun addTransferListener(transferListener: TransferListener) {
+        web.addTransferListener(transferListener)
+        torrent.addTransferListener(transferListener)
+    }
+
+    override fun open(dataSpec: DataSpec): Long {
+        using = if (dataSpec.uri.scheme == "magnet") torrent else web
+        return using.open(dataSpec)
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int = using.read(buffer, offset, length)
+    override fun getUri(): android.net.Uri? = using.uri
+    override fun getResponseHeaders(): Map<String, List<String>> = using.responseHeaders
+    override fun close() = using.close()
+}
 
 /**
  * One thing the player can show: a channel or a film. A channel the provider lists in several
@@ -222,7 +244,11 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             .setBufferDurationsMs(20_000, 60_000, 2_500, 6_000)
             .build()
         ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DataSource.Factory { Tap(DefaultDataSource.Factory(context, http).createDataSource(), recorder) }))
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(
+                    DataSource.Factory { Either(Tap(DefaultDataSource.Factory(context, http).createDataSource(), recorder), TorrentSource(context.applicationContext)) },
+                ),
+            )
             .setLoadControl(load)
             .build().apply {
                 trackSelectionParameters = trackSelectionParameters.buildUpon()
@@ -331,6 +357,9 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             finishRecording()
             Recordings.playing = false
             Recordings.wake(context)
+            // Any torrent that was playing is stopped and what it fetched is removed. That can take a moment.
+            val app = context.applicationContext
+            Thread({ Torrents.close(app) }, "kuetv-torrent-close").start()
         }
     }
 
@@ -352,10 +381,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             val theirs = result?.streams.orEmpty()
             found[index] = theirs + Stream(PROVIDER_COPY, item.url)
             note = null
-            if (theirs.isEmpty()) {
-                moved = if (result?.torrentsOnly == true) "Your add-ons only had torrents for this, which KueTV can't play yet. Playing your provider's copy."
-                else "Nothing from your add-ons for this one. Playing your provider's copy."
-            }
+            if (theirs.isEmpty()) moved = "Nothing from your add-ons for this one. Playing your provider's copy."
             val start = Settled.startFor(item, theirs.size + 1)
             if (start != stream) {
                 stream = start
@@ -366,6 +392,9 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         stops.clear()
         hasPlayed[0] = false
         started[0] = false
+        val torrent = (now?.url ?: item.url).startsWith("magnet:")
+        if (torrent && moved == null) moved = "This one is a torrent. It can take a minute to start."
+        if (!torrent) Thread({ Torrents.stopCurrent() }, "kuetv-torrent-stop").start()
         http.setDefaultRequestProperties(now?.headers?.takeIf { it.isNotEmpty() } ?: item.headers)
         val media = MediaItem.Builder().setUri(now?.url ?: item.url)
         val subtitle = now?.subtitle?.takeIf { now.url !in withoutSubtitles }
@@ -393,7 +422,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             }
         } else if (versions.size > 1 && !started[0]) {
             // A film's stream that is taking too long to start: the next one may be quicker.
-            delay(SLOW_START_MS)
+            delay(if (versions.getOrNull(stream)?.url?.startsWith("magnet:") == true) SLOW_TORRENT_MS else SLOW_START_MS)
             if (!started[0] && stream < versions.size - 1) change(stream + 1, nextStream(versions, stream + 1))
         }
     }

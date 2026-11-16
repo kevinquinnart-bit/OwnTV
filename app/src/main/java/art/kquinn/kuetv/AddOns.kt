@@ -26,8 +26,8 @@ data class AddOn(val base: String, val name: String, val streams: Boolean, val s
     }
 }
 
-/** What the add-ons had for one film or episode. [torrentsOnly]: they answered, but only with torrents. */
-class Search(val streams: List<Stream>, val torrentsOnly: Boolean)
+/** What the add-ons had for one film or episode, the best to try first. */
+class Search(val streams: List<Stream>)
 
 /**
  * Add-ons, of the kind made for Stremio: small web services the user adds by a link. Asked about a film
@@ -137,8 +137,8 @@ object AddOns {
      */
     fun streamsFor(addOns: List<AddOn>, type: String, name: String, season: Int? = null, episode: Int? = null): Search {
         val givers = addOns.filter { it.streams }
-        if (givers.isEmpty()) return Search(emptyList(), false)
-        val id = idFor(type, name) ?: return Search(emptyList(), false)
+        if (givers.isEmpty()) return Search(emptyList())
+        val id = idFor(type, name) ?: return Search(emptyList())
         val asked = if (season != null && episode != null) "$id:$season:$episode" else id
         val pool = Executors.newFixedThreadPool((addOns.size).coerceIn(1, 6))
         try {
@@ -150,18 +150,91 @@ object AddOns {
             val rows = answers.flatMap { runCatching { it.get(15, TimeUnit.SECONDS) }.getOrDefault(emptyList()) }.mapNotNull { runCatching { it.asJsonObject }.getOrNull() }
             val spare = subtitleAnswers.asSequence().flatMap { runCatching { it.get(15, TimeUnit.SECONDS) }.getOrDefault(emptyList()).asSequence() }
                 .mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.firstOrNull { english(it.text("lang")) }?.text("url")?.takeIf { it.startsWith("http") }
-            val playable = rows.filter { it.text("url").startsWith("http://") || it.text("url").startsWith("https://") }
-            val ranked = playable.withIndex().sortedWith(compareByDescending<IndexedValue<JsonObject>> { score(words(it.value)) }.thenBy { it.index })
-                .distinctBy { it.value.text("url") }.take(MOST).map { (_, row) ->
+            // A stream is either a web address to play from, or a torrent, known by its fingerprint.
+            val web: (JsonObject) -> Boolean = { it.text("url").startsWith("http://") || it.text("url").startsWith("https://") }
+            val address: (JsonObject) -> String = { row ->
+                if (web(row)) row.text("url")
+                else magnet(row.text("infoHash"), row.list("sources").map { runCatching { it.asString }.getOrDefault("") }, row.text("fileIdx").toIntOrNull(), season, episode)
+            }
+            val playable = rows.filter { web(it) || it.text("infoHash").isNotBlank() }
+            val ranked = playable.withIndex()
+                .sortedWith(compareByDescending<IndexedValue<JsonObject>> { score(words(it.value)) + if (web(it.value)) 0 else torrentScore(words(it.value)) }.thenBy { it.index })
+                .distinctBy { address(it.value) }.take(MOST).map { (_, row) ->
                     val own = row.list("subtitles").mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.firstOrNull { english(it.text("lang")) }?.text("url")?.takeIf { it.startsWith("http") }
                     val headers = row.inner("behaviorHints")?.inner("proxyHeaders")?.inner("request")?.entrySet()
                         ?.filter { it.value.isJsonPrimitive }?.associate { it.key to it.value.asString }.orEmpty()
-                    Stream("Add-on stream", row.text("url"), headers, own ?: spare)
+                    Stream("Add-on stream", address(row), headers, own ?: spare)
                 }
-            return Search(ranked, torrentsOnly = ranked.isEmpty() && rows.any { it.text("infoHash").isNotEmpty() })
+            return Search(ranked)
         } finally {
             pool.shutdownNow()
         }
+    }
+
+    // ------------------------------------------------------------------------------------------ torrents
+
+    private val openTrackers = listOf(
+        "udp://tracker.opentrackr.org:1337/announce", "udp://open.demonii.com:1337/announce",
+        "udp://tracker.torrent.eu.org:451/announce", "udp://exodus.desync.com:6969/announce",
+    )
+
+    /** What a torrent's address asks for: the torrent itself, and which file in it. */
+    class Magnet(val magnet: String, val file: Int?, val season: Int?, val episode: Int?)
+
+    /**
+     * A torrent's address: its fingerprint, where to ask who has it, and, for KueTV's own use at the
+     * end, which file in it is wanted (by number when the add-on gave one, else by season and episode).
+     */
+    fun magnet(infoHash: String, sources: List<String>, file: Int?, season: Int?, episode: Int?): String {
+        val trackers = (sources.filter { it.startsWith("tracker:") }.map { it.removePrefix("tracker:") } + openTrackers).distinct().take(12)
+        return "magnet:?xt=urn:btih:" + infoHash.trim().lowercase() +
+            trackers.joinToString("") { "&tr=" + java.net.URLEncoder.encode(it, "UTF-8") } +
+            (if (file != null) "&x.kue.file=$file" else "") +
+            (if (season != null && episode != null) "&x.kue.se=${season}x$episode" else "")
+    }
+
+    fun readMagnet(address: String): Magnet {
+        val file = Regex("&x\\.kue\\.file=(\\d+)").find(address)?.groupValues?.get(1)?.toIntOrNull()
+        val se = Regex("&x\\.kue\\.se=(\\d+)x(\\d+)").find(address)
+        return Magnet(address.replace(Regex("&x\\.kue\\.[a-z]+=[^&]*"), ""), file, se?.groupValues?.get(1)?.toIntOrNull(), se?.groupValues?.get(2)?.toIntOrNull())
+    }
+
+    private val filmEndings = setOf("mkv", "mp4", "m4v", "avi", "mov", "webm", "ts", "m2ts")
+
+    /**
+     * Which file in a torrent is the film: the one the add-on named; else, for an episode, the biggest
+     * film file whose name carries that season and episode; else the biggest film file. Null when none.
+     */
+    fun pickFile(paths: List<String>, sizes: List<Long>, named: Int?, season: Int?, episode: Int?): Int? {
+        if (named != null && named in paths.indices) return named
+        val films = paths.indices.filter { i ->
+            val name = paths[i].substringAfterLast('/').lowercase()
+            name.substringAfterLast('.', "") in filmEndings && !name.contains("sample")
+        }
+        if (season != null && episode != null) {
+            val marks = Regex("(?i)(s0*${season}[ ._-]*e0*$episode(?!\\d))|((?<!\\d)0*${season}x0*$episode(?!\\d))")
+            films.filter { marks.containsMatchIn(paths[it].substringAfterLast('/')) }.maxByOrNull { sizes[it] }?.let { return it }
+            // A torrent of a whole season with no episode named that way can't be told apart: better none than the wrong one.
+            if (films.size > 1) return null
+        }
+        return films.maxByOrNull { sizes[it] }
+    }
+
+    private val sharers = Regex("\\uD83D\\uDC64\\s*(\\d+)")
+    private val howBig = Regex("(\\d+(?:\\.\\d+)?)\\s*(GB|MB)")
+
+    /**
+     * What counts for or against a torrent, on top of [score]. A web address is quicker to start, so a
+     * torrent sits just behind one of the same quality. One with almost nobody sharing it rarely plays,
+     * and a very big one may not fit in the storage here.
+     */
+    fun torrentScore(text: String): Int {
+        var s = -10
+        val sharing = sharers.find(text)?.groupValues?.get(1)?.toIntOrNull()
+        if (sharing != null && sharing < 3) s -= 300
+        val size = howBig.findAll(text).map { it.groupValues[1].toDouble() * if (it.groupValues[2] == "GB") 1.0 else 0.001 }.maxOrNull()
+        if (size != null && size > 6.0) s -= 150
+        return s
     }
 
     private fun english(lang: String): Boolean = lang.lowercase().let { it == "en" || it == "eng" || it.startsWith("english") || it.startsWith("en-") }
