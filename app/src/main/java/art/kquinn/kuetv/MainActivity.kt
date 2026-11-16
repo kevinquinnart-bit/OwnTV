@@ -310,7 +310,11 @@ private fun LoadingScreen() {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         CircularProgressIndicator(color = Accent)
         Spacer(Modifier.height(22.dp))
-        Text("Loading your channels and films…", color = Color.White, fontSize = 24.sp)
+        Text(
+            "Loading your channels and films…", color = Color.White, fontSize = 24.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+        )
     }
 }
 
