@@ -132,11 +132,21 @@ class DriveTest {
         assertFalse(drive.signedIn)
     }
 
+    @Test fun googleNotAnsweringIsToldApartFromGoogleSayingNo() {
+        val code = drive().beginSignIn()
+        // The same Drive, but pointed at an address where nothing answers.
+        val cutOff = Drive(keep, "id-1", "secret-1", auth = "http://127.0.0.1:1", api = "http://127.0.0.1:1")
+        try { cutOff.checkSignIn(code); fail("nothing was there to answer") } catch (e: DriveProblem) { assertTrue("the sign-in screen keeps waiting on this", e.offline) }
+    }
+
     @Test fun aRefusalOnThePhoneIsSaidPlainly() {
         val drive = drive()
         val code = drive.beginSignIn()
         refused = true
-        try { drive.checkSignIn(code); fail("should have been refused") } catch (e: DriveProblem) { assertEquals("The sign-in was refused on the phone.", e.message) }
+        try { drive.checkSignIn(code); fail("should have been refused") } catch (e: DriveProblem) {
+            assertEquals("The sign-in was refused on the phone.", e.message)
+            assertFalse(e.offline)
+        }
         assertFalse(drive.signedIn)
     }
 

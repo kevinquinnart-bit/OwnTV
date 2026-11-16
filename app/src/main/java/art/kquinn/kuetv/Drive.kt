@@ -11,8 +11,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.RandomAccessFile
 
-/** A problem with Google Drive the user can read on screen. [signedOut]: Google wants the sign-in done again. */
-class DriveProblem(message: String, val signedOut: Boolean = false) : Exception(message)
+/**
+ * A problem with Google Drive the user can read on screen. [signedOut]: Google wants the sign-in done
+ * again. [offline]: Google couldn't be reached this time, which may pass.
+ */
+class DriveProblem(message: String, val signedOut: Boolean = false, val offline: Boolean = false) : Exception(message)
 
 /** Where the sign-in is kept between runs of the app. */
 interface Keep {
@@ -58,7 +61,7 @@ class Drive(
             Answer(r.code, json, r.header("Range"), r.header("Location"))
         }
     } catch (e: java.io.IOException) {
-        throw DriveProblem("Couldn't reach Google. Check the internet connection.")
+        throw DriveProblem("Couldn't reach Google. Check the internet connection.", offline = true)
     }
 
     private fun JsonObject.text(name: String): String = get(name)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()

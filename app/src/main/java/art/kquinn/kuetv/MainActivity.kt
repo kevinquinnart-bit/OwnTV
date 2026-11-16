@@ -48,6 +48,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -78,6 +79,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,6 +98,21 @@ private val Panel = Color(0xFF16213A)
 private val Accent = Color(0xFFFFD23F)
 private val Soft = Color(0xFFB9C2D3)
 
+/** The app's lettering: Poppins throughout. Signs it doesn't have (★ ● ≡) come from the device's own. */
+private val Poppins = FontFamily(Font(R.font.poppins_regular, FontWeight.Normal), Font(R.font.poppins_bold, FontWeight.Bold))
+private val KueType = Typography().let { t ->
+    Typography(
+        displayLarge = t.displayLarge.copy(fontFamily = Poppins), displayMedium = t.displayMedium.copy(fontFamily = Poppins), displaySmall = t.displaySmall.copy(fontFamily = Poppins),
+        headlineLarge = t.headlineLarge.copy(fontFamily = Poppins), headlineMedium = t.headlineMedium.copy(fontFamily = Poppins), headlineSmall = t.headlineSmall.copy(fontFamily = Poppins),
+        titleLarge = t.titleLarge.copy(fontFamily = Poppins), titleMedium = t.titleMedium.copy(fontFamily = Poppins), titleSmall = t.titleSmall.copy(fontFamily = Poppins),
+        // Every line of text on the screens starts from this one and sets its own size, so the space
+        // between lines is left to follow that size. A fixed one made large lines sit on top of each other.
+        bodyLarge = t.bodyLarge.copy(fontFamily = Poppins, lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified),
+        bodyMedium = t.bodyMedium.copy(fontFamily = Poppins), bodySmall = t.bodySmall.copy(fontFamily = Poppins),
+        labelLarge = t.labelLarge.copy(fontFamily = Poppins), labelMedium = t.labelMedium.copy(fontFamily = Poppins), labelSmall = t.labelSmall.copy(fontFamily = Poppins),
+    )
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,7 +120,7 @@ class MainActivity : ComponentActivity() {
         val tv = isTv(this)
         if (tv) requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme(primary = Accent)) {
+            MaterialTheme(colorScheme = darkColorScheme(primary = Accent), typography = KueType) {
                 CompositionLocalProvider(LocalPhone provides !tv) { App() }
             }
         }
@@ -710,7 +728,7 @@ private fun Poster(
             fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp).height(46.dp),
+            modifier = Modifier.padding(top = 6.dp).height(54.dp),
         )
     }
 }
@@ -1358,7 +1376,15 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
             while (true) {
                 delay((asked.intervalSec + 1) * 1000L)
                 if (System.currentTimeMillis() > asked.expiresAtMs) throw DriveProblem("That code ran out of time. Start again.")
-                if (withContext(Dispatchers.IO) { drive.checkSignIn(asked) }) break
+                // Google not answering one check is not the end of the sign-in: the code is still good, so keep
+                // checking. It happens while KueTV sits behind the web page the code is being typed into.
+                val finished = try {
+                    withContext(Dispatchers.IO) { drive.checkSignIn(asked) }
+                } catch (e: DriveProblem) {
+                    if (!e.offline) throw e
+                    false
+                }
+                if (finished) break
             }
             done = true
             Recordings.changed()
@@ -1399,14 +1425,18 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
             }
             shown == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
             else -> {
-                line(if (phone) "Open this page:" else "On your phone or computer, open")
+                line(if (phone) "The button below copies this code and opens this page:" else "On your phone or computer, open")
                 big(shown.url.removePrefix("https://").removePrefix("www."))
-                line("and type this code:")
+                line(if (phone) "Paste the code there:" else "and type this code:")
                 big(shown.userCode)
-                line("Then choose the Google account your recordings should go to. This screen moves on by itself.")
+                line("Then choose the Google account your recordings should go to." + if (phone) " Come back here afterwards." else " This screen moves on by itself.")
                 Spacer(Modifier.height(22.dp))
                 if (phone) {
-                    FocusRow("Open that page", {
+                    FocusRow("Copy the code and open the page", {
+                        runCatching {
+                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("KueTV code", shown.userCode))
+                        }
                         runCatching {
                             context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(shown.url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                         }
