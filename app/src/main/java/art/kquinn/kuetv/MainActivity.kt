@@ -263,6 +263,8 @@ private fun FocusRow(
     onHold: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
     look: Look = Look.ROW,
+    /** A second, smaller line under the first: what is on a channel, say. */
+    below: String? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val button = if (LocalPhone.current) look else Look.ROW
@@ -289,14 +291,17 @@ private fun FocusRow(
         horizontalArrangement = if (button == Look.ROW) Arrangement.spacedBy(14.dp) else Arrangement.Center,
     ) {
         leading?.invoke()
-        Text(
-            text,
-            color = if (focused || button == Look.MAIN) Color.Black else Color.White,
-            fontSize = 21.sp,
-            fontWeight = if (focused || chosen || button == Look.MAIN) FontWeight.Bold else FontWeight.Normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Column {
+            Text(
+                text,
+                color = if (focused || button == Look.MAIN) Color.Black else Color.White,
+                fontSize = 21.sp,
+                fontWeight = if (focused || chosen || button == Look.MAIN) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (below != null) Text(below, color = if (focused) Color.Black else Soft, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
@@ -586,6 +591,7 @@ private fun MainScreen(
                                 if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
                                 onHold = { favourites.toggleAll(favKeys) },
                                 leading = { Logo(channel.logo) },
+                                below = nowLine(library.account, channel.versions[channel.start].channel.id),
                             )
                         }
                     }
@@ -870,6 +876,7 @@ private fun Pane.ChannelGuide(
                     },
                     if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                     leading = { Logo(channel.logo) },
+                    below = if (catchUp) null else nowLine(account, channel.versions[channel.start].channel.id),
                 )
             }
         }
@@ -1754,6 +1761,28 @@ private fun livePlayable(group: ChannelGroup, account: Account?): Playable {
     val first = group.versions[group.start].channel
     return Playable(
         group.name, first.url, group.versions.map { Stream(it.label, it.channel.url) }, group.start,
-        guide = if (account == null) null else ({ withContext(Dispatchers.IO) { Provider.guide(account, first.id) } }),
+        guide = if (account == null) null else ({ NowNext.get(account, first.id) }),
     )
+}
+
+/**
+ * What is on a channel now and next, for the line under its name in a list; null until it is known, and
+ * when the provider has no guide for it. A row has to stay on screen for half a second before it asks,
+ * so rows that are only passing by while the list is scrolled don't.
+ */
+@Composable
+private fun nowLine(account: Account?, channelId: String): String? {
+    if (account == null) return null
+    val line by produceState(NowNext.cached(channelId)?.let { NowNext.line(it, System.currentTimeMillis()) }, channelId) {
+        if (value != null) return@produceState
+        delay(500)
+        value = try {
+            NowNext.line(NowNext.get(account, channelId), System.currentTimeMillis())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+    }
+    return line
 }
