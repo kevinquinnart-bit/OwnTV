@@ -21,6 +21,9 @@ object AddOnStore {
         changes++
     }
 
+    /** Takes on the add-ons copied from another device, in place of the ones here. */
+    fun replaceAll(context: Context, list: List<AddOn>) = save(context, list)
+
     /** Adds [addOn], or replaces the one already there from the same place. */
     fun add(context: Context, addOn: AddOn) = save(context, all(context).filter { it.base != addOn.base } + addOn)
 

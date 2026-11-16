@@ -165,6 +165,8 @@ private fun App() {
     val favourites = remember { Favourites(context.applicationContext) }
     var driveSignIn by remember { mutableStateOf(false) }
     var addOnsOpen by remember { mutableStateOf(false) }
+    // 1: sending this device's set-up to another. 2: copying another device's set-up to here.
+    var setUpShare by remember { mutableIntStateOf(0) }
     // Each time KueTV comes to the front: carry on copying any recordings that are waiting for Google Drive.
     LaunchedEffect(Resumes.count) { Recordings.wake(context) }
     // Anything a torrent left behind, if the app was closed while one played, is cleared when the app opens.
@@ -193,10 +195,24 @@ private fun App() {
         when {
             // Only the player is on screen while it plays, so no key can reach the lists behind it.
             now != null -> PlayerScreen(now.items, now.index, now.live, onClose = { playing = null })
+            setUpShare == 1 -> SendSetUpScreen(account, favourites, onDone = { setUpShare = 0 })
+            setUpShare == 2 -> TakeSetUpScreen(
+                onDone = { setUpShare = 0 },
+                onTaken = { taken ->
+                    // The other device's set-up replaces this one's, and the lists load again from its provider details.
+                    AccountStore.save(context, taken.account)
+                    favourites.replaceAll(taken.favourites)
+                    AddOnStore.replaceAll(context, taken.addOns)
+                    Choices.smallTv(context, taken.smallTv)
+                    editing = false
+                    if (taken.account == account) reload++ else account = taken.account
+                },
+            )
             !account.isSet || editing -> SetupScreen(
                 current = account,
                 canCancel = account.isSet,
                 onCancel = { editing = false },
+                onCopy = { setUpShare = 2 },
                 onSave = { next ->
                     AccountStore.save(context, next)
                     editing = false
@@ -221,6 +237,8 @@ private fun App() {
                 onReload = { reload++ },
                 onDriveSignIn = { driveSignIn = true },
                 onAddOns = { addOnsOpen = true },
+                onSendSetUp = { setUpShare = 1 },
+                onTakeSetUp = { setUpShare = 2 },
             )
         }
     }
@@ -373,7 +391,7 @@ private fun ProblemScreen(message: String, onRetry: () -> Unit, onEdit: () -> Un
 // --------------------------------------------------------------------------------------------- setup
 
 @Composable
-private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Unit, onSave: (Account) -> Unit) {
+private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Unit, onCopy: () -> Unit, onSave: (Account) -> Unit) {
     var server by remember { mutableStateOf(current.server) }
     var user by remember { mutableStateOf(current.user) }
     var pass by remember { mutableStateOf(current.pass) }
@@ -416,6 +434,8 @@ private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Un
         Field("Or one playlist link", playlist, onDone = { submit(server, user, pass, playlist) }) { playlist = it }
         Spacer(Modifier.height(6.dp))
         FocusRow("Save", { submit(server, user, pass, playlist) }, look = Look.MAIN)
+        // Already set up on the TV or the phone: bring it all across instead of typing it again.
+        FocusRow("Copy set-up from another device", onCopy, look = Look.OTHER)
         if (canCancel) FocusRow("Cancel", onCancel, look = Look.OTHER)
     }
     if (phone) {
@@ -508,6 +528,8 @@ private fun MainScreen(
     onReload: () -> Unit,
     onDriveSignIn: () -> Unit,
     onAddOns: () -> Unit,
+    onSendSetUp: () -> Unit,
+    onTakeSetUp: () -> Unit,
 ) {
     val context = LocalContext.current
     // With add-ons added, a film or episode asks them for streams first. With none, nothing changes.
@@ -644,6 +666,8 @@ private fun MainScreen(
                     else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn, look = Look.OTHER)
                 }
                 FocusRow("Add-ons for films and series (" + addOns.size + ")", onAddOns, look = Look.OTHER)
+                FocusRow("Send this set-up to another device", onSendSetUp, look = Look.OTHER)
+                FocusRow("Copy set-up from another device", onTakeSetUp, look = Look.OTHER)
                 if (!phone) {
                     val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
                     FocusRow("Small TV while browsing: " + if (smallTv) "on" else "off", { Choices.smallTv(context, !smallTv) })
@@ -1618,5 +1642,108 @@ private fun AddOnsScreen(onDone: () -> Unit) {
             FocusRow("Remove " + addOn.name + " (" + gives + ")", { AddOnStore.remove(context, addOn); said = "Removed " + addOn.name + "." }, look = Look.OTHER)
         }
         FocusRow("Done", onDone, look = Look.OTHER)
+    }
+}
+
+// --------------------------------------------------------------------------------------------- copying a set-up
+
+/**
+ * Sending this device's set-up: the screen shows a four-figure code, and while it is open the other
+ * device, on the same Wi-Fi, can copy the provider details, favourites and add-ons by giving that code.
+ */
+@Composable
+private fun SendSetUpScreen(account: Account, favourites: Favourites, onDone: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val code = remember { (1000 + java.security.SecureRandom().nextInt(9000)).toString() }
+    var taken by remember { mutableStateOf(false) }
+    var ready by remember { mutableStateOf<Boolean?>(null) }
+    BackHandler { onDone() }
+    DisposableEffect(Unit) {
+        val main = Handler(Looper.getMainLooper())
+        val app = context.applicationContext
+        val sender = SetUpSender(
+            code,
+            { SetUp(account, favourites.keys, AddOnStore.all(app), Choices.smallTv(app)).pack() },
+            { main.post { taken = true } },
+        )
+        ready = PhoneSetup.localAddress() != null && sender.start() != null
+        onDispose { sender.stop() }
+    }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        runCatching { first.requestFocus() }
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
+        Text("Send this set-up", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
+        when {
+            ready == false -> Note("This device isn't on a home network, so it can't send its set-up. Join the Wi-Fi and try again.")
+            taken -> Note("Sent. The other device now has your provider details, favourites and add-ons.")
+            else -> {
+                Note("On the other device, on the same Wi-Fi, open KueTV and choose \"Copy set-up from another device\". Then type this code there:")
+                Text(code, color = Accent, fontSize = 56.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 10.dp))
+                Note("Keep this screen open until it says Sent.")
+            }
+        }
+        Spacer(Modifier.height(22.dp))
+        FocusRow(if (taken) "Done" else "Cancel", onDone, Modifier.focusRequester(first), look = if (taken) Look.MAIN else Look.OTHER)
+    }
+}
+
+/** Copying another device's set-up to here: type the code its screen shows, and this device finds it on the Wi-Fi. */
+@Composable
+private fun TakeSetUpScreen(onDone: () -> Unit, onTaken: (SetUp) -> Unit) {
+    val phone = LocalPhone.current
+    val scope = rememberCoroutineScope()
+    var code by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var said by remember { mutableStateOf<String?>(null) }
+    BackHandler { onDone() }
+
+    val copy: () -> Unit = {
+        val typed = code.filter { it.isDigit() }
+        if (!busy && typed.length != 4) said = "Type the four figures shown on the other device."
+        else if (!busy) {
+            busy = true
+            said = "Looking for the other device…"
+            scope.launch {
+                // null: this device isn't on a network. Empty: nothing is sending. Otherwise the set-up, or null inside for a wrong code.
+                val result = withContext(Dispatchers.IO) {
+                    val mine = PhoneSetup.localAddress() ?: return@withContext null
+                    val senders = SetUpTaker.find(mine)
+                    if (senders.isEmpty()) emptyList() else listOf(senders.firstNotNullOfOrNull { SetUpTaker.take(it, typed) })
+                }
+                busy = false
+                val taken = result?.firstOrNull()
+                when {
+                    result == null -> said = "This device isn't on a home network. Join the Wi-Fi and try again."
+                    result.isEmpty() -> said = "Couldn't find the other device. Check it is on the same Wi-Fi and still showing its code."
+                    taken == null -> said = "That code wasn't right. Check it and try again."
+                    else -> { onTaken(taken); onDone() }
+                }
+            }
+        }
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
+        Text("Copy set-up from another device", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
+        Note("On the device that is already set up, open KueTV › Settings › \"Send this set-up to another device\". It shows a code. Type it here.")
+        Note("This replaces the provider details, favourites and add-ons on this device.")
+        Spacer(Modifier.height(14.dp))
+        OutlinedTextField(
+            value = code,
+            onValueChange = { typed -> code = typed.filter { it.isDigit() }.take(4) },
+            label = { Text("Code", fontSize = 16.sp) },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.titleLarge,
+            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { copy() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(10.dp))
+        FocusRow(if (busy) "Looking…" else "Copy", copy, look = Look.MAIN)
+        said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp, top = 10.dp)) }
+        Spacer(Modifier.height(8.dp))
+        FocusRow("Cancel", onDone, look = Look.OTHER)
     }
 }

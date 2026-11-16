@@ -173,6 +173,12 @@ class Favourites(context: Context) {
         prefs.edit().putStringSet("keys", keys).apply()
     }
 
+    /** Takes on the favourites copied from another device, in place of the ones here. */
+    fun replaceAll(all: Set<String>) {
+        keys = all
+        prefs.edit().putStringSet("keys", keys).apply()
+    }
+
     /** A channel with several versions: all of them are favourites together, or none. */
     fun toggleAll(all: List<String>) {
         keys = if (all.any { it in keys }) keys - all.toSet() else keys + all
