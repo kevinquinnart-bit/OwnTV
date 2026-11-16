@@ -49,6 +49,8 @@ jobs:
           cp dist/KueTV2.apk dist/KueTV.apk
           cp dist/KueTV2.apk dist/OwnTV.apk
           printf 'KueTV 2, version %s\n' "$VERSION_NAME" > dist/NOTES.md
+          # What the app reads each time it opens, to know whether a newer version is waiting.
+          printf 'code=%s\nname=%s\n' "$VERSION_CODE" "$VERSION_NAME" > dist/version.txt
           echo "Torrent engine in this build:"; unzip -l dist/KueTV2.apk | grep '\.so$' || echo "MISSING"
           if [ -n "$KUETV_DRIVE_CLIENT_ID" ] && [ -n "$KUETV_DRIVE_CLIENT_SECRET" ]; then echo "Google Drive keys: in this build"; else echo "Google Drive keys: MISSING from this build"; fi
 
@@ -62,6 +64,7 @@ jobs:
             dist/KueTV2.apk
             dist/KueTV.apk
             dist/OwnTV.apk
+            dist/version.txt
           body_path: dist/NOTES.md
           prerelease: false
           make_latest: true

@@ -7,6 +7,7 @@ Kevin's own IPTV app for Android TV and Android phones (one app, it lays itself 
 - `MainActivity.kt`: the screens
 - `Player.kt`: the player
 - `Device.kt`: telling a TV from a phone
+- `Updates.kt`: checking for a newer KueTV 2 each time it opens, and putting it on
 - `TvApps.kt`: the free UK and Irish TV apps (opens them, or the app store)
 - `app/src/test`: tests against a pretend provider
 

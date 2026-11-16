@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Putting a newer KueTV on. The device asks first, and asks once to allow KueTV to do it at all. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Asking the TV which aerial channels it has, for the report. Many TVs refuse this to apps they didn't come with. -->
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
@@ -48,6 +50,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Hands a downloaded newer KueTV to the device's installer. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths" />
+        </provider>
         <service android:name=".CopyService" android:exported="false" android:foregroundServiceType="dataSync" />
         <service android:name=".TimedService" android:exported="false" android:foregroundServiceType="dataSync" />
         <receiver android:name=".TimedReceiver" android:exported="false">

@@ -6,6 +6,7 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -65,13 +66,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -171,7 +180,7 @@ private fun App() {
     var playing by remember { mutableStateOf<Playing?>(null) }
     // What the browsing screen was showing, kept while the player covers it, so closing the player
     // comes back to the same list, at the same place, on the row or poster that was playing.
-    val browse = remember(library) { library?.let { BrowseState(startOnFilms = it.channels.isEmpty(), saved = Place.read(context)) } }
+    val browse = remember(library) { library?.let { BrowseState(saved = Place.read(context)) } }
     val favourites = remember { Favourites(context.applicationContext) }
     var driveSignIn by remember { mutableStateOf(false) }
     var addOnsOpen by remember { mutableStateOf(false) }
@@ -179,6 +188,7 @@ private fun App() {
     var setUpShare by remember { mutableIntStateOf(0) }
     var reportOpen by remember { mutableStateOf(false) }
     var categoriesOpen by remember { mutableStateOf(false) }
+    var aboutOpen by remember { mutableStateOf(false) }
     // What the lists show: everything the provider sent, less the categories chosen to be hidden.
     val shownLibrary = remember(library, Choices.changes) {
         library?.without(Choices.hidden(context, "live"), Choices.hidden(context, "film"), Choices.hidden(context, "show"))
@@ -189,6 +199,10 @@ private fun App() {
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { runCatching { Torrents.folder(context).deleteRecursively() } } }
     // Programmes set to record: make sure each still has its alarm.
     LaunchedEffect(Unit) { runCatching { TimedStore.arm(context) } }
+    // A newer version downloaded last time is no longer needed once the app starts afresh.
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updates.tidy(context) } }
+    // Each time KueTV comes to the front: is a newer version on the download?
+    LaunchedEffect(Resumes.count) { withContext(Dispatchers.IO) { Updates.checkOnOpen() } }
 
     LaunchedEffect(account, reload) {
         if (!account.isSet) return@LaunchedEffect
@@ -240,9 +254,15 @@ private fun App() {
                     if (next == account) reload++ else account = next
                 },
             )
+            // A newer version found on opening. "Not now" puts it off until the app is next started.
+            Updates.offer != null -> UpdateOfferScreen(Updates.offer!!, onLater = {
+                Updates.putOff = Updates.offer?.code ?: 0
+                Updates.offer = null
+            })
             driveSignIn -> DriveSignInScreen(onDone = { driveSignIn = false })
             addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false })
             reportOpen -> ReportScreen(onDone = { reportOpen = false })
+            aboutOpen -> AboutScreen(onDone = { aboutOpen = false })
             categoriesOpen && whole != null -> CategoriesScreen(whole, onDone = { categoriesOpen = false })
             problem != null -> ProblemScreen(problem.orEmpty(), onRetry = { reload++ }, onEdit = { editing = true })
             lib == null || browse == null -> LoadingScreen()
@@ -264,6 +284,7 @@ private fun App() {
                 onTakeSetUp = { setUpShare = 2 },
                 onReport = { reportOpen = true },
                 onCategories = { categoriesOpen = true },
+                onAbout = { aboutOpen = true },
             )
         }
     }
@@ -497,7 +518,7 @@ private fun Field(label: String, value: String, onDone: (() -> Unit)? = null, on
 
 // --------------------------------------------------------------------------------------------- main
 
-private enum class Section(val label: String) { SEARCH("Search"), LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SERIES("Series"), RECORDINGS("Recordings"), APPS("TV apps"), SETTINGS("Settings") }
+private enum class Section(val label: String) { HOME("Home"), SEARCH("Search"), LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SERIES("Series"), RECORDINGS("Recordings"), APPS("TV apps"), SETTINGS("Settings") }
 
 private const val ALL = "\u0000all"
 private const val FAVOURITES = "\u0000favourites"
@@ -510,12 +531,12 @@ private fun fromKept(kept: String?) = when (kept) { null, "*all" -> ALL; "*favou
 private fun holdHint() = if (LocalPhone.current) " · press and hold for favourite" else " · hold OK for favourite"
 
 /** Where the browsing screen is: the section, the category in each, how far each list is scrolled. */
-private class BrowseState(startOnFilms: Boolean, saved: Map<String, String> = emptyMap()) {
-    // The app opens where it was last left. Search and Settings are not places to come back to.
-    var section by mutableStateOf(
-        Section.entries.firstOrNull { it.name == saved["section"] && it != Section.SEARCH && it != Section.SETTINGS && !(startOnFilms && it == Section.LIVE) }
-            ?: if (startOnFilms) Section.FILMS else Section.LIVE,
-    )
+private class BrowseState(saved: Map<String, String> = emptyMap()) {
+    // The app opens on Home. Each section still opens on the category it was last left on.
+    var section by mutableStateOf(Section.HOME)
+
+    /** The section last opened from Home; going back to Home lands on its tile. */
+    var cameFrom by mutableStateOf(Section.LIVE)
     var liveCategory by mutableStateOf(fromKept(saved["live"]))
     var filmCategory by mutableStateOf(fromKept(saved["film"]))
     val liveCategoryList = LazyListState()
@@ -576,11 +597,12 @@ private fun MainScreen(
     onTakeSetUp: () -> Unit,
     onReport: () -> Unit,
     onCategories: () -> Unit,
+    onAbout: () -> Unit,
 ) {
     val context = LocalContext.current
-    // Where the user is, kept for the next time the app opens.
-    LaunchedEffect(state.section, state.liveCategory, state.filmCategory, state.showCategory) {
-        Place.keep(context, mapOf("section" to state.section.name, "live" to keptAs(state.liveCategory), "film" to keptAs(state.filmCategory), "show" to keptAs(state.showCategory)))
+    // The category in each section, kept for the next time the app opens.
+    LaunchedEffect(state.liveCategory, state.filmCategory, state.showCategory) {
+        Place.keep(context, mapOf("live" to keptAs(state.liveCategory), "film" to keptAs(state.filmCategory), "show" to keptAs(state.showCategory)))
     }
     // A category that has just been hidden can't stay the one being shown.
     LaunchedEffect(library) {
@@ -604,19 +626,41 @@ private fun MainScreen(
     val resumeKey = state.resumeKey
     val scope = rememberCoroutineScope()
     val menuFocus = remember { FocusRequester() }
+    val homeFocus = remember { FocusRequester() }
     val resume = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        // Back from the player: onto what was playing. Otherwise (or if that row has gone): the menu.
+    // The section shown before this one; null until the screen has been shown once.
+    val before = remember { arrayOfNulls<Section>(1) }
+    val shownOnce = remember { booleanArrayOf(false) }
+    LaunchedEffect(section) {
         withFrameNanos { }
         withFrameNanos { }
-        val back = resumeKey != null && runCatching { resume.requestFocus() }.getOrDefault(false)
-        if (!back) runCatching { menuFocus.requestFocus() }
+        val first = !shownOnce[0]
+        shownOnce[0] = true
+        val previous = before[0]
+        before[0] = section
+        // Back from the player: onto what was playing. Otherwise (or if that row has gone): Home's tile,
+        // or the menu when a section has just been opened from Home.
+        if (first && state.resumeKey != null && runCatching { resume.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+        when {
+            section == Section.HOME -> runCatching { homeFocus.requestFocus() }
+            first || previous == Section.HOME -> runCatching { menuFocus.requestFocus() }
+        }
+    }
+    // Back from any section goes to Home. A page open inside a section (a channel's guide, a series) closes first.
+    BackHandler(enabled = section != Section.HOME) {
+        state.cameFrom = section
+        section = Section.HOME
+    }
+    val openFromHome: (Section) -> Unit = { s ->
+        state.cameFrom = s
+        section = s
     }
 
     val phone = LocalPhone.current
     // The chosen section's screen. Where it sits is decided underneath, by TV or phone.
     val body: @Composable Pane.() -> Unit = {
         when (section) {
+            Section.HOME -> HomeScreen(library, state, favourites, homeFocus, resume, onPlay, openFromHome, fill())
             Section.LIVE -> {
                 Categories(library.liveCategories, liveCategory, state.liveCategoryList) {
                     if (it != state.liveCategory) {
@@ -743,21 +787,24 @@ private fun MainScreen(
                 }
                 FocusRow("Reset text size, subtitles and small TV", { Choices.resetDisplay(context) }, look = Look.OTHER)
                 FocusRow("Report for Claude", onReport, look = Look.OTHER)
-                Text(
-                    "KueTV 2 · version " + BuildConfig.VERSION_NAME,
-                    color = Soft, fontSize = 18.sp, modifier = Modifier.padding(start = 16.dp, top = 22.dp),
-                )
+                FocusRow("About and updates · version " + BuildConfig.VERSION_NAME, onAbout, look = Look.OTHER)
             }
         }
     }
     if (phone) {
         // Phone: the menu is a strip across the top that slides sideways; the section fills the rest.
         Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Section.entries.forEach { s -> Chip(s.label, s == section) { section = s } }
+            // Home has its own tiles for the sections, so the strip is left off it.
+            if (section != Section.HOME) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Section.entries.forEach { s -> Chip(s.label, s == section) { section = s } }
+                }
             }
             Pane(null, this).body()
         }
+    } else if (section == Section.HOME) {
+        // TV: Home fills the screen, with no menu down the side.
+        Pane(null, null).body()
     } else {
         Box(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxSize().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -2175,4 +2222,351 @@ private fun CategoriesScreen(library: Library, onDone: () -> Unit) {
             }
         }
     }
+}
+
+// --------------------------------------------------------------------------------------------- home
+
+/**
+ * Home, where the app opens. On a TV, like the Fire TV's own home: a tile for each section in a row
+ * across the screen (◀ ▶ to move, OK to open), and under it a row of favourite channels to play
+ * straight away. The channel last watched carries on at the top. On a phone the tiles sit three to a row.
+ */
+@Composable
+private fun HomeScreen(
+    library: Library,
+    state: BrowseState,
+    favourites: Favourites,
+    homeFocus: FocusRequester,
+    resume: FocusRequester,
+    onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+    onOpen: (Section) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val login = library.account != null
+    val favs = favourites.keys
+    val tiles = Section.entries.filter { it != Section.HOME }
+    val channels = remember(library, favs) { library.groups.filter { g -> g.versions.any { Favourites.key(it.channel, login) in favs } } }
+    val playables = remember(channels) { channels.map { livePlayable(it, library.account) } }
+    val clock by produceState(homeClock()) {
+        while (true) {
+            delay(10_000)
+            value = homeClock()
+        }
+    }
+    Column(
+        modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = if (phone) 8.dp else 40.dp, vertical = if (phone) 8.dp else 24.dp),
+        verticalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 18.dp),
+    ) {
+        // The top: the app's name and the time, and on a TV the channel last watched, still playing.
+        val last = LastLive.item
+        val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text("KueTV", color = Accent, fontSize = if (phone) 30.sp else 40.sp, fontWeight = FontWeight.Bold)
+                Text(clock, color = Soft, fontSize = if (phone) 17.sp else 22.sp)
+                if (!phone && last != null && smallTv) {
+                    Spacer(Modifier.height(16.dp))
+                    Text("Last watched", color = Soft, fontSize = 16.sp)
+                    Text(last.name, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            if (!phone && last != null && smallTv) MiniTv(last, Modifier.width(320.dp))
+        }
+
+        if (phone) {
+            tiles.chunked(3).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row.forEach { s ->
+                        Tile({ onOpen(s) }, Modifier.weight(1f).aspectRatio(1.1f)) { focused ->
+                            SectionIcon(s, if (focused) Color.Black else Accent, Modifier.size(40.dp))
+                            Spacer(Modifier.height(8.dp))
+                            Text(s.label, color = if (focused) Color.Black else Color.White, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    // A short last row keeps its tiles the same size as the others.
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        } else {
+            // All the tiles are drawn, so the one to land on can always take focus, even when it is off to the right.
+            Row(
+                Modifier.fillMaxWidth().focusRestorer().focusGroup().horizontalScroll(rememberScrollState()).padding(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                tiles.forEach { s ->
+                    Tile(
+                        { onOpen(s) },
+                        Modifier.size(width = 190.dp, height = 136.dp).then(if (s == state.cameFrom) Modifier.focusRequester(homeFocus) else Modifier),
+                    ) { focused ->
+                        SectionIcon(s, if (focused) Color.Black else Accent, Modifier.size(52.dp))
+                        Spacer(Modifier.height(10.dp))
+                        Text(s.label, color = if (focused) Color.Black else Color.White, fontSize = 20.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+
+        Heading("Favourite channels")
+        if (channels.isEmpty()) {
+            Note(if (phone) "Press and hold a channel in Live TV to make it a favourite. Favourites show here." else "Hold OK on a channel in Live TV to make it a favourite. Favourites show here.")
+        } else {
+            // Opens on the channel that was playing, so coming back from the player lands on it.
+            val list = remember { LazyListState(channels.indexOfFirst { "home:" + it.id == state.resumeKey }.coerceAtLeast(0)) }
+            LazyRow(
+                Modifier.fillMaxWidth().focusRestorer(),
+                state = list,
+                contentPadding = PaddingValues(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 18.dp),
+            ) {
+                itemsIndexed(channels, key = { _, c -> c.id }) { i, channel ->
+                    val key = "home:" + channel.id
+                    Tile(
+                        { onPlay(playables, i, true, key) },
+                        Modifier.width(if (phone) 150.dp else 220.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                        onHold = { favourites.toggleAll(channel.versions.map { Favourites.key(it.channel, login) }) },
+                    ) { focused ->
+                        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+                            if (channel.logo.isNotBlank()) AsyncImage(model = channel.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(10.dp))
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            channel.name, color = if (focused) Color.Black else Color.White, fontSize = if (phone) 15.sp else 18.sp,
+                            fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            nowLine(library.account, channel.versions[channel.start].channel.id).orEmpty(),
+                            color = if (focused) Color.Black else Soft, fontSize = if (phone) 12.sp else 14.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun homeClock(): String = java.text.SimpleDateFormat("EEEE d MMMM · HH:mm", java.util.Locale.UK).format(java.util.Date())
+
+/** A tile on Home: dark until the remote lands on it, then yellow and a little bigger. */
+@Composable
+private fun Tile(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onHold: (() -> Unit)? = null,
+    content: @Composable ColumnScope.(focused: Boolean) -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    Column(
+        modifier
+            .scale(if (focused) 1.06f else 1f)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (focused) Accent else Panel)
+            .onFocusChanged { focused = it.isFocused }
+            .press(onClick, onHold)
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) { content(focused) }
+}
+
+/** A plain drawn picture for each section, so the tiles read at a glance from the sofa. */
+@Composable
+private fun SectionIcon(section: Section, color: Color, modifier: Modifier) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val line = w * 0.08f
+        val stroke = Stroke(width = line, cap = StrokeCap.Round)
+        when (section) {
+            Section.SEARCH -> {
+                drawCircle(color, radius = w * 0.27f, center = Offset(w * 0.42f, h * 0.42f), style = stroke)
+                drawLine(color, Offset(w * 0.62f, h * 0.62f), Offset(w * 0.88f, h * 0.88f), strokeWidth = line * 1.3f, cap = StrokeCap.Round)
+            }
+            Section.LIVE -> {
+                drawRoundRect(color, topLeft = Offset(w * 0.08f, h * 0.3f), size = Size(w * 0.84f, h * 0.58f), cornerRadius = CornerRadius(w * 0.08f), style = stroke)
+                drawLine(color, Offset(w * 0.34f, h * 0.08f), Offset(w * 0.5f, h * 0.28f), strokeWidth = line, cap = StrokeCap.Round)
+                drawLine(color, Offset(w * 0.66f, h * 0.08f), Offset(w * 0.5f, h * 0.28f), strokeWidth = line, cap = StrokeCap.Round)
+            }
+            Section.GUIDE -> for (i in 0..2) {
+                val y = h * (0.25f + 0.25f * i)
+                drawLine(color, Offset(w * 0.1f, y), Offset(w * 0.24f, y), strokeWidth = line, cap = StrokeCap.Round)
+                drawLine(color, Offset(w * 0.38f, y), Offset(w * 0.9f, y), strokeWidth = line, cap = StrokeCap.Round)
+            }
+            Section.CATCHUP -> {
+                drawArc(color, startAngle = -50f, sweepAngle = 290f, useCenter = false, topLeft = Offset(w * 0.12f, h * 0.12f), size = Size(w * 0.76f, h * 0.76f), style = stroke)
+                drawLine(color, Offset(w * 0.5f, h * 0.5f), Offset(w * 0.5f, h * 0.3f), strokeWidth = line, cap = StrokeCap.Round)
+                drawLine(color, Offset(w * 0.5f, h * 0.5f), Offset(w * 0.36f, h * 0.6f), strokeWidth = line, cap = StrokeCap.Round)
+                val tip = Path().apply {
+                    moveTo(w * 0.62f, h * 0.06f)
+                    lineTo(w * 0.86f, h * 0.2f)
+                    lineTo(w * 0.62f, h * 0.32f)
+                    close()
+                }
+                drawPath(tip, color)
+            }
+            Section.FILMS -> {
+                drawRoundRect(color, topLeft = Offset(w * 0.08f, h * 0.18f), size = Size(w * 0.84f, h * 0.64f), cornerRadius = CornerRadius(w * 0.08f), style = stroke)
+                val play = Path().apply {
+                    moveTo(w * 0.42f, h * 0.36f)
+                    lineTo(w * 0.64f, h * 0.5f)
+                    lineTo(w * 0.42f, h * 0.64f)
+                    close()
+                }
+                drawPath(play, color)
+            }
+            Section.SERIES -> {
+                drawRoundRect(color, topLeft = Offset(w * 0.3f, h * 0.1f), size = Size(w * 0.6f, h * 0.48f), cornerRadius = CornerRadius(w * 0.06f), style = stroke)
+                drawRoundRect(color, topLeft = Offset(w * 0.1f, h * 0.32f), size = Size(w * 0.6f, h * 0.5f), cornerRadius = CornerRadius(w * 0.06f))
+            }
+            Section.RECORDINGS -> {
+                drawCircle(color, radius = w * 0.42f, center = center, style = stroke)
+                drawCircle(color, radius = w * 0.24f, center = center)
+            }
+            Section.APPS -> for (x in 0..1) for (y in 0..1) {
+                drawRoundRect(color, topLeft = Offset(w * (0.1f + 0.44f * x), h * (0.1f + 0.44f * y)), size = Size(w * 0.36f, h * 0.36f), cornerRadius = CornerRadius(w * 0.07f))
+            }
+            Section.SETTINGS -> {
+                for (i in 0 until 8) rotate(45f * i) {
+                    drawRoundRect(color, topLeft = Offset(w * 0.43f, h * 0.06f), size = Size(w * 0.14f, h * 0.18f), cornerRadius = CornerRadius(w * 0.03f))
+                }
+                drawCircle(color, radius = w * 0.25f, center = center, style = Stroke(width = line * 1.6f))
+            }
+            Section.HOME -> {
+                val house = Path().apply {
+                    moveTo(w * 0.5f, h * 0.1f)
+                    lineTo(w * 0.9f, h * 0.48f)
+                    lineTo(w * 0.78f, h * 0.48f)
+                    lineTo(w * 0.78f, h * 0.88f)
+                    lineTo(w * 0.22f, h * 0.88f)
+                    lineTo(w * 0.22f, h * 0.48f)
+                    lineTo(w * 0.1f, h * 0.48f)
+                    close()
+                }
+                drawPath(house, color)
+            }
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------- updates
+
+/** Shown on opening when a newer version is on the download. */
+@Composable
+private fun UpdateOfferScreen(latest: Updates.Latest, onLater: () -> Unit) {
+    val phone = LocalPhone.current
+    BackHandler { onLater() }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        if (!phone) runCatching { first.requestFocus() }
+    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 40.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("A newer KueTV 2 is ready", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Note("You have version " + BuildConfig.VERSION_NAME + ". Version " + latest.name + " is on the download.")
+        Spacer(Modifier.height(8.dp))
+        UpdateNow(latest, Modifier.focusRequester(first))
+        FocusRow("Not now", onLater, look = Look.OTHER)
+    }
+}
+
+/** Settings › About: the version, and checking for a newer one by hand. */
+@Composable
+private fun AboutScreen(onDone: () -> Unit) {
+    val phone = LocalPhone.current
+    val scope = rememberCoroutineScope()
+    BackHandler { onDone() }
+    var checking by remember { mutableStateOf(false) }
+    var said by remember { mutableStateOf<String?>(null) }
+    var found by remember { mutableStateOf<Updates.Latest?>(null) }
+    val check: () -> Unit = {
+        if (!checking) {
+            checking = true
+            said = null
+            found = null
+            scope.launch {
+                try {
+                    val latest = withContext(Dispatchers.IO) { Updates.check() }
+                    if (Updates.isNewer(latest, BuildConfig.VERSION_CODE)) found = latest
+                    else said = "You have the newest version."
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Report.note("Updates", "check by hand failed: " + e.message)
+                    said = "Couldn't reach the download. Check the internet and try again."
+                } finally {
+                    checking = false
+                }
+            }
+        }
+    }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        if (!phone) runCatching { first.requestFocus() }
+    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 40.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("About KueTV 2", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Note("Version " + BuildConfig.VERSION_NAME + ". It also checks for a newer version each time it opens.")
+        Spacer(Modifier.height(8.dp))
+        FocusRow(if (checking) "Checking…" else "Check for updates", check, Modifier.focusRequester(first), look = Look.MAIN)
+        said?.let { Note(it) }
+        found?.let { latest ->
+            Note("Version " + latest.name + " is ready.")
+            UpdateNow(latest)
+        }
+        FocusRow("Done", onDone, look = Look.OTHER)
+    }
+}
+
+/**
+ * The row that puts a newer version on: it downloads the app, then hands it to the device's installer,
+ * which asks before it installs over this one. The first time, the device has to be told KueTV may do this.
+ */
+@Composable
+private fun UpdateNow(latest: Updates.Latest, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var said by remember { mutableStateOf<String?>(null) }
+    val go: () -> Unit = {
+        when {
+            busy -> {}
+            !Updates.mayInstall(context) -> {
+                val opened = Updates.openInstallPermission(context)
+                Report.note("Updates", "not yet allowed to install; settings page " + if (opened) "opened" else "not found")
+                said = if (opened) "First, on the page that opened, turn on KueTV 2. Then come back and choose Update now again."
+                else "First allow KueTV 2 to install apps. On a Fire TV: Settings › My Fire TV › Developer options › Install unknown apps › KueTV 2 › On. Then choose Update now again."
+            }
+            else -> {
+                busy = true
+                said = "Downloading · 0%"
+                scope.launch {
+                    try {
+                        val file = withContext(Dispatchers.IO) { Updates.download(context) { p -> scope.launch { said = "Downloading · $p%" } } }
+                        said = "Downloaded. Choose Install on the next screen."
+                        Report.note("Updates", "downloaded " + latest.name + ", handing to the installer")
+                        Updates.install(context, file)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Report.note("Updates", "update failed: " + e.javaClass.simpleName + " · " + e.message)
+                        said = "Couldn't put the update on. Check the internet and try again."
+                    } finally {
+                        busy = false
+                    }
+                }
+            }
+        }
+    }
+    FocusRow(if (busy) "Downloading…" else "Update now to version " + latest.name, go, modifier, look = Look.MAIN)
+    said?.let { Note(it) }
 }

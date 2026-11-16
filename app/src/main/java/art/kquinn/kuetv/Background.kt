@@ -85,14 +85,17 @@ object Choices {
         changes++
     }
 
-    /** How much bigger than standard the lettering is drawn: 0 standard, 1 large, 2 larger. */
+    /**
+     * How big the lettering is drawn: 0 standard, 1 large, 2 larger. Standard was cut to four fifths in
+     * 0.1.33 because it read too big on the TV and the phone; large is what standard used to be.
+     */
     fun textSize(context: Context): Int = prefs(context).getInt("textSize", 0).coerceIn(0, 2)
     fun textSize(context: Context, size: Int) {
         prefs(context).edit().putInt("textSize", size.coerceIn(0, 2)).apply()
         changes++
     }
     val textSizeNames = listOf("standard", "large", "larger")
-    val textSizeScales = listOf(1f, 1.2f, 1.4f)
+    val textSizeScales = listOf(0.8f, 1f, 1.2f)
 
     fun subtitles(context: Context): Boolean = prefs(context).getBoolean("subtitles", true)
     fun subtitles(context: Context, on: Boolean) {
