@@ -78,6 +78,12 @@ object Choices {
     var changes by mutableIntStateOf(0)
         private set
 
+    fun subtitles(context: Context): Boolean = prefs(context).getBoolean("subtitles", true)
+    fun subtitles(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("subtitles", on).apply()
+        changes++
+    }
+
     fun smallTv(context: Context): Boolean = prefs(context).getBoolean("smallTv", true)
     fun smallTv(context: Context, on: Boolean) {
         prefs(context).edit().putBoolean("smallTv", on).apply()

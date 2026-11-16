@@ -244,6 +244,9 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(20_000)
     }
+    val subtitlesWanted = remember { Choices.subtitles(context) }
+    // What this stream has by way of subtitles: 0 not known yet, 1 showing, 2 none at all, 3 some, but none in English.
+    var subtitles by remember { mutableIntStateOf(0) }
     val player = remember {
         val load = DefaultLoadControl.Builder()
             // Holds more picture in hand than the default before and during play, to ride out short stalls.
@@ -261,6 +264,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                     .setPreferredAudioLanguage("en")
                     .setPreferredTextLanguage("en")
                     .setSelectUndeterminedTextLanguage(true)
+                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !subtitlesWanted)
                     .build()
                 playWhenReady = true
             }
@@ -326,6 +330,15 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                 }
                 // An episode has finished and another follows it in the list: play that one.
                 if (state == Player.STATE_ENDED && !live && index < items.size - 1) go(index + 1)
+            }
+
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                val text = tracks.groups.filter { it.type == androidx.media3.common.C.TRACK_TYPE_TEXT }
+                subtitles = when {
+                    text.any { it.isSelected } -> 1
+                    text.isEmpty() -> 2
+                    else -> 3
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -398,6 +411,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         stops.clear()
         hasPlayed[0] = false
         started[0] = false
+        subtitles = 0
         val torrent = (now?.url ?: item.url).startsWith("magnet:")
         if (torrent && moved == null) moved = "This one is a torrent. It can take a minute to start."
         if (!torrent) Thread({ Torrents.stopCurrent() }, "kuetv-torrent-stop").start()
@@ -549,6 +563,20 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                     this.player = player
                     useController = !live
                     keepScreenOn = true
+                    // A film's bar has a subtitles button, to pick a language or turn them off.
+                    setShowSubtitleButton(true)
+                    // Subtitles: large white letters on a dark band, the same on every channel and film.
+                    subtitleView?.apply {
+                        setApplyEmbeddedStyles(false)
+                        setApplyEmbeddedFontSizes(false)
+                        setStyle(
+                            androidx.media3.ui.CaptionStyleCompat(
+                                android.graphics.Color.WHITE, 0xCC000000.toInt(), android.graphics.Color.TRANSPARENT,
+                                androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, android.graphics.Color.BLACK, null,
+                            ),
+                        )
+                        setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 1.4f)
+                    }
                     setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
                     if (!live) {
                         isFocusable = true
@@ -625,6 +653,17 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                         versions[stream].label + " · version " + (stream + 1) + " of " + versions.size +
                             if (phone) " · swipe sideways to change" else " · ◀ ▶ to change",
                         color = Color(0xFFB9C2D3), fontSize = 18.sp, maxLines = 1,
+                    )
+                }
+                if (live && subtitles != 0) {
+                    Text(
+                        when {
+                            !subtitlesWanted -> "Subtitles are turned off in Settings"
+                            subtitles == 1 -> "Subtitles: on"
+                            subtitles == 3 -> "No English subtitles on this channel"
+                            else -> "No subtitles on this channel"
+                        },
+                        color = Color(0xFFB9C2D3), fontSize = 16.sp, maxLines = 1, modifier = Modifier.padding(top = 4.dp),
                     )
                 }
                 moved?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp) }

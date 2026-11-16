@@ -662,6 +662,8 @@ private fun MainScreen(
                     else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn, look = Look.OTHER)
                 }
                 FocusRow("Add-ons for films and series (" + addOns.size + ")", onAddOns, look = Look.OTHER)
+                val subtitlesOn = remember(Choices.changes) { Choices.subtitles(context) }
+                FocusRow("Subtitles: " + if (subtitlesOn) "on" else "off", { Choices.subtitles(context, !subtitlesOn) }, look = Look.OTHER)
                 FocusRow("Send this set-up to another device", onSendSetUp, look = Look.OTHER)
                 FocusRow("Copy set-up from another device", onTakeSetUp, look = Look.OTHER)
                 if (!phone) {
