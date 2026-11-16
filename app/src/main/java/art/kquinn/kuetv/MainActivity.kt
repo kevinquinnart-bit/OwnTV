@@ -130,6 +130,16 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         Resumes.count++
     }
+
+    override fun onStart() {
+        super.onStart()
+        Screen.visible = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        Screen.visible = false
+    }
 }
 
 /** Goes up each time KueTV comes back to the front, for example back from another app or the app store. */
@@ -199,7 +209,12 @@ private fun App() {
                 library = lib,
                 state = browse,
                 favourites = favourites,
-                onPlay = { items, index, live, key -> browse.resumeKey = key; playing = Playing(items, index, live) },
+                onPlay = { items, index, live, key ->
+                    browse.resumeKey = key
+                    // The small TV shown while browsing carries on with this channel, in its lightest version.
+                    if (live) items.getOrNull(index)?.let { LastLive.item = Playable(it.name, it.streams.lastOrNull()?.url ?: it.url) }
+                    playing = Playing(items, index, live)
+                },
                 onEdit = { editing = true },
                 onReload = { reload++ },
                 onDriveSignIn = { driveSignIn = true },
@@ -627,6 +642,10 @@ private fun MainScreen(
                     else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn, look = Look.OTHER)
                 }
                 FocusRow("Add-ons for films and series (" + addOns.size + ")", onAddOns, look = Look.OTHER)
+                if (!phone) {
+                    val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
+                    FocusRow("Small TV while browsing: " + if (smallTv) "on" else "off", { Choices.smallTv(context, !smallTv) })
+                }
                 Text(
                     "KueTV 2 · version " + BuildConfig.VERSION_NAME,
                     color = Soft, fontSize = 18.sp, modifier = Modifier.padding(start = 16.dp, top = 22.dp),
@@ -643,6 +662,7 @@ private fun MainScreen(
             Pane(null, this).body()
         }
     } else {
+        Box(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxSize().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
             // The menu.
             Column(
@@ -655,6 +675,11 @@ private fun MainScreen(
                 }
             }
             Pane(this, null).body()
+        }
+        // The small TV: the channel last watched carries on in the bottom right corner while browsing.
+        val small = LastLive.item
+        val wanted = remember(Choices.changes) { Choices.smallTv(context) }
+        if (small != null && wanted) MiniTv(small, Modifier.align(Alignment.BottomEnd).padding(24.dp))
         }
     }
 }

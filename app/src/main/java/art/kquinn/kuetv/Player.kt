@@ -9,6 +9,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -465,6 +468,21 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
 
     BackHandler { onClose() }
 
+    // KueTV has left the screen (Home was pressed, or another app opened): stop the picture and sound,
+    // unless a recording is being made from it. Back on screen: carry on, a live channel from now.
+    val leftScreen = remember { booleanArrayOf(false) }
+    val visible = Screen.visible
+    LaunchedEffect(visible) {
+        if (!visible && !recording) {
+            leftScreen[0] = true
+            player.pause()
+        } else if (visible && leftScreen[0]) {
+            leftScreen[0] = false
+            if (live) { player.seekToDefaultPosition(); player.prepare() }
+            player.play()
+        }
+    }
+
     // Phone: the picture takes the whole screen while playing. A swipe from the edge brings the bars back.
     if (phone) {
         DisposableEffect(Unit) {
@@ -636,5 +654,58 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                     .padding(horizontal = 12.dp, vertical = 5.dp),
             )
         }
+    }
+}
+
+/**
+ * The small TV: a live channel playing in a corner while the lists are browsed. It has its own simple
+ * player, which is closed when the full-screen one opens. It stops when KueTV leaves the screen.
+ */
+@OptIn(UnstableApi::class)
+@Composable
+fun MiniTv(item: Playable, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var retry by remember(item.url) { mutableIntStateOf(0) }
+    val player = remember(item.url) {
+        val http = DefaultHttpDataSource.Factory().setUserAgent(Provider.USER_AGENT).setAllowCrossProtocolRedirects(true)
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http)))
+            .build().apply {
+                trackSelectionParameters = trackSelectionParameters.buildUpon().setPreferredAudioLanguage("en").build()
+                setMediaItem(MediaItem.fromUri(item.url))
+                playWhenReady = true
+            }
+    }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) { retry += 1 }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+    val visible = Screen.visible
+    LaunchedEffect(player, visible, retry) {
+        if (!visible) { player.stop(); return@LaunchedEffect }
+        // A few tries after a drop, a little apart, then it is left quiet rather than hammering the provider.
+        if (retry > 5) return@LaunchedEffect
+        if (retry > 0) delay(3_000)
+        player.seekToDefaultPosition()
+        player.prepare()
+    }
+    Column(
+        modifier
+            .width(380.dp)
+            .background(Color(0xFF16213A), RoundedCornerShape(14.dp))
+            .padding(6.dp),
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+            factory = { ctx -> PlayerView(ctx).apply { useController = false; isFocusable = false } },
+            update = { it.player = player },
+        )
+        Text(item.name, color = Color.White, fontSize = 17.sp, maxLines = 1, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
     }
 }

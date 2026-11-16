@@ -73,6 +73,7 @@ object Recordings {
         if (working || !drive.isSetUp || !drive.signedIn) return
         working = true
         Thread({
+            var held = false
             try {
                 problem = null
                 while (true) {
@@ -81,6 +82,8 @@ object Recordings {
                     waiting.filter { it.length() == 0L }.forEach { it.delete() }
                     // Oldest first, so they reach Drive in the order they were made.
                     val next = waiting.lastOrNull { it.length() > 0 } ?: break
+                    // There is something to copy: ask Android to keep the app going if its screens are closed.
+                    if (!held) { held = true; CopyService.hold(app) }
                     if (playing) { Thread.sleep(5_000); continue }
                     val total = next.length().coerceAtLeast(1)
                     val done = drive.upload(next, paused = { playing }) { sent -> copying = next.name to (sent * 100 / total).toInt() }
@@ -95,6 +98,7 @@ object Recordings {
             } catch (e: Exception) {
                 problem = "Copying to Google Drive stopped. It will carry on next time."
             } finally {
+                if (held) CopyService.release(app)
                 copying = null
                 working = false
                 changes++
