@@ -12,11 +12,14 @@ class SetupShareTest {
         setOf("live:101", "film:555", "show:77"),
         listOf(AddOn("https://a.example/x", "Good Streams", streams = true, subtitles = false)),
         smallTv = false,
+        hidden = mapOf("live" to setOf("12", "40"), "film" to emptySet(), "show" to setOf("7")),
     )
 
     @Test fun aSetUpIsPackedAndUnpackedTheSame() {
         assertEquals(setUp, SetUp.unpack(setUp.pack()))
         assertNull(SetUp.unpack("not a set-up"))
+        val fromOlder = SetUp.unpack("""{"account":{"server":"s","user":"u","pass":"p","playlist":""},"favourites":[],"addOns":[],"smallTv":true}""")
+        assertEquals("a set-up sent by a version before hidden categories still reads", emptyMap<String, Set<String>>(), fromOlder?.hidden)
     }
 
     @Test fun theRightCodeGetsTheSetUpAndTheWrongOneDoesNot() {

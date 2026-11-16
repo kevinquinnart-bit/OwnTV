@@ -75,6 +75,20 @@ class Library(
     /** The channels with the versions of the same channel (4K, FHD, HD, SD) kept together as one. */
     val groups: List<ChannelGroup> by lazy { Versions.group(channels) }
 
+    /**
+     * The same lists with the categories the user has chosen to hide taken out, and everything filed
+     * only under them. Something also filed under a category that is still shown stays.
+     */
+    fun without(hiddenLive: Set<String>, hiddenFilms: Set<String>, hiddenShows: Set<String>): Library {
+        if (hiddenLive.isEmpty() && hiddenFilms.isEmpty() && hiddenShows.isEmpty()) return this
+        return Library(
+            liveCategories.filter { it.id !in hiddenLive }, channels.filter { it.categoryId !in hiddenLive },
+            filmCategories.filter { it.id !in hiddenFilms }, films.filter { it.categoryId !in hiddenFilms },
+            showCategories.filter { it.id !in hiddenShows }, shows.filter { it.categoryId !in hiddenShows },
+            account, serverAheadSec,
+        )
+    }
+
     /** For each channel as the provider lists it, the one row it sits behind. */
     val groupOf: Map<String, ChannelGroup> by lazy { groups.flatMap { g -> g.versions.map { it.channel.id to g } }.toMap() }
 }

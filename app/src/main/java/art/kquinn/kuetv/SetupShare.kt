@@ -14,7 +14,14 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /** Everything that makes one device's KueTV the user's own: the provider details, favourites, add-ons and choices. */
-data class SetUp(val account: Account, val favourites: Set<String>, val addOns: List<AddOn>, val smallTv: Boolean) {
+data class SetUp(
+    val account: Account,
+    val favourites: Set<String>,
+    val addOns: List<AddOn>,
+    val smallTv: Boolean,
+    /** The hidden categories, under "live", "film" and "show". */
+    val hidden: Map<String, Set<String>> = emptyMap(),
+) {
     fun pack(): String = JsonObject().apply {
         add("account", JsonObject().apply {
             addProperty("server", account.server); addProperty("user", account.user); addProperty("pass", account.pass); addProperty("playlist", account.playlist)
@@ -22,6 +29,7 @@ data class SetUp(val account: Account, val favourites: Set<String>, val addOns: 
         add("favourites", JsonArray().apply { favourites.sorted().forEach { add(it) } })
         add("addOns", JsonArray().apply { addOns.forEach { add(it.toJson()) } })
         addProperty("smallTv", smallTv)
+        add("hidden", JsonObject().apply { hidden.forEach { (kind, ids) -> add(kind, JsonArray().apply { ids.sorted().forEach { add(it) } }) } })
     }.toString()
 
     companion object {
@@ -33,6 +41,8 @@ data class SetUp(val account: Account, val favourites: Set<String>, val addOns: 
                 o.getAsJsonArray("favourites").map { it.asString }.toSet(),
                 o.getAsJsonArray("addOns").mapNotNull { AddOn.fromJson(it.asString) },
                 o.get("smallTv")?.asBoolean ?: true,
+                // A set-up sent by an older version has none.
+                o.getAsJsonObject("hidden")?.entrySet()?.associate { (kind, ids) -> kind to ids.asJsonArray.map { it.asString }.toSet() }.orEmpty(),
             )
         }.getOrNull()
     }

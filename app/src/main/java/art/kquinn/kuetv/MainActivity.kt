@@ -178,6 +178,11 @@ private fun App() {
     // 1: sending this device's set-up to another. 2: copying another device's set-up to here.
     var setUpShare by remember { mutableIntStateOf(0) }
     var reportOpen by remember { mutableStateOf(false) }
+    var categoriesOpen by remember { mutableStateOf(false) }
+    // What the lists show: everything the provider sent, less the categories chosen to be hidden.
+    val shownLibrary = remember(library, Choices.changes) {
+        library?.without(Choices.hidden(context, "live"), Choices.hidden(context, "film"), Choices.hidden(context, "show"))
+    }
     // Each time KueTV comes to the front: carry on copying any recordings that are waiting for Google Drive.
     LaunchedEffect(Resumes.count) { Recordings.wake(context) }
     // Anything a torrent left behind, if the app was closed while one played, is cleared when the app opens.
@@ -204,7 +209,8 @@ private fun App() {
     }
     // On a phone the screens keep clear of the notch and the bars; the player uses the whole screen.
     Box(Modifier.fillMaxSize().background(Page).then(if (playing == null) Modifier.safeDrawingPadding() else Modifier)) {
-        val lib = library
+        val lib = shownLibrary
+        val whole = library
         val now = playing
         when {
             // Only the player is on screen while it plays, so no key can reach the lists behind it.
@@ -218,6 +224,7 @@ private fun App() {
                     favourites.replaceAll(taken.favourites)
                     AddOnStore.replaceAll(context, taken.addOns)
                     Choices.smallTv(context, taken.smallTv)
+                    for (kind in listOf("live", "film", "show")) Choices.hidden(context, kind, taken.hidden[kind].orEmpty())
                     editing = false
                     if (taken.account == account) reload++ else account = taken.account
                 },
@@ -236,6 +243,7 @@ private fun App() {
             driveSignIn -> DriveSignInScreen(onDone = { driveSignIn = false })
             addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false })
             reportOpen -> ReportScreen(onDone = { reportOpen = false })
+            categoriesOpen && whole != null -> CategoriesScreen(whole, onDone = { categoriesOpen = false })
             problem != null -> ProblemScreen(problem.orEmpty(), onRetry = { reload++ }, onEdit = { editing = true })
             lib == null || browse == null -> LoadingScreen()
             else -> MainScreen(
@@ -255,6 +263,7 @@ private fun App() {
                 onSendSetUp = { setUpShare = 1 },
                 onTakeSetUp = { setUpShare = 2 },
                 onReport = { reportOpen = true },
+                onCategories = { categoriesOpen = true },
             )
         }
     }
@@ -557,8 +566,18 @@ private fun MainScreen(
     onSendSetUp: () -> Unit,
     onTakeSetUp: () -> Unit,
     onReport: () -> Unit,
+    onCategories: () -> Unit,
 ) {
     val context = LocalContext.current
+    // A category that has just been hidden can't stay the one being shown.
+    LaunchedEffect(library) {
+        if (state.liveCategory != ALL && state.liveCategory != FAVOURITES && library.liveCategories.none { it.id == state.liveCategory }) state.liveCategory = ALL
+        if (state.filmCategory != ALL && state.filmCategory != FAVOURITES && library.filmCategories.none { it.id == state.filmCategory }) state.filmCategory = ALL
+        if (state.showCategory != ALL && state.showCategory != FAVOURITES && library.showCategories.none { it.id == state.showCategory }) state.showCategory = ALL
+        for (pick in listOf(state.guide, state.catchUp)) {
+            if (pick.category != ALL && pick.category != FAVOURITES && library.liveCategories.none { it.id == pick.category }) pick.category = ALL
+        }
+    }
     // With add-ons added, a film or episode asks them for streams first. With none, nothing changes.
     val addOns = remember(AddOnStore.changes) { AddOnStore.all(context) }
     val finder: (String, String, Int?, Int?) -> (suspend () -> Search)? = remember(addOns) {
@@ -697,6 +716,8 @@ private fun MainScreen(
                     else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn, look = Look.OTHER)
                 }
                 FocusRow("Add-ons for films and series (" + addOns.size + ")", onAddOns, look = Look.OTHER)
+                val hiddenCount = remember(Choices.changes) { listOf("live", "film", "show").sumOf { Choices.hidden(context, it).size } }
+                FocusRow("Categories to show" + if (hiddenCount == 0) "" else " ($hiddenCount hidden)", onCategories, look = Look.OTHER)
                 val textSize = remember(Choices.changes) { Choices.textSize(context) }
                 FocusRow("Text size: " + Choices.textSizeNames[textSize], { Choices.textSize(context, (textSize + 1) % 3) }, look = Look.OTHER)
                 val subtitlesOn = remember(Choices.changes) { Choices.subtitles(context) }
@@ -1729,7 +1750,7 @@ private fun SendSetUpScreen(account: Account, favourites: Favourites, onDone: ()
         val app = context.applicationContext
         val sender = SetUpSender(
             code,
-            { SetUp(account, favourites.keys, AddOnStore.all(app), Choices.smallTv(app)).pack() },
+            { SetUp(account, favourites.keys, AddOnStore.all(app), Choices.smallTv(app), listOf("live", "film", "show").associateWith { Choices.hidden(app, it) }).pack() },
             { main.post { taken = true } },
         )
         ready = PhoneSetup.localAddress() != null && sender.start() != null
@@ -2084,6 +2105,60 @@ private fun AboutStrip(name: String?, about: About?) {
                 color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             if (about != null && about.plot.isNotBlank()) Text(about.plot, color = Soft, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------- categories to show
+
+/** One kind of thing with categories (live channels, films, series): its categories and how much is filed under each. */
+private class Kind(val key: String, val title: String, val categories: List<Category>, val counts: Map<String, Int>)
+
+/**
+ * Choosing which of the provider's categories show. One list: Live TV's categories, then Films', then
+ * Series'. OK on a category hides it or shows it again. A hidden category, and everything filed only
+ * under it, leaves every list and the search. Nothing is deleted: showing it again brings it all back.
+ */
+@Composable
+private fun CategoriesScreen(library: Library, onDone: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    BackHandler { onDone() }
+    val changes = Choices.changes
+    val kinds = remember(library) {
+        listOf(
+            Kind("live", "Live TV", library.liveCategories, library.channels.groupingBy { it.categoryId }.eachCount()),
+            Kind("film", "Films", library.filmCategories, library.films.groupingBy { it.categoryId }.eachCount()),
+            Kind("show", "Series", library.showCategories, library.shows.groupingBy { it.categoryId }.eachCount()),
+        ).filter { it.categories.isNotEmpty() }
+    }
+    val hidden = remember(changes) { kinds.associate { it.key to Choices.hidden(context, it.key) } }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        if (!phone) runCatching { first.requestFocus() }
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 160.dp, vertical = if (phone) 12.dp else 30.dp)) {
+        Text("Categories to show", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 6.dp))
+        Note((if (phone) "Tap" else "OK on") + " a category to hide it or show it again. Hidden ones leave every list and the search. Nothing is deleted.")
+        Spacer(Modifier.height(10.dp))
+        LazyColumn(Modifier.fillMaxWidth().weight(1f).focusRestorer(), verticalArrangement = if (phone) Arrangement.spacedBy(6.dp) else Arrangement.Top) {
+            item(key = "done") { FocusRow("Done", onDone, Modifier.focusRequester(first), look = Look.MAIN) }
+            kinds.forEach { kind ->
+                val off = hidden[kind.key].orEmpty()
+                item(key = "h:" + kind.key) {
+                    Box(Modifier.padding(top = 16.dp)) { Heading(kind.title + " · " + (kind.categories.size - kind.categories.count { it.id in off }) + " of " + kind.categories.size + " showing") }
+                }
+                item(key = "all:" + kind.key) { FocusRow("Show all of " + kind.title, { Choices.hidden(context, kind.key, emptySet()) }, look = Look.OTHER) }
+                item(key = "none:" + kind.key) { FocusRow("Hide all of " + kind.title, { Choices.hidden(context, kind.key, kind.categories.mapTo(HashSet()) { it.id }) }, look = Look.OTHER) }
+                itemsIndexed(kind.categories, key = { _, c -> kind.key + ":" + c.id }) { _, category ->
+                    val isOff = category.id in off
+                    FocusRow(
+                        (if (isOff) "✗  " else "✓  ") + category.name + " · " + (kind.counts[category.id] ?: 0) + if (isOff) " · hidden" else "",
+                        { Choices.hidden(context, kind.key, if (isOff) off - category.id else off + category.id) },
+                    )
+                }
+            }
         }
     }
 }

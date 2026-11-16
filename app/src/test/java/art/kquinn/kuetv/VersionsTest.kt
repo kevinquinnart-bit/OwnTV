@@ -51,6 +51,25 @@ class VersionsTest {
         assertEquals("Film4 (Ireland) = HD", read("HD | Film4 (Ireland)"))
     }
 
+    @Test fun hiddenCategoriesTakeTheirChannelsFilmsAndSeriesWithThem() {
+        val full = Library(
+            listOf(Category("uk", "UK"), Category("fr", "France")),
+            listOf(channel("BBC One HD", "uk"), channel("TF1 HD", "fr"), channel("BBC One FHD", "fr")),
+            listOf(Category("d", "Drama"), Category("x", "Other")),
+            listOf(Film("1", "A", "", "d", "u"), Film("2", "B", "", "x", "u")),
+            listOf(Category("c", "Crime")),
+            listOf(Show("9", "S", "", "c")),
+        )
+        val shown = full.without(setOf("fr"), setOf("x"), setOf("c"))
+        assertEquals(listOf("UK"), shown.liveCategories.map { it.name })
+        assertEquals(listOf("BBC One"), shown.groups.map { it.name })
+        assertEquals("the version filed under the hidden category goes; the one under a shown category stays", listOf("HD"), shown.groups[0].versions.map { it.label })
+        assertEquals(listOf("A"), shown.films.map { it.name })
+        assertEquals(emptyList<String>(), shown.shows.map { it.name })
+        assertEquals(emptyList<String>(), shown.showCategories.map { it.name })
+        assertEquals("nothing hidden gives the same lists back", full, full.without(emptySet(), emptySet(), emptySet()))
+    }
+
     @Test fun sameVersionListedTwiceIsKeptAsASpare() {
         val group = Versions.group(listOf(channel("ITV1 HD"), channel("ITV1 HD"), channel("ITV1 SD"))).single()
         assertEquals(listOf("HD", "HD", "SD"), group.versions.map { it.label })

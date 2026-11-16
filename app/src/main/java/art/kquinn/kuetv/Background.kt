@@ -78,6 +78,13 @@ object Choices {
     var changes by mutableIntStateOf(0)
         private set
 
+    /** The categories the user has chosen not to see, for "live", "film" or "show". */
+    fun hidden(context: Context, kind: String): Set<String> = prefs(context).getStringSet("hide.$kind", emptySet()).orEmpty().toSet()
+    fun hidden(context: Context, kind: String, ids: Set<String>) {
+        prefs(context).edit().putStringSet("hide.$kind", ids).apply()
+        changes++
+    }
+
     /** How much bigger than standard the lettering is drawn: 0 standard, 1 large, 2 larger. */
     fun textSize(context: Context): Int = prefs(context).getInt("textSize", 0).coerceIn(0, 2)
     fun textSize(context: Context, size: Int) {
