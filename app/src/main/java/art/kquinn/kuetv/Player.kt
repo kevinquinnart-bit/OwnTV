@@ -213,10 +213,6 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
     var reload by remember { mutableIntStateOf(0) }
     // Films and episodes already carried on from where they were left, so a change of stream doesn't do it twice over.
     val carriedOn = remember { HashSet<Int>() }
-    val keepPlace: () -> Unit = {
-        val item = items.getOrNull(index)
-        if (!live && item != null && started[0] && player.duration > 0) Positions.keep(context, item.url, player.currentPosition, player.duration)
-    }
     val nextStream: (List<Stream>, Int) -> String = { all, next ->
         if (all[next].label == PROVIDER_COPY) "That stream isn't playing. Trying your provider's copy."
         else "That stream isn't playing. Trying the next one (" + (next + 1) + " of " + all.size + ")."
@@ -277,8 +273,14 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             }
     }
 
+    /** Notes how far into a film the player has got, so it can carry on from there next time. */
+    val keepPlace: () -> Unit = {
+        val item = items.getOrNull(index)
+        if (!live && item != null && started[0] && player.duration > 0) Positions.keep(context, item.url, player.currentPosition, player.duration)
+    }
     /** Another channel, film or episode: start it on the version it should start on. */
     val go: (Int) -> Unit = { next ->
+        keepPlace()
         val wasRecording = finishRecording()
         index = next
         stream = items.getOrNull(next)?.let { Settled.startFor(it) } ?: 0
