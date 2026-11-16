@@ -33,7 +33,30 @@ data class Channel(
 
 data class Film(val id: String, val name: String, val poster: String, val categoryId: String, val url: String)
 
-data class Show(val id: String, val name: String, val poster: String, val categoryId: String)
+data class Show(val id: String, val name: String, val poster: String, val categoryId: String, val about: About = About())
+
+/** What a film or series is about, as far as the provider says. Any part may be empty. */
+data class About(val plot: String = "", val genre: String = "", val year: String = "", val rating: String = "", val minutes: Int = 0) {
+    /** "2024 · Drama · 7.1 · 1 h 52 min", leaving out whatever isn't known. */
+    val line: String
+        get() = listOf(
+            year, genre, rating,
+            when {
+                minutes <= 0 -> ""
+                minutes < 60 -> "$minutes min"
+                else -> (minutes / 60).toString() + " h " + (minutes % 60) + " min"
+            },
+        ).filter { it.isNotBlank() }.joinToString(" · ")
+    val isEmpty: Boolean get() = plot.isBlank() && line.isBlank()
+
+    companion object {
+        /** A rating as the provider writes it ("7.123", "0", "") as one figure after the point, or nothing when there is none. */
+        fun rating(text: String): String = text.trim().toDoubleOrNull()?.takeIf { it > 0 }?.let { String.format(java.util.Locale.UK, "%.1f", it) }.orEmpty()
+
+        /** The year out of "2024-03-01", "2024" or "01/03/2024". */
+        fun year(text: String): String = Regex("(19|20)\\d{2}").find(text)?.value.orEmpty()
+    }
+}
 
 data class Episode(val id: String, val season: Int, val number: Int, val title: String, val url: String)
 
@@ -354,6 +377,30 @@ object Provider {
         String(java.util.Base64.getDecoder().decode(text.trim()), Charsets.UTF_8)
     }.getOrDefault(text).trim()
 
+    /** What the provider says a film is about. Call off the main thread. */
+    fun filmAbout(account: Account, filmId: String): About {
+        val url = (account.server + "/player_api.php").toHttpUrlOrNull()?.newBuilder()
+            ?.addQueryParameter("username", account.user)
+            ?.addQueryParameter("password", account.pass)
+            ?.addQueryParameter("action", "get_vod_info")
+            ?.addQueryParameter("vod_id", filmId)
+            ?.build()?.toString() ?: return About()
+        val text = open(url).use { it.body.string() }
+        val info = runCatching { JsonParser.parseString(text).asJsonObject.getAsJsonObject("info") }.getOrNull() ?: return About()
+        val field: (String) -> String = { name -> info.get(name)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty().trim() }
+        val seconds = field("duration_secs").toIntOrNull() ?: 0
+        // Some providers give only "01:52:00".
+        val clock = Regex("(\\d+):(\\d{2}):(\\d{2})").find(field("duration"))
+        val minutes = if (seconds > 0) seconds / 60 else clock?.let { it.groupValues[1].toInt() * 60 + it.groupValues[2].toInt() } ?: 0
+        return About(
+            plot = field("plot").ifBlank { field("description") },
+            genre = field("genre"),
+            year = About.year(field("releasedate").ifBlank { field("release_date") }.ifBlank { field("year") }),
+            rating = About.rating(field("rating")),
+            minutes = minutes,
+        )
+    }
+
     /** A series' episodes, in season then episode order. Call off the main thread. */
     fun episodes(account: Account, showId: String): List<Episode> {
         val url = (account.server + "/player_api.php").toHttpUrlOrNull()?.newBuilder()
@@ -480,9 +527,13 @@ object Provider {
             records(api(account, "get_series_categories"), setOf("category_id", "category_name")) { r ->
                 showCategories += Category(r["category_id"].orEmpty(), r["category_name"].orEmpty())
             }
-            records(api(account, "get_series"), setOf("series_id", "name", "cover", "category_id")) { r ->
+            records(api(account, "get_series"), setOf("series_id", "name", "cover", "category_id", "plot", "genre", "releaseDate", "release_date", "rating")) { r ->
                 val id = r["series_id"] ?: return@records
-                shows += Show(id, r["name"].orEmpty().trim(), r["cover"].orEmpty(), r["category_id"].orEmpty())
+                val about = About(
+                    plot = r["plot"].orEmpty().trim(), genre = r["genre"].orEmpty().trim(),
+                    year = About.year(r["releaseDate"].orEmpty().ifBlank { r["release_date"].orEmpty() }), rating = About.rating(r["rating"].orEmpty()),
+                )
+                shows += Show(id, r["name"].orEmpty().trim(), r["cover"].orEmpty(), r["category_id"].orEmpty(), about)
             }
         }
         if (channels.isEmpty() && films.isEmpty() && shows.isEmpty()) throw ProviderProblem("Your provider signed you in but listed no channels, films or series.")

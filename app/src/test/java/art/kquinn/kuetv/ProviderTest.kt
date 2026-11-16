@@ -35,12 +35,15 @@ class ProviderTest {
                     {"num":2,"name":"Sky Sports, Main Event","stream_id":"102","stream_icon":null,"category_id":"2","tv_archive":0,"tv_archive_duration":0},
                     {"num":3,"name":"BBC One copy","stream_id":101,"category_id":"1"}]"""
                 q["action"] == "get_series_categories" -> """[{"category_id":"5","category_name":"Crime"}]"""
-                q["action"] == "get_series" -> """[{"num":1,"name":"A Show","series_id":77,"cover":"http://x/c.jpg","category_id":"5","backdrop_path":["a"]},{"name":"B Show","series_id":78,"cover":"","category_id":"5"}]"""
+                q["action"] == "get_series" -> """[{"num":1,"name":"A Show","series_id":77,"cover":"http://x/c.jpg","category_id":"5","backdrop_path":["a"],"plot":"Spies, mostly.","genre":"Crime, Drama","releaseDate":"2022-04-01","rating":"8"},{"name":"B Show","series_id":78,"cover":"","category_id":"5"}]"""
                 q["action"] == "get_series_info" && q["series_id"] == "77" -> """{"seasons":[],"info":{"name":"A Show"},"episodes":{
                     "2":[{"id":"903","episode_num":1,"title":"A Show - S02E01","container_extension":"mkv","season":2,"info":{"duration":"00:45:00"}}],
                     "1":[{"id":"902","episode_num":"2","title":"Two","container_extension":"mp4","season":1},{"id":"901","episode_num":1,"title":"One","container_extension":"","season":1}]}}"""
                 q["action"] == "get_series_info" && q["series_id"] == "78" -> """{"episodes":[[{"id":"911","episode_num":1,"title":"Only","container_extension":"mp4","season":1}]]}"""
                 q["action"] == "get_vod_categories" -> """[{"category_id":"9","category_name":"Drama"}]"""
+                q["action"] == "get_vod_info" && q["vod_id"] == "555" -> """{"info":{"plot":" A quiet film. ","genre":"Drama","releasedate":"2024-03-01","rating":"7.123","duration":"01:52:10","backdrop_path":["x"]},"movie_data":{"stream_id":555}}"""
+                q["action"] == "get_vod_info" && q["vod_id"] == "556" -> """{"info":{"description":"Only this.","rating":0,"duration_secs":2700,"duration":"00:45:00"}}"""
+                q["action"] == "get_vod_info" -> """{"info":[]}"""
                 q["action"] == "get_vod_streams" -> """[{"name":"A Film (2024)","stream_id":555,"stream_icon":"http://x/p.jpg","category_id":"9","container_extension":"mkv","rating_5based":3.5}]"""
                 else -> "[]"
             }
@@ -53,6 +56,21 @@ class ProviderTest {
     }
 
     @After fun stop() = server.stop(0)
+
+    @Test fun saysWhatAFilmOrSeriesIsAbout() {
+        val account = Account(base, "kev", "p w/1", "")
+        val film = Provider.filmAbout(account, "555")
+        assertEquals("A quiet film.", film.plot)
+        assertEquals("2024 · Drama · 7.1 · 1 h 52 min", film.line)
+        val bare = Provider.filmAbout(account, "556")
+        assertEquals("Only this.", bare.plot)
+        assertEquals("45 min", bare.line)
+        assertTrue("a provider with nothing to say gives nothing, not a failure", Provider.filmAbout(account, "999").isEmpty)
+        val shows = Provider.load(account).shows
+        assertEquals("Spies, mostly.", shows[0].about.plot)
+        assertEquals("2022 · Crime, Drama · 8.0", shows[0].about.line)
+        assertTrue(shows[1].about.isEmpty)
+    }
 
     @Test fun loginLoadsChannelsFilmsAndCatchUp() {
         val lib = Provider.load(Account(base, "kev", "p w/1", ""))

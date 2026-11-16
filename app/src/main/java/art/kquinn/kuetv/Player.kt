@@ -211,6 +211,12 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
     // Streams whose separate subtitle file has been left off, because they wouldn't play with it.
     val withoutSubtitles = remember { HashSet<String>() }
     var reload by remember { mutableIntStateOf(0) }
+    // Films and episodes already carried on from where they were left, so a change of stream doesn't do it twice over.
+    val carriedOn = remember { HashSet<Int>() }
+    val keepPlace: () -> Unit = {
+        val item = items.getOrNull(index)
+        if (!live && item != null && started[0] && player.duration > 0) Positions.keep(context, item.url, player.currentPosition, player.duration)
+    }
     val nextStream: (List<Stream>, Int) -> String = { all, next ->
         if (all[next].label == PROVIDER_COPY) "That stream isn't playing. Trying your provider's copy."
         else "That stream isn't playing. Trying the next one (" + (next + 1) + " of " + all.size + ")."
@@ -319,6 +325,17 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                     tries = 0
                     note = null
                     hasPlayed[0] = true
+                    if (!live && !started[0] && item != null) {
+                        // A film that was left part way through carries on from there, on whichever stream is playing it.
+                        val place = Positions.of(context, item.url)
+                        if (place > 0 && player.duration > 0 && place < player.duration && carriedOn.add(index)) {
+                            player.seekTo(place)
+                            say("Carrying on from " + place / 60_000 + " minutes in. Rewind to start again.")
+                        } else if (place > 0 && index in carriedOn) {
+                            // Another stream of the same film, after the first gave up: back to the same place.
+                            player.seekTo(place)
+                        }
+                    }
                     started[0] = true
                     if (item != null) Settled.played(item, stream, versions.size)
                 }
@@ -331,6 +348,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                         change(stream + 1, "Kept stopping on " + versions[stream].label + ". Now on " + versions[stream + 1].label + ".")
                     }
                 }
+                if (state == Player.STATE_ENDED && !live && item != null) Positions.forget(context, item.url)
                 // An episode has finished and another follows it in the list: play that one.
                 if (state == Player.STATE_ENDED && !live && index < items.size - 1) go(index + 1)
             }
@@ -384,6 +402,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         // Copying recordings to Google Drive waits while anything is playing.
         Recordings.playing = true
         onDispose {
+            keepPlace()
             player.removeListener(listener)
             player.release()
             finishRecording()
@@ -461,6 +480,13 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             // A film's stream that is taking too long to start: the next one may be quicker.
             delay(if (versions.getOrNull(stream)?.url?.startsWith("magnet:") == true) SLOW_TORRENT_MS else SLOW_START_MS)
             if (!started[0] && stream < versions.size - 1) change(stream + 1, nextStream(versions, stream + 1))
+        }
+    }
+    // Every few seconds, note how far in a film has got.
+    LaunchedEffect(index) {
+        while (!live) {
+            delay(8_000)
+            keepPlace()
         }
     }
     // After a drop: wait a moment, then pick the stream up again.

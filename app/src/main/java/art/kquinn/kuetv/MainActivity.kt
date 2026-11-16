@@ -515,6 +515,11 @@ private class BrowseState(startOnFilms: Boolean) {
     val showCategoryList = LazyListState()
     val showGrid = LazyGridState()
     var openShow by mutableStateOf<Show?>(null)
+
+    /** The film and the series the remote is on, for the lines above the posters saying what they are about. */
+    var onFilm by mutableStateOf<Film?>(null)
+    var onShow by mutableStateOf<Show?>(null)
+    val filmAbout = HashMap<String, About>()
     val episodeList = LazyListState()
     var showJustClosed by mutableStateOf(false)
     val loadedEpisodes = HashMap<String, List<Episode>>()
@@ -630,6 +635,17 @@ private fun MainScreen(
                 }
                 Column(fill()) {
                     Heading((if (shown.size == 1) "1 film" else "${shown.size} films") + holdHint())
+                    val onFilm = state.onFilm
+                    val account = library.account
+                    if (!phone) {
+                        // What the film the remote is on is about, asked for once it has been stayed on for a moment.
+                        val about by produceState(onFilm?.let { state.filmAbout[it.id] }, onFilm?.id) {
+                            if (value != null || onFilm == null || account == null) return@produceState
+                            delay(600)
+                            value = withContext(Dispatchers.IO) { runCatching { Provider.filmAbout(account, onFilm.id) }.getOrDefault(About()) }.also { state.filmAbout[onFilm.id] = it }
+                        }
+                        AboutStrip(onFilm?.name, about)
+                    }
                     LazyVerticalGrid(
                         columns = if (LocalPhone.current) GridCells.Adaptive(104.dp) else GridCells.Fixed(4),
                         state = state.filmGrid,
@@ -647,6 +663,7 @@ private fun MainScreen(
                                 if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
                                 favourite = favKey in favs,
                                 onHold = { favourites.toggle(favKey) },
+                                onFocus = { state.onFilm = film },
                             )
                         }
                     }
@@ -782,13 +799,17 @@ private fun Poster(
     modifier: Modifier = Modifier,
     favourite: Boolean = false,
     onHold: (() -> Unit)? = null,
+    onFocus: () -> Unit = {},
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(
         modifier
             .clip(RoundedCornerShape(12.dp))
             .border(3.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(12.dp))
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                if (it.isFocused && !focused) onFocus()
+                focused = it.isFocused
+            }
             .press(onClick, onHold)
             .padding(6.dp),
     ) {
@@ -1147,6 +1168,7 @@ private fun Pane.SeriesPane(
     }
     Column(fill()) {
         Heading((if (shown.size == 1) "1 series" else "${shown.size} series") + holdHint())
+        if (!LocalPhone.current) AboutStrip(state.onShow?.name, state.onShow?.about)
         LazyVerticalGrid(
             columns = if (LocalPhone.current) GridCells.Adaptive(104.dp) else GridCells.Fixed(4),
             state = state.showGrid,
@@ -1167,6 +1189,7 @@ private fun Pane.SeriesPane(
                     if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                     favourite = Favourites.key(show) in favs,
                     onHold = { favourites.toggle(Favourites.key(show)) },
+                    onFocus = { state.onShow = show },
                 )
             }
         }
@@ -2044,5 +2067,23 @@ private fun ReportScreen(onDone: () -> Unit) {
             color = Soft, fontSize = 14.sp,
             modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         )
+    }
+}
+
+/**
+ * Above the posters on a TV: the name of the film or series the remote is on, its year, kind, rating
+ * and length, and what it is about. It keeps its height whether or not there is anything to say, so
+ * the posters don't jump about.
+ */
+@Composable
+private fun AboutStrip(name: String?, about: About?) {
+    Column(Modifier.fillMaxWidth().height(96.dp * LocalTextScale.current).padding(horizontal = 16.dp)) {
+        if (name != null) {
+            Text(
+                name + if (about == null || about.line.isBlank()) "" else "  ·  " + about.line,
+                color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            if (about != null && about.plot.isNotBlank()) Text(about.plot, color = Soft, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
