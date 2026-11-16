@@ -165,7 +165,8 @@ class ShiftBuffer(
         val after = marks.indexOfFirst { it[1] >= time }
         val at = when {
             after < 0 -> head
-            after == 0 -> marks[0][0]
+            // Before the earliest arrival still noted: as far back as the copy goes.
+            after == 0 -> if (time < marks[0][1]) oldest else marks[0][0]
             else -> {
                 val a = marks[after - 1]
                 val b = marks[after]
