@@ -169,6 +169,8 @@ private fun App() {
     LaunchedEffect(Resumes.count) { Recordings.wake(context) }
     // Anything a torrent left behind, if the app was closed while one played, is cleared when the app opens.
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { runCatching { Torrents.folder(context).deleteRecursively() } } }
+    // Programmes set to record: make sure each still has its alarm.
+    LaunchedEffect(Unit) { runCatching { TimedStore.arm(context) } }
 
     LaunchedEffect(account, reload) {
         if (!account.isSet) return@LaunchedEffect
@@ -906,8 +908,10 @@ private fun Pane.ProgrammePage(
         if (!back) runCatching { first.requestFocus() }
     }
 
+    val context = LocalContext.current
+    val timed = remember(TimedStore.changes) { TimedStore.all(context) }
     Column(fill()) {
-        Heading(channel.name + if (catchUp) " · catch-up" else " · guide")
+        Heading(channel.name + if (catchUp) " · catch-up" else " · guide · OK on a later programme sets it to record")
         val result = loaded
         when {
             result == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
@@ -966,14 +970,25 @@ private fun Pane.ProgrammePage(
                     itemsIndexed(rows, key = { _, p -> p.startMs }) { i, programme ->
                         val key = "prog:" + programme.startMs
                         val onNow = programme.startMs <= now && programme.stopMs > now
+                        val later = !catchUp && programme.startMs > System.currentTimeMillis()
+                        val plan = Timed.make(channel.name, programme.title.ifBlank { "Programme" }, channel.url, programme.startMs, programme.stopMs)
+                        val set = timed.any { it.id == plan.id }
                         ProgrammeRow(
-                            whenText = (if (onNow) "Now · " else day(programme.startMs) + " · ") + time(programme.startMs) + " to " + time(programme.stopMs),
+                            whenText = (if (set) "● Will record · " else "") + (if (onNow) "Now · " else day(programme.startMs) + " · ") + time(programme.startMs) + " to " + time(programme.stopMs),
                             title = programme.title.ifBlank { "No title" },
                             description = programme.description,
                             onClick = {
                                 if (catchUp) {
                                     val url = Provider.catchupUrl(account, channel.id, programme, serverAheadSec)
                                     onPlay(listOf(Playable(channel.name + " · " + programme.title, url)), 0, false, key)
+                                } else if (later) {
+                                    // A programme that hasn't started: OK sets it to record, and OK again takes that off.
+                                    if (set) TimedStore.remove(context, plan) else TimedStore.add(context, plan)
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        if (set) "No longer set to record: " + plan.title else "Set to record: " + plan.title + ", " + day(programme.startMs) + " " + time(programme.startMs),
+                                        android.widget.Toast.LENGTH_LONG,
+                                    ).show()
                                 } else {
                                     onPlay(listOf(Playable(channel.name, channel.url)), 0, true, key)
                                 }
@@ -1336,6 +1351,9 @@ private fun Pane.RecordingsPane(
     var deleting by remember { mutableStateOf(false) }
     if (deleting) BackHandler { deleting = false }
     val tell: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
+    val toCome = remember(TimedStore.changes, changes, Resumes.count) { TimedStore.all(context) }
+    val whenText = remember { java.text.SimpleDateFormat("EEE d MMM HH:mm", java.util.Locale.getDefault()) }
+    val endText = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
 
     Column(fill()) {
         Heading("Recordings")
@@ -1345,18 +1363,34 @@ private fun Pane.RecordingsPane(
         }
         Recordings.problem?.let { Note(it) }
         inDrive?.exceptionOrNull()?.let { Note(it.message ?: "Couldn't list the recordings in Google Drive.") }
-        if (here.isEmpty() && saved.isEmpty() && inDrive != null) {
+        if (here.isEmpty() && saved.isEmpty() && toCome.isEmpty() && inDrive != null) {
             Note(if (phone) "No recordings yet. While watching a live channel, tap the picture, then Record." else "No recordings yet. While watching a live channel, press ≡ on the remote to record it.")
         }
         if (deleting) Note((if (phone) "Tap a recording to delete it." else "OK on a recording deletes it.") + " Ones in Google Drive go to its bin, where Google keeps them for 30 days.")
         LazyColumn(Modifier.fillMaxSize().focusRestorer()) {
-            if (here.isNotEmpty() || saved.isNotEmpty()) item(key = "deleting") {
+            if (here.isNotEmpty() || saved.isNotEmpty() || toCome.isNotEmpty()) item(key = "deleting") {
                 FocusRow(if (deleting) "Finish deleting" else "Delete recordings", { deleting = !deleting }, look = Look.OTHER)
+            }
+            // Programmes set to record that haven't been recorded yet. They are set from the TV Guide.
+            itemsIndexed(toCome, key = { _, t -> "timed:" + t.id }) { _, plan ->
+                val going = plan.id in TimedService.running
+                ProgrammeRow(
+                    whenText = (if (going) "Recording now · until " + endText.format(java.util.Date(plan.stopMs)) else "Will record · " + whenText.format(java.util.Date(plan.startMs)) + " to " + endText.format(java.util.Date(plan.stopMs))) + " · " + plan.channel,
+                    title = plan.title,
+                    description = "",
+                    onClick = {
+                        when {
+                            going -> tell("That one is being recorded now. It will be here when it finishes.")
+                            deleting -> TimedStore.remove(context, plan)
+                            else -> tell("That hasn't been recorded yet. To take it off, use Delete recordings.")
+                        }
+                    },
+                )
             }
             itemsIndexed(here, key = { _, f -> "here:" + f.name }) { _, file ->
                 val key = "rec:" + file.name
                 val where = when {
-                    file == Recordings.recordingNow -> "Recording now"
+                    file == Recordings.recordingNow || file in Recordings.timedNow -> "Recording now"
                     copying?.first == file.name -> "Copying to Google Drive · " + (copying?.second ?: 0) + "%"
                     canCopy -> "Waiting to copy to Google Drive"
                     else -> if (phone) "On this phone" else "On this TV"
@@ -1368,6 +1402,7 @@ private fun Pane.RecordingsPane(
                     onClick = {
                         when {
                             !deleting -> onPlay(listOf(Playable(title(file.name), android.net.Uri.fromFile(file).toString())), 0, false, key)
+                            file in Recordings.timedNow -> tell("That one is being recorded now.")
                             Recordings.copying?.first == file.name -> tell("That one is being copied to Google Drive. Delete it once it is there.")
                             else -> { file.delete(); Recordings.changed() }
                         }

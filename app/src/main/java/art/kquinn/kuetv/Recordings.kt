@@ -36,6 +36,9 @@ object Recordings {
     /** The file being recorded right now; it is not copied until it is finished. */
     @Volatile var recordingNow: File? = null
 
+    /** Files that programmes set to record are being written to right now. */
+    val timedNow: MutableSet<File> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     @Volatile private var working = false
 
     fun folder(context: Context): File =
@@ -77,7 +80,7 @@ object Recordings {
             try {
                 problem = null
                 while (true) {
-                    val waiting = here(app).filter { it != recordingNow }
+                    val waiting = here(app).filter { it != recordingNow && it !in timedNow }
                     // A file with nothing in it is no recording.
                     waiting.filter { it.length() == 0L }.forEach { it.delete() }
                     // Oldest first, so they reach Drive in the order they were made.
