@@ -136,6 +136,7 @@ private fun App() {
     val browse = remember(library) { library?.let { BrowseState(startOnFilms = it.channels.isEmpty()) } }
     val favourites = remember { Favourites(context.applicationContext) }
     var driveSignIn by remember { mutableStateOf(false) }
+    var addOnsOpen by remember { mutableStateOf(false) }
     // Each time KueTV comes to the front: carry on copying any recordings that are waiting for Google Drive.
     LaunchedEffect(Resumes.count) { Recordings.wake(context) }
 
@@ -171,6 +172,7 @@ private fun App() {
                 },
             )
             driveSignIn -> DriveSignInScreen(onDone = { driveSignIn = false })
+            addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false })
             problem != null -> ProblemScreen(problem.orEmpty(), onRetry = { reload++ }, onEdit = { editing = true })
             lib == null || browse == null -> LoadingScreen()
             else -> MainScreen(
@@ -181,6 +183,7 @@ private fun App() {
                 onEdit = { editing = true },
                 onReload = { reload++ },
                 onDriveSignIn = { driveSignIn = true },
+                onAddOns = { addOnsOpen = true },
             )
         }
     }
@@ -467,8 +470,14 @@ private fun MainScreen(
     onEdit: () -> Unit,
     onReload: () -> Unit,
     onDriveSignIn: () -> Unit,
+    onAddOns: () -> Unit,
 ) {
     val context = LocalContext.current
+    // With add-ons added, a film or episode asks them for streams first. With none, nothing changes.
+    val addOns = remember(AddOnStore.changes) { AddOnStore.all(context) }
+    val finder: (String, String, Int?, Int?) -> (suspend () -> Search)? = remember(addOns) {
+        { type, name, season, episode -> streamFinder(addOns, type, name, season, episode) }
+    }
     var section by state::section
     val liveCategory = state.liveCategory
     val filmCategory = state.filmCategory
@@ -554,7 +563,7 @@ private fun MainScreen(
                             val favKey = Favourites.key(film, login)
                             Poster(
                                 film.name, film.poster,
-                                { onPlay(listOf(Playable(film.name, film.url)), 0, false, key) },
+                                { onPlay(listOf(Playable(film.name, film.url, find = finder("movie", film.name, null, null))), 0, false, key) },
                                 if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
                                 favourite = favKey in favs,
                                 onHold = { favourites.toggle(favKey) },
@@ -563,10 +572,10 @@ private fun MainScreen(
                     }
                 }
             }
-            Section.SERIES -> SeriesPane(library, state, favourites, resume, onPlay)
+            Section.SERIES -> SeriesPane(library, state, favourites, resume, finder, onPlay)
             Section.GUIDE -> ChannelGuide(library, false, state.guide, state, favs, resume, onPlay)
             Section.CATCHUP -> ChannelGuide(library, true, state.catchUp, state, favs, resume, onPlay)
-            Section.SEARCH -> SearchPane(library, state, resume, onPlay) { show ->
+            Section.SEARCH -> SearchPane(library, state, resume, finder, onPlay) { show ->
                 state.openShow = show
                 section = Section.SERIES
             }
@@ -589,6 +598,7 @@ private fun MainScreen(
                     )
                     else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn, look = Look.OTHER)
                 }
+                FocusRow("Add-ons for films and series (" + addOns.size + ")", onAddOns, look = Look.OTHER)
                 Text(
                     "KueTV 2 · version " + BuildConfig.VERSION_NAME,
                     color = Soft, fontSize = 18.sp, modifier = Modifier.padding(start = 16.dp, top = 22.dp),
@@ -969,6 +979,7 @@ private fun Pane.SeriesPane(
     state: BrowseState,
     favourites: Favourites,
     resume: FocusRequester,
+    finder: (String, String, Int?, Int?) -> (suspend () -> Search)?,
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
 ) {
     val favs = favourites.keys
@@ -981,7 +992,7 @@ private fun Pane.SeriesPane(
     }
     val opened = state.openShow
     if (opened != null) {
-        EpisodePage(opened, account, state, resume, onPlay)
+        EpisodePage(opened, account, state, resume, finder, onPlay)
         return
     }
     val scope = rememberCoroutineScope()
@@ -1039,6 +1050,7 @@ private fun Pane.EpisodePage(
     account: Account,
     state: BrowseState,
     resume: FocusRequester,
+    finder: (String, String, Int?, Int?) -> (suspend () -> Search)?,
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
 ) {
     BackHandler { state.showJustClosed = true; state.openShow = null }
@@ -1079,7 +1091,9 @@ private fun Pane.EpisodePage(
                     val plain = "Episode " + e.number
                     if (e.title.isBlank() || e.title.equals(plain, ignoreCase = true)) plain else e.number.toString() + ". " + e.title
                 }
-                val playables = remember(episodes) { episodes.map { Playable(show.name + " · S" + it.season + " E" + it.number, it.url) } }
+                val playables = remember(episodes, finder) {
+                    episodes.map { Playable(show.name + " · S" + it.season + " E" + it.number, it.url, find = finder("series", show.name, it.season, it.number)) }
+                }
                 LazyColumn(Modifier.fillMaxSize(), state = state.episodeList) {
                     episodes.forEachIndexed { i, episode ->
                         if (i == 0 || episodes[i - 1].season != episode.season) {
@@ -1114,6 +1128,7 @@ private fun Pane.SearchPane(
     library: Library,
     state: BrowseState,
     resume: FocusRequester,
+    finder: (String, String, Int?, Int?) -> (suspend () -> Search)?,
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
     onOpenShow: (Show) -> Unit,
 ) {
@@ -1146,7 +1161,7 @@ private fun Pane.SearchPane(
                     val key = "film:" + film.id
                     FocusRow(
                         film.name,
-                        { onPlay(listOf(Playable(film.name, film.url)), 0, false, key) },
+                        { onPlay(listOf(Playable(film.name, film.url, find = finder("movie", film.name, null, null))), 0, false, key) },
                         if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                     )
                 }
@@ -1401,5 +1416,89 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
                 FocusRow("Cancel", onDone, Modifier.focusRequester(first), look = Look.OTHER)
             }
         }
+    }
+}
+
+// --------------------------------------------------------------------------------------------- add-ons
+
+/** What a film or episode uses to ask the add-ons for streams; null when no add-on gives streams. */
+private fun streamFinder(addOns: List<AddOn>, type: String, name: String, season: Int?, episode: Int?): (suspend () -> Search)? {
+    if (addOns.none { it.streams }) return null
+    return { withContext(Dispatchers.IO) { AddOns.streamsFor(addOns, type, name, season, episode) } }
+}
+
+/**
+ * Add-ons: the ones added, each with a row that removes it, and a box to add another by its link.
+ * On a TV the link can be pasted on a phone instead: the TV shows an address to open on the same Wi-Fi.
+ */
+@Composable
+private fun AddOnsScreen(onDone: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val scope = rememberCoroutineScope()
+    val addOns = remember(AddOnStore.changes) { AddOnStore.all(context) }
+    var link by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var said by remember { mutableStateOf<String?>(null) }
+    var phoneAddress by remember { mutableStateOf<String?>(null) }
+    BackHandler { onDone() }
+
+    val add: (String) -> Unit = { typed ->
+        if (!busy) {
+            busy = true
+            said = null
+            scope.launch {
+                said = try {
+                    val addOn = withContext(Dispatchers.IO) { AddOns.read(typed) }
+                    AddOnStore.add(context, addOn)
+                    link = ""
+                    "Added " + addOn.name + "."
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: AddOnProblem) {
+                    e.message
+                } catch (e: Exception) {
+                    "Something went wrong adding that. Try again."
+                }
+                busy = false
+            }
+        }
+    }
+    DisposableEffect(Unit) {
+        val main = Handler(Looper.getMainLooper())
+        val server = if (phone) null else PhoneSetup(onAddOn = { typed -> main.post { add(typed) } }) { _, _, _, _ -> }
+        phoneAddress = server?.start()
+        onDispose { server?.stop() }
+    }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 36.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Add-ons", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Note("Add-ons find other places to play the films and series already in your lists. KueTV comes with none: you add your own by its link.")
+        phoneAddress?.let { address ->
+            Note("Easiest: on your phone, on the same Wi-Fi, open")
+            Text(address, color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+            Note("and paste the link there.")
+        }
+        Field("Add-on link", link, onDone = { add(link) }) { link = it }
+        val first = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            if (!phone) runCatching { first.requestFocus() }
+        }
+        FocusRow(if (busy) "Adding…" else "Add", { add(link) }, Modifier.focusRequester(first), look = Look.MAIN)
+        said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
+        if (addOns.isNotEmpty()) Box(Modifier.padding(top = 14.dp)) { Heading("Added") }
+        addOns.forEach { addOn ->
+            val gives = when {
+                addOn.streams && addOn.subtitles -> "streams and subtitles"
+                addOn.streams -> "streams"
+                else -> "subtitles"
+            }
+            FocusRow("Remove " + addOn.name + " (" + gives + ")", { AddOnStore.remove(context, addOn); said = "Removed " + addOn.name + "." }, look = Look.OTHER)
+        }
+        FocusRow("Done", onDone, look = Look.OTHER)
     }
 }

@@ -53,7 +53,20 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 
 /** One version of a channel: its quality as the user reads it ("FHD") and its address. */
-data class Stream(val label: String, val url: String)
+data class Stream(
+    val label: String,
+    val url: String,
+    /** Sent with every request for it, when the place it plays from asks for them. */
+    val headers: Map<String, String> = emptyMap(),
+    /** English subtitles kept in a file of their own, for a stream that may carry none. */
+    val subtitle: String? = null,
+)
+
+/** The last thing tried for a film when add-ons are in use: the copy the provider itself lists. */
+const val PROVIDER_COPY = "Your provider's copy"
+
+/** A film that hasn't started after this long on one stream moves to the next. */
+private const val SLOW_START_MS = 25_000L
 
 /**
  * One thing the player can show: a channel or a film. A channel the provider lists in several
@@ -66,6 +79,11 @@ data class Playable(
     val startStream: Int = 0,
     /** Sent with every request for it; a recording in Google Drive needs its pass. */
     val headers: Map<String, String> = emptyMap(),
+    /**
+     * For a film or episode when the user has add-ons: asks them where it can be played from. The
+     * player asks when it gets to this item, tries what comes back in order, and keeps [url] for last.
+     */
+    val find: (suspend () -> Search)? = null,
 )
 
 /** Recording needs this much room to start. */
@@ -108,13 +126,13 @@ private const val SETTLED_MS = 30 * 60_000L
 private object Settled {
     private val last = HashMap<String, Pair<Int, Long>>()
 
-    fun startFor(item: Playable): Int {
+    fun startFor(item: Playable, count: Int = item.streams.size): Int {
         val kept = last[item.url] ?: return item.startStream
-        return if (System.currentTimeMillis() - kept.second < SETTLED_MS && kept.first in item.streams.indices) kept.first else item.startStream
+        return if (System.currentTimeMillis() - kept.second < SETTLED_MS && kept.first in 0 until count) kept.first else item.startStream
     }
 
-    fun played(item: Playable, stream: Int) {
-        if (item.streams.size > 1) last[item.url] = stream to System.currentTimeMillis()
+    fun played(item: Playable, stream: Int, count: Int) {
+        if (count > 1) last[item.url] = stream to System.currentTimeMillis()
     }
 }
 
@@ -135,6 +153,11 @@ private object Settled {
  * says so. If a version won't play at all, the next is tried. It never moves back up by itself, because
  * each move interrupts the picture. ◀ is a better version, ▶ a lighter one; on a phone, swipe sideways.
  *
+ * A film or episode with add-ons in use: the add-ons are asked where it can be played from, and what
+ * they give is tried in order, best first, with the provider's own copy last. One that won't start is
+ * left for the next, and the screen says so. Once one has started playing it is kept: a drop part way
+ * through reconnects to the same one, at the same place.
+ *
  * Live: the ≡ (menu) button starts recording the channel and ends it; on a phone, a button in the name
  * box does. Changing channel or closing the player also ends it. The recording is a copy of what the
  * player is being sent, so it uses no second connection to the provider.
@@ -152,6 +175,18 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
     var stopped by remember { mutableStateOf(false) }
     val stops = remember { ArrayList<Long>() }
     val hasPlayed = remember { booleanArrayOf(false) }
+    // What the add-ons gave for each film or episode asked about so far, with the provider's copy at the end.
+    val found = remember { HashMap<Int, List<Stream>>() }
+    val streamsAt: (Int) -> List<Stream> = { i -> found[i] ?: items.getOrNull(i)?.streams.orEmpty() }
+    // True once this stream has shown a picture. Until then a failure means "try the next", after it "reconnect".
+    val started = remember { booleanArrayOf(false) }
+    // Streams whose separate subtitle file has been left off, because they wouldn't play with it.
+    val withoutSubtitles = remember { HashSet<String>() }
+    var reload by remember { mutableIntStateOf(0) }
+    val nextStream: (List<Stream>, Int) -> String = { all, next ->
+        if (all[next].label == PROVIDER_COPY) "That stream isn't playing. Trying your provider's copy."
+        else "That stream isn't playing. Trying the next one (" + (next + 1) + " of " + all.size + ")."
+    }
     var showName by remember { mutableIntStateOf(0) }
     var tries by remember { mutableIntStateOf(0) }
     var retryTick by remember { mutableIntStateOf(0) }
@@ -240,12 +275,13 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             override fun onPlaybackStateChanged(state: Int) {
                 stopped = state == Player.STATE_BUFFERING
                 val item = items.getOrNull(index)
-                val versions = item?.streams.orEmpty()
+                val versions = streamsAt(index)
                 if (state == Player.STATE_READY) {
                     tries = 0
                     note = null
                     hasPlayed[0] = true
-                    if (item != null) Settled.played(item, stream)
+                    started[0] = true
+                    if (item != null) Settled.played(item, stream, versions.size)
                 }
                 // The picture was playing and has stopped to catch up. Too many of those: move down a version.
                 if (state == Player.STATE_BUFFERING && live && hasPlayed[0] && stream < versions.size - 1) {
@@ -261,9 +297,19 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                tries += 1
                 hasPlayed[0] = false
-                val versions = items.getOrNull(index)?.streams.orEmpty()
+                val versions = streamsAt(index)
+                if (!live && versions.size > 1 && !started[0]) {
+                    // A film's stream that never started. First without its separate subtitles, in case they are the fault.
+                    val now = versions.getOrNull(stream)
+                    when {
+                        now?.subtitle != null && withoutSubtitles.add(now.url) -> reload += 1
+                        stream < versions.size - 1 -> change(stream + 1, nextStream(versions, stream + 1))
+                        else -> note = "This isn't playing right now."
+                    }
+                    return
+                }
+                tries += 1
                 if (tries >= maxOf(MAX_TRIES, versions.size * 2)) {
                     note = if (live) "This channel isn't playing right now." else "This film isn't playing right now."
                 } else if (live && versions.size > 1 && tries % 2 == 0) {
@@ -289,22 +335,66 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
     }
 
     // A new channel (or film), or another version of this channel: start it clean.
-    LaunchedEffect(index, stream) {
+    LaunchedEffect(index, stream, reload) {
         val item = items.getOrNull(index) ?: return@LaunchedEffect
+        val search = item.find
+        if (search != null && index !in found) {
+            // The add-ons haven't been asked about this one yet.
+            player.stop()
+            note = "Finding the best stream…"
+            val result = try {
+                search()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            val theirs = result?.streams.orEmpty()
+            found[index] = theirs + Stream(PROVIDER_COPY, item.url)
+            note = null
+            if (theirs.isEmpty()) {
+                moved = if (result?.torrentsOnly == true) "Your add-ons only had torrents for this, which KueTV can't play yet. Playing your provider's copy."
+                else "Nothing from your add-ons for this one. Playing your provider's copy."
+            }
+            val start = Settled.startFor(item, theirs.size + 1)
+            if (start != stream) {
+                stream = start
+                return@LaunchedEffect
+            }
+        }
+        val now = streamsAt(index).getOrNull(stream)
         stops.clear()
         hasPlayed[0] = false
-        http.setDefaultRequestProperties(item.headers)
-        player.setMediaItem(MediaItem.fromUri(item.streams.getOrNull(stream)?.url ?: item.url))
+        started[0] = false
+        http.setDefaultRequestProperties(now?.headers?.takeIf { it.isNotEmpty() } ?: item.headers)
+        val media = MediaItem.Builder().setUri(now?.url ?: item.url)
+        val subtitle = now?.subtitle?.takeIf { now.url !in withoutSubtitles }
+        if (subtitle != null) {
+            val kind = if (subtitle.substringBefore('?').endsWith(".vtt", ignoreCase = true)) androidx.media3.common.MimeTypes.TEXT_VTT else androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
+            media.setSubtitleConfigurations(
+                listOf(
+                    MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitle))
+                        .setMimeType(kind).setLanguage("en").setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT).build(),
+                ),
+            )
+        }
+        player.setMediaItem(media.build())
         player.prepare()
         showName += 1
     }
     // The picture has stayed stopped too long, at the start or part way through: move down a version.
-    LaunchedEffect(stopped, index, stream) {
-        if (!stopped || !live) return@LaunchedEffect
-        delay(LONG_STOP_MS)
-        val versions = items.getOrNull(index)?.streams.orEmpty()
-        if (stream < versions.size - 1) {
-            change(stream + 1, "Kept stopping on " + versions[stream].label + ". Now on " + versions[stream + 1].label + ".")
+    LaunchedEffect(stopped, index, stream, reload) {
+        if (!stopped) return@LaunchedEffect
+        val versions = streamsAt(index)
+        if (live) {
+            delay(LONG_STOP_MS)
+            if (stream < versions.size - 1) {
+                change(stream + 1, "Kept stopping on " + versions[stream].label + ". Now on " + versions[stream + 1].label + ".")
+            }
+        } else if (versions.size > 1 && !started[0]) {
+            // A film's stream that is taking too long to start: the next one may be quicker.
+            delay(SLOW_START_MS)
+            if (!started[0] && stream < versions.size - 1) change(stream + 1, nextStream(versions, stream + 1))
         }
     }
     // After a drop: wait a moment, then pick the stream up again.
@@ -430,7 +520,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         }
         val title = items.getOrNull(index)?.name.orEmpty()
         val versions = items.getOrNull(index)?.streams.orEmpty()
-        if ((nameVisible && live) || note != null) {
+        if ((nameVisible && (live || moved != null)) || note != null) {
             Column(
                 Modifier
                     .align(Alignment.BottomStart)

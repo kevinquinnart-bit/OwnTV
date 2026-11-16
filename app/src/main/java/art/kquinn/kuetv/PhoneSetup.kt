@@ -14,7 +14,11 @@ import kotlin.concurrent.thread
  * is open the TV answers on the home network: the phone opens the address shown on the TV, fills in a
  * short form, and the details arrive here. Nothing leaves the home network.
  */
-class PhoneSetup(private val onDetails: (server: String, user: String, pass: String, playlist: String) -> Unit) {
+class PhoneSetup(
+    /** Given: the page asks for an add-on's link instead of the provider details, and the link arrives here. */
+    private val onAddOn: ((link: String) -> Unit)? = null,
+    private val onDetails: (server: String, user: String, pass: String, playlist: String) -> Unit,
+) {
     @Volatile private var socket: ServerSocket? = null
 
     /** The address to open on the phone, or null when the TV has no home-network address. */
@@ -58,10 +62,15 @@ class PhoneSetup(private val onDetails: (server: String, user: String, pass: Str
                 val at = pair.indexOf('=')
                 if (at < 0) null else URLDecoder.decode(pair.substring(0, at), "UTF-8") to URLDecoder.decode(pair.substring(at + 1), "UTF-8")
             }.toMap()
-            onDetails(fields["server"].orEmpty(), fields["user"].orEmpty(), fields["pass"].orEmpty(), fields["playlist"].orEmpty())
-            send(client, page("<h1>Sent to your TV</h1><p>You can close this page.</p>"))
+            if (onAddOn != null) {
+                onAddOn.invoke(fields["link"].orEmpty())
+                send(client, page("<h1>Sent to your TV</h1><p>The TV says whether it was added. To add another, go back and paste the next link.</p>"))
+            } else {
+                onDetails(fields["server"].orEmpty(), fields["user"].orEmpty(), fields["pass"].orEmpty(), fields["playlist"].orEmpty())
+                send(client, page("<h1>Sent to your TV</h1><p>You can close this page.</p>"))
+            }
         } else {
-            send(client, page(FORM))
+            send(client, page(if (onAddOn != null) ADDON_FORM else FORM))
         }
     }
 
@@ -92,6 +101,12 @@ class PhoneSetup(private val onDetails: (server: String, user: String, pass: Str
             "<label>Password</label><input name=\"pass\" autocapitalize=\"none\" autocorrect=\"off\">" +
             "<hr><p>Or, if your provider gave you one playlist link instead, paste it here and leave the three boxes above empty.</p>" +
             "<label>Playlist link</label><input name=\"playlist\" autocapitalize=\"none\" autocorrect=\"off\">" +
+            "<button type=\"submit\">Send to TV</button></form>"
+
+        private const val ADDON_FORM = "<h1>KueTV: add an add-on</h1>" +
+            "<p>Paste the add-on's link here. It is the one its page gives you to copy, and usually ends in manifest.json.</p>" +
+            "<form method=\"post\" action=\"/\">" +
+            "<label>Add-on link</label><input name=\"link\" autocapitalize=\"none\" autocorrect=\"off\">" +
             "<button type=\"submit\">Send to TV</button></form>"
 
         fun localAddress(): String? = runCatching {
