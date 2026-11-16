@@ -7,7 +7,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,6 +42,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -112,7 +117,12 @@ data class Playable(
      * player asks when it gets to this item, tries what comes back in order, and keeps [url] for last.
      */
     val find: (suspend () -> Search)? = null,
+    /** For a live channel the provider keeps for catch-up: the programme on now, played from its start. */
+    val fromStart: ((Programme) -> Playable)? = null,
 )
+
+/** One button along the bottom of the live name box. */
+private class Control(val label: String, val act: () -> Unit)
 
 /** Recording needs this much room to start. */
 private const val ROOM_TO_RECORD = 500L * 1024 * 1024
@@ -192,7 +202,14 @@ private object Settled {
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose: () -> Unit) {
+fun PlayerScreen(
+    items: List<Playable>,
+    startIndex: Int,
+    live: Boolean,
+    onClose: () -> Unit,
+    /** Plays the programme on now from its start, through catch-up, in place of the live channel. */
+    onFromStart: ((Playable) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val phone = LocalPhone.current
     var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) }
@@ -222,6 +239,12 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
     var retryTick by remember { mutableIntStateOf(0) }
 
     var recording by remember { mutableStateOf(false) }
+    // The control buttons in the name box: brought up by OK on a TV (◀ ▶ then move along them), always there on a phone.
+    var controls by remember { mutableStateOf(false) }
+    var pick by remember { mutableIntStateOf(0) }
+    var paused by remember { mutableStateOf(false) }
+    // Paused at some point since this channel started, so the picture is behind live.
+    var behind by remember { mutableStateOf(false) }
     val main = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     /** Says [text] on screen for a few seconds, with the channel's name. */
     val say: (String) -> Unit = { text -> moved = text; showName += 1 }
@@ -248,6 +271,8 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             .setReadTimeoutMs(20_000)
     }
     val subtitlesWanted = remember { Choices.subtitles(context) }
+    // Subtitles for this sitting, as set in Settings to begin with; the Subtitles button changes it here only.
+    var subsOn by remember { mutableStateOf(subtitlesWanted) }
     // What this stream has by way of subtitles: 0 not known yet, 1 showing, 2 none at all, 3 some, but none in English.
     var subtitles by remember { mutableIntStateOf(0) }
     val player = remember {
@@ -284,6 +309,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         val wasRecording = finishRecording()
         index = next
         stream = items.getOrNull(next)?.let { Settled.startFor(it) } ?: 0
+        controls = false
         tries = 0
         note = null
         moved = if (wasRecording) "Recording saved." else null
@@ -353,6 +379,10 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                 if (state == Player.STATE_ENDED && !live && item != null) Positions.forget(context, item.url)
                 // An episode has finished and another follows it in the list: play that one.
                 if (state == Player.STATE_ENDED && !live && index < items.size - 1) go(index + 1)
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                paused = !playWhenReady
             }
 
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -467,6 +497,9 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         }
         player.setMediaItem(media.build())
         player.prepare()
+        // A new channel, or back to live: playing, and at live.
+        player.playWhenReady = true
+        behind = false
         showName += 1
     }
     // The picture has stayed stopped too long, at the start or part way through: move down a version.
@@ -516,16 +549,63 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         if (listing.isNotEmpty()) showName += 1
     }
     var nameVisible by remember { mutableStateOf(false) }
-    LaunchedEffect(showName) {
-        if (showName == 0) return@LaunchedEffect
+    LaunchedEffect(showName, paused) {
+        if (showName == 0 && !paused) return@LaunchedEffect
         nameVisible = true
-        // Longer when there is something to read: why the stream changed, or what the programme is about.
-        delay(if (moved != null || (live && index in guides)) 9_000 else 4_000)
+        // While paused the box stays up, saying so.
+        if (paused && live) return@LaunchedEffect
+        // Longer when there is something to read: why the stream changed, what the programme is about, or the buttons.
+        delay(if (controls || moved != null || (live && index in guides)) 9_000 else 4_000)
         nameVisible = false
+        controls = false
         moved = null
     }
 
-    BackHandler { onClose() }
+    // What is on now and next on this channel, for the name box and the "From the start" button.
+    val clockNow = System.currentTimeMillis()
+    val listing = if (live) guides[index].orEmpty() else emptyList()
+    val onNow = listing.firstOrNull { it.startMs <= clockNow && it.stopMs > clockNow }
+    val nextUp = listing.firstOrNull { it.startMs >= (onNow?.stopMs ?: clockNow) }
+    val versions = items.getOrNull(index)?.streams.orEmpty()
+    val fromStart: (() -> Unit)? = items.getOrNull(index)?.fromStart?.let { make ->
+        if (onNow == null || onFromStart == null) null else ({
+            Report.note("Player", items.getOrNull(index)?.name.orEmpty() + ": from the start, through catch-up")
+            onFromStart(make(onNow))
+        })
+    }
+    val togglePause: () -> Unit = {
+        if (player.playWhenReady) {
+            player.pause()
+            behind = true
+        } else {
+            player.play()
+        }
+    }
+    val toggleSubtitles: () -> Unit = {
+        subsOn = !subsOn
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !subsOn).build()
+    }
+    // The buttons along the bottom of the live name box, left to right.
+    val buttons = if (!live) emptyList() else buildList {
+        add(Control(if (paused) "Play" else "Pause", togglePause))
+        // Live channels can't be wound back here. After a pause, this jumps to what is on now.
+        if (behind) add(Control("Back to live") { reload += 1 })
+        if (fromStart != null) add(Control("From the start", fromStart))
+        add(Control(if (recording) "■ Stop recording" else "● Record", toggleRecording))
+        if (versions.size > 1 && stream in versions.indices) add(Control("Picture: " + versions[stream].label) { change((stream + 1) % versions.size, null) })
+        add(Control(if (subsOn) "Subtitles: on" else "Subtitles: off", toggleSubtitles))
+    }
+
+    // Back hides the buttons first; with them gone, Back closes the player.
+    BackHandler {
+        if (live && controls && nameVisible) {
+            controls = false
+            nameVisible = false
+        } else {
+            onClose()
+        }
+    }
 
     // KueTV has left the screen (Home was pressed, or another app opened): stop the picture and sound,
     // unless a recording is being made from it. Back on screen: carry on, a live channel from now.
@@ -584,13 +664,30 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                     .focusable()
                     .onPreviewKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        val buttonsUp = controls && nameVisible && buttons.isNotEmpty()
                         when (e.key) {
                             Key.DirectionUp, Key.ChannelUp -> { if (items.size > 1) go((index + 1) % items.size); true }
                             Key.DirectionDown, Key.ChannelDown -> { if (items.size > 1) go((index - 1 + items.size) % items.size); true }
-                            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { showName += 1; true }
+                            // OK brings up the buttons; with them up, OK presses the one the remote is on.
+                            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                                if (buttonsUp) {
+                                    buttons[pick.coerceIn(0, buttons.size - 1)].act()
+                                } else {
+                                    controls = true
+                                    pick = 0
+                                }
+                                showName += 1
+                                true
+                            }
                             Key.Menu, Key.MediaRecord -> { toggleRecording(); true }
-                            // A channel with several versions: left is a better one, right a lighter one. At either end the name box shows again.
-                            Key.DirectionLeft, Key.DirectionRight -> {
+                            Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> { togglePause(); showName += 1; true }
+                            Key.MediaRewind, Key.MediaPrevious -> { fromStart?.invoke(); true }
+                            // With the buttons up, left and right move along them.
+                            Key.DirectionLeft, Key.DirectionRight -> if (buttonsUp) {
+                                pick = (pick.coerceIn(0, buttons.size - 1) + if (e.key == Key.DirectionLeft) -1 else 1).coerceIn(0, buttons.size - 1)
+                                showName += 1
+                                true
+                            } else {
                                 val count = items.getOrNull(index)?.streams?.size ?: 0
                                 val next = if (e.key == Key.DirectionLeft) stream - 1 else stream + 1
                                 if (count > 1) { if (next in 0 until count) change(next, null) else showName += 1 }
@@ -660,72 +757,82 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             )
         }
         val title = items.getOrNull(index)?.name.orEmpty()
-        val versions = items.getOrNull(index)?.streams.orEmpty()
         if ((nameVisible && (live || moved != null)) || note != null) {
             Column(
                 Modifier
                     .align(Alignment.BottomStart)
                     .padding(if (phone) 16.dp else 36.dp)
                     .widthIn(max = 980.dp)
-                    .background(Color(0xCC0E1626), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 22.dp, vertical = 14.dp),
+                    .background(Color(0xE60E1626), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 22.dp, vertical = 16.dp),
             ) {
                 val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
-                val at = System.currentTimeMillis()
-                Text(
-                    if (live) title + "  ·  " + clock.format(java.util.Date(at)) else title,
-                    color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-                )
-                val listing = if (live) guides[index].orEmpty() else emptyList()
-                val onNow = listing.firstOrNull { it.startMs <= at && it.stopMs > at }
-                val next = listing.firstOrNull { it.startMs >= (onNow?.stopMs ?: at) }
+                val soft = Color(0xFFB9C2D3)
+                // The channel, with the time on the right.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    if (live) Text("   " + clock.format(java.util.Date(clockNow)), color = soft, fontSize = 22.sp, maxLines = 1)
+                }
                 if (onNow != null) {
                     Text(
-                        "Now · " + clock.format(java.util.Date(onNow.startMs)) + " to " + clock.format(java.util.Date(onNow.stopMs)) + " · " + onNow.title.ifBlank { "No title" },
-                        color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(top = 4.dp),
+                        "Now · " + clock.format(java.util.Date(onNow.startMs)) + " to " + clock.format(java.util.Date(onNow.stopMs)),
+                        color = Color(0xFFFFD23F), fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp),
                     )
+                    Text(onNow.title.ifBlank { "No title" }, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
                     // The whole description, not cut short.
-                    if (onNow.description.isNotBlank()) Text(onNow.description, color = Color(0xFFB9C2D3), fontSize = 18.sp)
+                    if (onNow.description.isNotBlank()) Text(onNow.description, color = soft, fontSize = 18.sp, modifier = Modifier.padding(top = 2.dp))
                 }
-                if (next != null) {
+                if (nextUp != null) {
                     Text(
-                        "Next · " + clock.format(java.util.Date(next.startMs)) + " · " + next.title.ifBlank { "No title" },
-                        color = Color(0xFFB9C2D3), fontSize = 18.sp, maxLines = 1, modifier = Modifier.padding(top = 4.dp),
+                        "Next · " + clock.format(java.util.Date(nextUp.startMs)) + " · " + nextUp.title.ifBlank { "No title" },
+                        color = soft, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp),
                     )
                 }
-                if (live && versions.size > 1 && stream in versions.indices) {
+                // How it is playing, as separate labels spread along one line.
+                if (live) {
+                    Row(Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (versions.size > 1 && stream in versions.indices) Label(versions[stream].label + " · version " + (stream + 1) + " of " + versions.size)
+                        if (subtitles != 0 || !subsOn) {
+                            Label(
+                                when {
+                                    !subsOn -> "Subtitles off"
+                                    subtitles == 1 -> "Subtitles on"
+                                    subtitles == 3 -> "No English subtitles"
+                                    else -> "No subtitles on this channel"
+                                },
+                            )
+                        }
+                        if (paused) Label("Paused", Color(0xFFFFD23F), Color.Black)
+                        else if (behind) Label("Behind live")
+                        if (recording) Label("● Recording", Color(0xFFB3261E), Color.White)
+                    }
+                }
+                moved?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
+                note?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
+                // The buttons along the bottom. On a TV they come up with OK; on a phone they are always here to tap.
+                if (live && (controls || phone)) {
+                    Row(Modifier.padding(top = 14.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        buttons.forEachIndexed { i, b ->
+                            val on = !phone && i == pick.coerceIn(0, buttons.size - 1)
+                            Text(
+                                b.label,
+                                color = if (on || phone) Color.Black else Color.White,
+                                fontSize = 18.sp, fontWeight = if (on || phone) FontWeight.Bold else FontWeight.Normal, maxLines = 1,
+                                modifier = Modifier
+                                    .background(if (on || phone) Color(0xFFFFD23F) else Color(0xFF16213A), RoundedCornerShape(22.dp))
+                                    .then(if (phone) Modifier.clickable { b.act(); showName += 1 } else Modifier)
+                                    .padding(horizontal = 16.dp, vertical = 9.dp),
+                            )
+                        }
+                    }
+                }
+                if (live && !phone && !controls) {
                     Text(
-                        versions[stream].label + " · version " + (stream + 1) + " of " + versions.size +
-                            if (phone) " · swipe sideways to change" else " · ◀ ▶ to change",
-                        color = Color(0xFFB9C2D3), fontSize = 18.sp, maxLines = 1,
+                        "OK for the buttons  ·  ▲ ▼ channel" + (if (versions.size > 1) "  ·  ◀ ▶ picture" else "") + "  ·  ≡ record",
+                        color = soft, fontSize = 15.sp, maxLines = 1, modifier = Modifier.padding(top = 12.dp),
                     )
                 }
-                if (live && subtitles != 0) {
-                    Text(
-                        when {
-                            !subtitlesWanted -> "Subtitles are turned off in Settings"
-                            subtitles == 1 -> "Subtitles: on"
-                            subtitles == 3 -> "No English subtitles on this channel"
-                            else -> "No subtitles on this channel"
-                        },
-                        color = Color(0xFFB9C2D3), fontSize = 16.sp, maxLines = 1, modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-                moved?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp) }
-                note?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp) }
-                if (phone && live && items.size > 1) Text("Swipe up or down to change channel", color = Color(0xFFB9C2D3), fontSize = 16.sp)
-                if (live && !phone) Text(if (recording) "● Recording · ≡ to finish" else "≡ records this channel", color = Color(0xFFB9C2D3), fontSize = 16.sp)
-                if (live && phone) {
-                    Text(
-                        if (recording) "■ Stop recording" else "● Record",
-                        color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .padding(top = 10.dp)
-                            .background(Color(0xFFFFD23F), RoundedCornerShape(22.dp))
-                            .clickable { toggleRecording() }
-                            .padding(horizontal = 16.dp, vertical = 9.dp),
-                    )
-                }
+                if (phone && live && items.size > 1) Text("Swipe up or down to change channel", color = soft, fontSize = 15.sp, modifier = Modifier.padding(top = 10.dp))
             }
         }
         if (recording) {
@@ -792,4 +899,13 @@ fun MiniTv(item: Playable, modifier: Modifier = Modifier) {
         )
         Text(item.name, color = Color.White, fontSize = 17.sp, maxLines = 1, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
     }
+}
+
+/** A small label in the live name box: the version playing, subtitles, paused, recording. */
+@Composable
+private fun Label(text: String, background: Color = Color(0xFF16213A), color: Color = Color(0xFFB9C2D3)) {
+    Text(
+        text, color = color, fontSize = 15.sp, maxLines = 1,
+        modifier = Modifier.background(background, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }

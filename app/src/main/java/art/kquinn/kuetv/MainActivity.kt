@@ -230,7 +230,14 @@ private fun App() {
         val now = playing
         when {
             // Only the player is on screen while it plays, so no key can reach the lists behind it.
-            now != null -> PlayerScreen(now.items, now.index, now.live, onClose = { playing = null })
+            // A fresh player for each thing played, so "From the start" begins clean in place of the live channel.
+            now != null -> androidx.compose.runtime.key(now) {
+                PlayerScreen(
+                    now.items, now.index, now.live,
+                    onClose = { playing = null },
+                    onFromStart = { programme -> playing = Playing(listOf(programme), 0, false) },
+                )
+            }
             setUpShare == 1 -> SendSetUpScreen(account, favourites, onDone = { setUpShare = 0 })
             setUpShare == 2 -> TakeSetUpScreen(
                 onDone = { setUpShare = 0 },
@@ -767,7 +774,7 @@ private fun MainScreen(
                         else -> library.groups.filter { g -> g.versions.any { it.channel.categoryId == liveCategory } }
                     }
                 }
-                val playables = remember(shown) { shown.map { livePlayable(it, library.account) } }
+                val playables = remember(shown) { shown.map { livePlayable(it, library.account, library.serverAheadSec) } }
                 val list: @Composable (Modifier) -> Unit = { m ->
                     Column(m) {
                         Heading((if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint())
@@ -1097,7 +1104,7 @@ private fun Pane.ChannelGuide(
     val opened = pick.open
     if (opened != null) {
         // Watching from here plays the channel the same way Live TV does: best version first, moving down if it must.
-        val watch = remember(opened.id) { library.groupOf[opened.id]?.let { livePlayable(it, account) } ?: Playable(opened.name, opened.url) }
+        val watch = remember(opened.id) { library.groupOf[opened.id]?.let { livePlayable(it, account, library.serverAheadSec) } ?: Playable(opened.name, opened.url) }
         val rowKey = "pick:" + (library.groupOf[opened.id]?.id ?: opened.id)
         ProgrammePage(opened, watch, rowKey, catchUp, account, library.serverAheadSec, pick, state, resume, onPlay)
         return
@@ -1528,7 +1535,7 @@ private fun Pane.SearchPane(
                     val key = "live:" + channel.id
                     FocusRow(
                         channel.name,
-                        { onPlay(listOf(livePlayable(channel, library.account)), 0, true, key) },
+                        { onPlay(listOf(livePlayable(channel, library.account, library.serverAheadSec)), 0, true, key) },
                         if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                         leading = { Logo(channel.logo) },
                     )
@@ -2036,12 +2043,19 @@ private fun TakeSetUpScreen(onDone: () -> Unit, onTaken: (SetUp) -> Unit) {
     }
 }
 
-/** A channel ready for the player: every version behind it, the one to start on, and where to ask what is on. */
-private fun livePlayable(group: ChannelGroup, account: Account?): Playable {
+/**
+ * A channel ready for the player: every version behind it, the one to start on, where to ask what is on,
+ * and, when the provider keeps one of its versions for catch-up, how to play the programme on now from its start.
+ */
+private fun livePlayable(group: ChannelGroup, account: Account?, serverAheadSec: Int = 0): Playable {
     val first = group.versions[group.start].channel
+    val kept = group.versions.firstOrNull { it.channel.catchupDays > 0 }?.channel
     return Playable(
         group.name, first.url, group.versions.map { Stream(it.label, it.channel.url) }, group.start,
         guide = if (account == null) null else ({ NowNext.get(account, first.id) }),
+        fromStart = if (account == null || kept == null) null else ({ programme ->
+            Playable(group.name + " · " + programme.title.ifBlank { "from the start" }, Provider.catchupUrl(account, kept.id, programme, serverAheadSec))
+        }),
     )
 }
 
@@ -2172,7 +2186,7 @@ private fun Pane.GuideGrid(
                                             val now = System.currentTimeMillis()
                                             val kept = channel.versions.firstOrNull { it.channel.catchupDays > 0 }?.channel
                                             when {
-                                                programme.startMs <= now && programme.stopMs > now -> onPlay(listOf(livePlayable(channel, account)), 0, true, key)
+                                                programme.startMs <= now && programme.stopMs > now -> onPlay(listOf(livePlayable(channel, account, library.serverAheadSec)), 0, true, key)
                                                 programme.startMs > now -> {
                                                     if (set) TimedStore.remove(context, plan) else TimedStore.add(context, plan)
                                                     tell(if (set) "No longer set to record: " + plan.title else "Set to record: " + plan.title + ", " + time(programme.startMs))
@@ -2389,7 +2403,7 @@ private fun HomeScreen(
     val favs = favourites.keys
     val tiles = Section.entries.filter { it != Section.HOME }
     val channels = remember(library, favs) { library.groups.filter { g -> g.versions.any { Favourites.key(it.channel, login) in favs } } }
-    val playables = remember(channels) { channels.map { livePlayable(it, library.account) } }
+    val playables = remember(channels) { channels.map { livePlayable(it, library.account, library.serverAheadSec) } }
     val clock by produceState(homeClock()) {
         while (true) {
             delay(10_000)
