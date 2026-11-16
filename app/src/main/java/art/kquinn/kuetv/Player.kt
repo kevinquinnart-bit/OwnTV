@@ -289,6 +289,9 @@ fun PlayerScreen(
     val subtitlesWanted = remember { Choices.subtitles(context) }
     // Subtitles for this sitting, as set in Settings to begin with; the Subtitles button changes it here only.
     var subsOn by remember { mutableStateOf(subtitlesWanted) }
+    val lang = remember { Langs.of(Choices.subtitleLang(context)) }
+    // Films already said to have no subtitles, so it is said once for each stream.
+    val toldNoSubs = remember { HashSet<String>() }
     // What this stream has by way of subtitles: 0 not known yet, 1 showing, 2 none at all, 3 some, but none in English.
     var subtitles by remember { mutableIntStateOf(0) }
     val player = remember {
@@ -306,7 +309,7 @@ fun PlayerScreen(
             .build().apply {
                 trackSelectionParameters = trackSelectionParameters.buildUpon()
                     .setPreferredAudioLanguage("en")
-                    .setPreferredTextLanguage("en")
+                    .setPreferredTextLanguage(lang.code)
                     .setSelectUndeterminedTextLanguage(true)
                     .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !subtitlesWanted)
                     .build()
@@ -407,6 +410,10 @@ fun PlayerScreen(
                     text.any { it.isSelected } -> 1
                     text.isEmpty() -> 2
                     else -> 3
+                }
+                // A film whose stream turns out to have none in the wanted language: say so, once.
+                if (!live && subsOn && subtitles != 1 && !tracks.isEmpty && toldNoSubs.add("$index:$stream")) {
+                    say("No " + lang.name + " subtitles found for this one.")
                 }
             }
 
@@ -540,7 +547,7 @@ fun PlayerScreen(
             media.setSubtitleConfigurations(
                 listOf(
                     MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitle))
-                        .setMimeType(kind).setLanguage("en").setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT).build(),
+                        .setMimeType(kind).setLanguage(lang.code).setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT).build(),
                 ),
             )
         }
@@ -889,7 +896,7 @@ fun PlayerScreen(
                                 when {
                                     !subsOn -> "Subtitles off"
                                     subtitles == 1 -> "Subtitles on"
-                                    subtitles == 3 -> "No English subtitles"
+                                    subtitles == 3 -> "No " + lang.name + " subtitles"
                                     else -> "No subtitles on this channel"
                                 },
                             )

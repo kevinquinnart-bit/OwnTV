@@ -32,4 +32,15 @@ class CarryOnTest {
         // The same programme set twice is one reminder.
         assertEquals(r.id, Reminder.make("101", "ITV 1", "I'm a Celebrity", start, start + 3_600_000).id)
     }
+
+    @Test fun aSubtitleLanguageIsKnownHoweverASourceWritesIt() {
+        val english = Langs.of("en")
+        for (said in listOf("en", "eng", "English", "en-GB", "ENG")) assertEquals(said, true, Langs.matches(english, said))
+        for (said in listOf("fre", "es", "ger", "", "estonian")) assertEquals(said, false, Langs.matches(english, said))
+        assertEquals(true, Langs.matches(Langs.of("fr"), "fre"))
+        assertEquals(true, Langs.matches(Langs.of("pt"), "pob"))
+        // A code the app doesn't offer falls back to English, and the list goes round.
+        assertEquals("English", Langs.of("xx").name)
+        assertEquals("English", Langs.after(Langs.all.last()).name)
+    }
 }

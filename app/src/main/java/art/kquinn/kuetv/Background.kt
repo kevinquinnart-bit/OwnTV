@@ -103,9 +103,20 @@ object Choices {
         changes++
     }
 
+    /** The language subtitles are wanted in, as its short code. */
+    fun subtitleLang(context: Context): String = prefs(context).getString("subtitleLang", "en").orEmpty()
+    fun subtitleLang(context: Context, code: String) {
+        prefs(context).edit().putString("subtitleLang", code).apply()
+        changes++
+    }
+
+    /** For a film with both: 0 the add-on's stream was picked last, 1 the provider's copy. */
+    fun copyPick(context: Context): Int = prefs(context).getInt("copyPick", 0)
+    fun copyPick(context: Context, pick: Int) = prefs(context).edit().putInt("copyPick", pick).apply()
+
     /** Text size, subtitles and the small TV back to how the app comes. */
     fun resetDisplay(context: Context) {
-        prefs(context).edit().remove("textSize").remove("subtitles").remove("smallTv").apply()
+        prefs(context).edit().remove("textSize").remove("subtitles").remove("subtitleLang").remove("smallTv").apply()
         changes++
     }
 

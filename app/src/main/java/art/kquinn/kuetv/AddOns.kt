@@ -135,10 +135,16 @@ object AddOns {
      * Everything the add-ons can play [name] from, the best to try first. For an episode, give its
      * [season] and [episode]. Blocks while the add-ons are asked; call off the main thread.
      */
-    fun streamsFor(addOns: List<AddOn>, type: String, name: String, season: Int? = null, episode: Int? = null): Search {
+    fun streamsFor(
+        addOns: List<AddOn>, type: String, name: String, season: Int? = null, episode: Int? = null,
+        /** The language subtitles are wanted in. Streams that come with them are tried first. */
+        lang: Lang = Langs.all[0],
+        /** The number add-ons know it by, when that is already known; otherwise it is found from [name]. */
+        knownId: String? = null,
+    ): Search {
         val givers = addOns.filter { it.streams }
         if (givers.isEmpty()) return Search(emptyList())
-        val id = idFor(type, name) ?: return Search(emptyList())
+        val id = knownId ?: idFor(type, name) ?: return Search(emptyList())
         val asked = if (season != null && episode != null) "$id:$season:$episode" else id
         val pool = Executors.newFixedThreadPool((addOns.size).coerceIn(1, 6))
         try {
@@ -149,7 +155,20 @@ object AddOns {
             }
             val rows = answers.flatMap { runCatching { it.get(15, TimeUnit.SECONDS) }.getOrDefault(emptyList()) }.mapNotNull { runCatching { it.asJsonObject }.getOrNull() }
             val spare = subtitleAnswers.asSequence().flatMap { runCatching { it.get(15, TimeUnit.SECONDS) }.getOrDefault(emptyList()).asSequence() }
-                .mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.firstOrNull { english(it.text("lang")) }?.text("url")?.takeIf { it.startsWith("http") }
+                .mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.firstOrNull { Langs.matches(lang, it.text("lang")) }?.text("url")?.takeIf { it.startsWith("http") }
+            val ownSub: (JsonObject) -> String? = { row ->
+                row.list("subtitles").mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.firstOrNull { Langs.matches(lang, it.text("lang")) }?.text("url")?.takeIf { it.startsWith("http") }
+            }
+            // Subtitles first. With a subtitle add-on's file to hand, every stream has them. Without one,
+            // a stream that brings its own is tried before one that only says it has some, and that before the rest.
+            val subScore: (JsonObject) -> Int = { row ->
+                when {
+                    spare != null -> 0
+                    ownSub(row) != null -> 150
+                    has(words(row), "SUBS?", "ESUBS?", "MSUBS?", "SUBTITLES?", "SUBBED") -> 40
+                    else -> 0
+                }
+            }
             // A stream is either a web address to play from, or a torrent, known by its fingerprint.
             val web: (JsonObject) -> Boolean = { it.text("url").startsWith("http://") || it.text("url").startsWith("https://") }
             val address: (JsonObject) -> String = { row ->
@@ -158,9 +177,9 @@ object AddOns {
             }
             val playable = rows.filter { web(it) || it.text("infoHash").isNotBlank() }
             val ranked = playable.withIndex()
-                .sortedWith(compareByDescending<IndexedValue<JsonObject>> { score(words(it.value)) + if (web(it.value)) 0 else torrentScore(words(it.value)) }.thenBy { it.index })
+                .sortedWith(compareByDescending<IndexedValue<JsonObject>> { score(words(it.value)) + subScore(it.value) + if (web(it.value)) 0 else torrentScore(words(it.value)) }.thenBy { it.index })
                 .distinctBy { address(it.value) }.take(MOST).map { (_, row) ->
-                    val own = row.list("subtitles").mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.firstOrNull { english(it.text("lang")) }?.text("url")?.takeIf { it.startsWith("http") }
+                    val own = ownSub(row)
                     val headers = row.inner("behaviorHints")?.inner("proxyHeaders")?.inner("request")?.entrySet()
                         ?.filter { it.value.isJsonPrimitive }?.associate { it.key to it.value.asString }.orEmpty()
                     Stream("Add-on stream", address(row), headers, own ?: spare)
@@ -236,8 +255,6 @@ object AddOns {
         if (size != null && size > 6.0) s -= 150
         return s
     }
-
-    private fun english(lang: String): Boolean = lang.lowercase().let { it == "en" || it == "eng" || it.startsWith("english") || it.startsWith("en-") }
 
     /** Everything an add-on says about a stream, in capitals. Used to judge it, never shown. */
     private fun words(row: JsonObject): String =

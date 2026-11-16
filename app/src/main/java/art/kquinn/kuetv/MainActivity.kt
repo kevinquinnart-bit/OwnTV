@@ -192,6 +192,8 @@ private fun App() {
     var reportOpen by remember { mutableStateOf(false) }
     var categoriesOpen by remember { mutableStateOf(false) }
     var aboutOpen by remember { mutableStateOf(false) }
+    // A film or episode that can play from an add-on or from the provider's own copy, waiting for the user to pick.
+    var choice by remember { mutableStateOf<Playing?>(null) }
     // What the lists show: everything the provider sent, less the categories chosen to be hidden.
     val shownLibrary = remember(library, Choices.changes) {
         library?.without(Choices.hidden(context, "live"), Choices.hidden(context, "film"), Choices.hidden(context, "show"))
@@ -275,6 +277,16 @@ private fun App() {
                     onFromStart = { programme -> playing = Playing(listOf(programme), 0, false) },
                 )
             }
+            choice != null -> {
+                val c = choice!!
+                CopyChoiceScreen(
+                    c.items.getOrNull(c.index)?.name.orEmpty(),
+                    onAddOn = { Choices.copyPick(context, 0); choice = null; playing = c },
+                    // The provider's copy: the add-ons aren't asked at all.
+                    onProvider = { Choices.copyPick(context, 1); choice = null; playing = Playing(c.items.map { it.copy(find = null) }, c.index, false) },
+                    onCancel = { choice = null },
+                )
+            }
             setUpShare == 1 -> SendSetUpScreen(account, favourites, onDone = { setUpShare = 0 })
             setUpShare == 2 -> TakeSetUpScreen(
                 onDone = { setUpShare = 0 },
@@ -320,7 +332,10 @@ private fun App() {
                     browse.resumeKey = key
                     // The small TV shown while browsing carries on with this channel, in its lightest version.
                     if (live) items.getOrNull(index)?.let { LastLive.item = Playable(it.name, it.streams.lastOrNull()?.url ?: it.url) }
-                    playing = Playing(items, index, live)
+                    val item = items.getOrNull(index)
+                    // Both an add-on's stream and the provider's own copy: the user picks. Only one of them: it plays.
+                    if (!live && item?.find != null && item.url.isNotEmpty()) choice = Playing(items, index, false)
+                    else playing = Playing(items, index, live)
                 },
                 onEdit = { editing = true },
                 onReload = { reload++ },
@@ -781,8 +796,9 @@ private fun MainScreen(
     }
     // With add-ons added, a film or episode asks them for streams first. With none, nothing changes.
     val addOns = remember(AddOnStore.changes) { AddOnStore.all(context) }
-    val finder: (String, String, Int?, Int?) -> (suspend () -> Search)? = remember(addOns) {
-        { type, name, season, episode -> streamFinder(addOns, type, name, season, episode) }
+    val subtitleLang = remember(Choices.changes) { Langs.of(Choices.subtitleLang(context)) }
+    val finder: (String, String, Int?, Int?) -> (suspend () -> Search)? = remember(addOns, subtitleLang) {
+        { type, name, season, episode -> streamFinder(addOns, type, name, season, episode, subtitleLang) }
     }
     var section by state::section
     val liveCategory = state.liveCategory
@@ -991,6 +1007,7 @@ private fun MainScreen(
                 FocusRow("Pause and rewind live TV: " + if (shiftOn) "on" else "off", { Choices.timeShift(context, !shiftOn) }, look = Look.OTHER)
                 val subtitlesOn = remember(Choices.changes) { Choices.subtitles(context) }
                 FocusRow("Subtitles: " + if (subtitlesOn) "on" else "off", { Choices.subtitles(context, !subtitlesOn) }, look = Look.OTHER)
+                FocusRow("Subtitle language: " + subtitleLang.name, { Choices.subtitleLang(context, Langs.after(subtitleLang).code) }, look = Look.OTHER)
                 FocusRow("Send this set-up to another device", onSendSetUp, look = Look.OTHER)
                 FocusRow("Copy set-up from another device", onTakeSetUp, look = Look.OTHER)
                 if (!phone) {
@@ -1959,9 +1976,35 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
 // --------------------------------------------------------------------------------------------- add-ons
 
 /** What a film or episode uses to ask the add-ons for streams; null when no add-on gives streams. */
-private fun streamFinder(addOns: List<AddOn>, type: String, name: String, season: Int?, episode: Int?): (suspend () -> Search)? {
+private fun streamFinder(addOns: List<AddOn>, type: String, name: String, season: Int?, episode: Int?, lang: Lang, knownId: String? = null): (suspend () -> Search)? {
     if (addOns.none { it.streams }) return null
-    return { withContext(Dispatchers.IO) { AddOns.streamsFor(addOns, type, name, season, episode) } }
+    return { withContext(Dispatchers.IO) { AddOns.streamsFor(addOns, type, name, season, episode, lang, knownId) } }
+}
+
+/** A film or episode that can play from two places: the user picks which. It opens on the one picked last time. */
+@Composable
+private fun CopyChoiceScreen(name: String, onAddOn: () -> Unit, onProvider: () -> Unit, onCancel: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    BackHandler { onCancel() }
+    val last = remember { Choices.copyPick(context) }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        if (!phone) runCatching { first.requestFocus() }
+    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 40.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(name, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp))
+        Note("Which copy do you want to play?")
+        Spacer(Modifier.height(8.dp))
+        FocusRow("Add-on stream", onAddOn, if (last == 0) Modifier.focusRequester(first) else Modifier, look = if (last == 0) Look.MAIN else Look.OTHER)
+        FocusRow("Your provider's copy", onProvider, if (last == 1) Modifier.focusRequester(first) else Modifier, look = if (last == 1) Look.MAIN else Look.OTHER)
+        FocusRow("Cancel", onCancel, look = Look.OTHER)
+        Note("The add-on stream tries the best one with subtitles first. If none of its streams play, it moves to your provider's copy by itself.")
+    }
 }
 
 /**
