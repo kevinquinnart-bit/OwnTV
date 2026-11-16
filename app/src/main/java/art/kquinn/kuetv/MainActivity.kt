@@ -17,6 +17,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +64,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -311,6 +313,9 @@ private fun FocusRow(
     look: Look = Look.ROW,
     /** A second, smaller line under the first: what is on a channel, say. */
     below: String? = null,
+    textSize: androidx.compose.ui.unit.TextUnit = 21.sp,
+    /** The room above and below the words. The side menu uses less, so all of it fits on the screen. */
+    padV: Dp = 12.dp,
 ) {
     var focused by remember { mutableStateOf(false) }
     val button = if (LocalPhone.current) look else Look.ROW
@@ -332,7 +337,7 @@ private fun FocusRow(
                 focused = now
             }
             .press(onClick, onHold)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = padV),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = if (button == Look.ROW) Arrangement.spacedBy(14.dp) else Arrangement.Center,
     ) {
@@ -341,7 +346,7 @@ private fun FocusRow(
             Text(
                 text,
                 color = if (focused || button == Look.MAIN) Color.Black else Color.White,
-                fontSize = 21.sp,
+                fontSize = textSize,
                 fontWeight = if (focused || chosen || button == Look.MAIN) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -565,6 +570,66 @@ private class BrowseState(saved: Map<String, String> = emptyMap()) {
 
     /** The row or poster that was sent to the player; focus returns to it. */
     var resumeKey by mutableStateOf<String?>(null)
+
+    /** The channel the remote is on in Live TV, for the picture and programme details beside the list. */
+    var liveOn by mutableStateOf<ChannelGroup?>(null)
+}
+
+/** Which of the TV's side columns the remote is in: the menu, the categories, or the list beside them. */
+private enum class Zone { MENU, CATEGORIES, CONTENT }
+
+/**
+ * The TV's two side columns fold to a thin edge when the remote moves right, past them, and open again
+ * when it moves left onto that edge. The menu is open only while the remote is in it. The categories are
+ * open while the remote is in them or in the menu, and fold when it moves right into the list.
+ */
+private class Panels {
+    var zone by mutableStateOf(Zone.MENU)
+    var menuHas by mutableStateOf(false)
+    var catsHas by mutableStateOf(false)
+    var anyHas by mutableStateOf(false)
+
+    /** Set when the remote lands on a folded edge: once the column has opened, the remote goes onto its chosen row. */
+    var menuWanted by mutableStateOf(false)
+    var catsWanted by mutableStateOf(false)
+}
+
+/** The side columns on a TV; null on a phone, where nothing folds. */
+private val LocalPanels = staticCompositionLocalOf<Panels?> { null }
+
+/** A folded side column: a thin edge. Moving onto it with the remote opens the column. */
+@Composable
+private fun PanelEdge(onLanded: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        Modifier.width(18.dp).fillMaxHeight()
+            .background(if (focused) Accent else Panel, RoundedCornerShape(10.dp))
+            .onFocusChanged {
+                if (it.isFocused && !focused) onLanded()
+                focused = it.isFocused
+            }
+            .focusable(),
+    )
+}
+
+/** The KueTV mark and name. */
+@Composable
+private fun KueLogo(markSize: Dp, textSize: androidx.compose.ui.unit.TextUnit, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Drawn by the device itself from the same picture as the app's icon.
+        val context = LocalContext.current
+        val px = with(androidx.compose.ui.platform.LocalDensity.current) { markSize.roundToPx() }.coerceAtLeast(1)
+        val mark = remember(px) {
+            val bitmap = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+            context.getDrawable(R.drawable.kuetv_mark)?.let { d ->
+                d.setBounds(0, 0, px, px)
+                d.draw(android.graphics.Canvas(bitmap))
+            }
+            bitmap.asImageBitmap()
+        }
+        Image(bitmap = mark, contentDescription = null, modifier = Modifier.size(markSize))
+        Text("KueTV", color = Color.White, fontSize = textSize, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
 }
 
 /** Where the TV Guide (or Catch-up) is: the category, the channel opened, and any date-and-time step. */
@@ -627,6 +692,7 @@ private fun MainScreen(
     val scope = rememberCoroutineScope()
     val menuFocus = remember { FocusRequester() }
     val homeFocus = remember { FocusRequester() }
+    val panels = remember { Panels() }
     val resume = remember { FocusRequester() }
     // The section shown before this one; null until the screen has been shown once.
     val before = remember { arrayOfNulls<Section>(1) }
@@ -643,8 +709,33 @@ private fun MainScreen(
         if (first && state.resumeKey != null && runCatching { resume.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
         when {
             section == Section.HOME -> runCatching { homeFocus.requestFocus() }
-            first || previous == Section.HOME -> runCatching { menuFocus.requestFocus() }
+            first || previous == Section.HOME -> {
+                // The menu may be folded: open it, let it be drawn, then put the remote on it.
+                panels.zone = Zone.MENU
+                withFrameNanos { }
+                withFrameNanos { }
+                runCatching { menuFocus.requestFocus() }
+            }
         }
+    }
+    // Which column the remote is in, worked out once each move has settled. While a folded edge
+    // opens, nothing has focus for a moment; that leaves the column as it was.
+    LaunchedEffect(panels.menuHas, panels.catsHas, panels.anyHas) {
+        withFrameNanos { }
+        panels.zone = when {
+            panels.menuHas -> Zone.MENU
+            panels.catsHas -> Zone.CATEGORIES
+            panels.anyHas -> Zone.CONTENT
+            else -> panels.zone
+        }
+    }
+    // Landed on the menu's folded edge: once it has opened, onto the section being shown.
+    LaunchedEffect(panels.menuWanted) {
+        if (!panels.menuWanted) return@LaunchedEffect
+        withFrameNanos { }
+        withFrameNanos { }
+        runCatching { menuFocus.requestFocus() }
+        panels.menuWanted = false
     }
     // Back from any section goes to Home. A page open inside a section (a channel's guide, a series) closes first.
     BackHandler(enabled = section != Section.HOME) {
@@ -677,21 +768,33 @@ private fun MainScreen(
                     }
                 }
                 val playables = remember(shown) { shown.map { livePlayable(it, library.account) } }
-                Column(fill()) {
-                    Heading((if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint())
-                    LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = state.channelList) {
-                        itemsIndexed(shown, key = { _, c -> c.id }) { i, channel ->
-                            val key = "live:" + channel.id
-                            val favKeys = channel.versions.map { Favourites.key(it.channel, login) }
-                            FocusRow(
-                                (if (favKeys.any { it in favs }) "★ " else "") + channel.name,
-                                { onPlay(playables, i, true, key) },
-                                if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
-                                onHold = { favourites.toggleAll(favKeys) },
-                                leading = { Logo(channel.logo) },
-                                below = nowLine(library.account, channel.versions[channel.start].channel.id),
-                            )
+                val list: @Composable (Modifier) -> Unit = { m ->
+                    Column(m) {
+                        Heading((if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint())
+                        LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = state.channelList) {
+                            itemsIndexed(shown, key = { _, c -> c.id }) { i, channel ->
+                                val key = "live:" + channel.id
+                                val favKeys = channel.versions.map { Favourites.key(it.channel, login) }
+                                FocusRow(
+                                    (if (favKeys.any { it in favs }) "★ " else "") + channel.name,
+                                    { onPlay(playables, i, true, key) },
+                                    if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
+                                    onFocus = { state.liveOn = channel },
+                                    onHold = { favourites.toggleAll(favKeys) },
+                                    leading = { Logo(channel.logo) },
+                                    below = nowLine(library.account, channel.versions[channel.start].channel.id),
+                                )
+                            }
                         }
+                    }
+                }
+                if (phone) {
+                    list(fill())
+                } else {
+                    // TV: the list takes the left half; the channel the remote is on plays top right, what is on it below.
+                    Row(fill(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                        list(Modifier.weight(1f).fillMaxHeight())
+                        LivePreview(state.liveOn, library.account, Modifier.weight(1f).fillMaxHeight())
                     }
                 }
             }
@@ -807,23 +910,40 @@ private fun MainScreen(
         Pane(null, null).body()
     } else {
         Box(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxSize().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            // The menu.
-            Column(
-                Modifier.width(190.dp * LocalTextScale.current).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp)
-                    .focusRestorer().focusGroup(),
-            ) {
-                Heading("Menu")
-                Section.entries.forEach { s ->
-                    FocusRow(s.label, { section = s }, if (s == section) Modifier.focusRequester(menuFocus) else Modifier, chosen = s == section)
+        CompositionLocalProvider(LocalPanels provides panels) {
+        Row(
+            Modifier.fillMaxSize().padding(24.dp).onFocusChanged { panels.anyHas = it.hasFocus },
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            // The menu: open while the remote is in it, otherwise folded to an edge.
+            Box(Modifier.fillMaxHeight().onFocusChanged { panels.menuHas = it.hasFocus }) {
+                if (panels.zone == Zone.MENU) {
+                    // Every entry fits on the screen: the entries share the height, so the menu never scrolls.
+                    Column(
+                        Modifier.width(190.dp * LocalTextScale.current).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 14.dp, horizontal = 8.dp)
+                            .focusRestorer().focusGroup(),
+                    ) {
+                        KueLogo(30.dp, 20.sp, Modifier.padding(start = 10.dp, bottom = 6.dp))
+                        Section.entries.forEach { s ->
+                            FocusRow(
+                                s.label, { section = s },
+                                Modifier.weight(1f).then(if (s == section) Modifier.focusRequester(menuFocus) else Modifier),
+                                chosen = s == section, textSize = 18.sp, padV = 2.dp,
+                            )
+                        }
+                    }
+                } else {
+                    PanelEdge { panels.menuWanted = true; panels.zone = Zone.MENU }
                 }
             }
             Pane(this, null).body()
         }
+        }
         // The small TV: the channel last watched carries on in the bottom right corner while browsing.
+        // Live TV has its own, bigger picture beside the list, so it is left off there.
         val small = LastLive.item
         val wanted = remember(Choices.changes) { Choices.smallTv(context) }
-        if (small != null && wanted) MiniTv(small, Modifier.align(Alignment.BottomEnd).padding(24.dp))
+        if (small != null && wanted && section != Section.LIVE) MiniTv(small, Modifier.align(Alignment.BottomEnd).padding(24.dp))
         }
     }
 }
@@ -844,6 +964,24 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
         return
     }
     val chosenFocus = remember { FocusRequester() }
+    val panels = LocalPanels.current
+    // Landed on the folded edge: once the column has opened, onto the category being shown.
+    LaunchedEffect(panels?.catsWanted) {
+        if (panels == null || !panels.catsWanted) return@LaunchedEffect
+        withFrameNanos { }
+        val at = when (chosen) { ALL -> 0; FAVOURITES -> 1; else -> 2 + categories.indexOfFirst { it.id == chosen }.coerceAtLeast(0) }
+        if (list.layoutInfo.visibleItemsInfo.none { it.index == at }) list.scrollToItem(at)
+        withFrameNanos { }
+        withFrameNanos { }
+        runCatching { chosenFocus.requestFocus() }
+        panels.catsWanted = false
+    }
+    if (panels != null && panels.zone == Zone.CONTENT) {
+        Box(Modifier.fillMaxHeight().onFocusChanged { panels.catsHas = it.hasFocus }) {
+            PanelEdge { panels.catsWanted = true; panels.zone = Zone.CATEGORIES }
+        }
+        return
+    }
     val row: @Composable (String, String) -> Unit = { id, name ->
         FocusRow(
             name, { onChoose(id) },
@@ -851,7 +989,10 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
             chosen = chosen == id, onFocus = { onChoose(id) },
         )
     }
-    Column(Modifier.width(270.dp * LocalTextScale.current).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp)) {
+    Column(
+        Modifier.width(270.dp * LocalTextScale.current).fillMaxHeight().onFocusChanged { panels?.catsHas = it.hasFocus }
+            .background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp),
+    ) {
         Heading("Categories")
         LazyColumn(
             Modifier.fillMaxSize()
@@ -2265,7 +2406,7 @@ private fun HomeScreen(
         val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
-                Text("KueTV", color = Accent, fontSize = if (phone) 30.sp else 40.sp, fontWeight = FontWeight.Bold)
+                KueLogo(if (phone) 36.dp else 48.dp, if (phone) 30.sp else 40.sp)
                 Text(clock, color = Soft, fontSize = if (phone) 17.sp else 22.sp)
                 if (!phone && last != null && smallTv) {
                     Spacer(Modifier.height(16.dp))
@@ -2569,4 +2710,81 @@ private fun UpdateNow(latest: Updates.Latest, modifier: Modifier = Modifier) {
     }
     FocusRow(if (busy) "Downloading…" else "Update now to version " + latest.name, go, modifier, look = Look.MAIN)
     said?.let { Note(it) }
+}
+
+// --------------------------------------------------------------------------------------------- live TV picture
+
+/**
+ * Beside the Live TV list on a TV: the channel the remote is on, playing in the top right, and what is
+ * on it underneath. It changes channel once the remote has stayed on a row for a moment, so running down
+ * the list doesn't open a connection for every row passed. It plays the channel's lightest version.
+ * OK on the row opens the channel full screen.
+ */
+@Composable
+private fun LivePreview(on: ChannelGroup?, account: Account?, modifier: Modifier) {
+    var showing by remember { mutableStateOf(on) }
+    LaunchedEffect(on) {
+        if (on == null || on.id == showing?.id) return@LaunchedEffect
+        delay(900)
+        showing = on
+    }
+    val group = showing
+    val item = remember(group?.id) { group?.let { Playable(it.name, it.versions.last().channel.url) } } ?: LastLive.item
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (item != null) {
+            MiniTv(item, Modifier.fillMaxWidth())
+        } else {
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Panel, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                Text("Move onto a channel to watch it here.", color = Soft, fontSize = 18.sp, modifier = Modifier.padding(16.dp))
+            }
+        }
+        if (group != null) ProgrammeDetails(group, account, Modifier.fillMaxWidth().weight(1f))
+    }
+}
+
+/** What is on a channel now (with the whole description, as far as there is room) and what is on next. */
+@Composable
+private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: Modifier) {
+    val id = group.versions[group.start].channel.id
+    val guide by produceState(NowNext.cached(id), id) {
+        if (value != null || account == null) return@produceState
+        value = try {
+            NowNext.get(account, id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+    val at = System.currentTimeMillis()
+    val listing = guide.orEmpty()
+    val onNow = listing.firstOrNull { it.startMs <= at && it.stopMs > at }
+    val next = listing.firstOrNull { it.startMs >= (onNow?.stopMs ?: at) }
+    Column(modifier.background(Panel, RoundedCornerShape(14.dp)).padding(horizontal = 16.dp, vertical = 12.dp)) {
+        when {
+            account == null -> Text("Programme details need a login: server address, username and password.", color = Soft, fontSize = 17.sp)
+            guide == null -> Text("Finding what is on…", color = Soft, fontSize = 17.sp)
+            onNow == null && next == null -> Text("No programme details for this channel.", color = Soft, fontSize = 17.sp)
+        }
+        if (onNow != null) {
+            Text(
+                "Now · " + clock.format(java.util.Date(onNow.startMs)) + " to " + clock.format(java.util.Date(onNow.stopMs)),
+                color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+            )
+            Text(onNow.title.ifBlank { "No title" }, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (onNow.description.isNotBlank()) {
+                Text(
+                    onNow.description, color = Soft, fontSize = 16.sp, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).padding(top = 4.dp),
+                )
+            }
+        }
+        if (next != null) {
+            Text(
+                "Next · " + clock.format(java.util.Date(next.startMs)) + " · " + next.title.ifBlank { "No title" },
+                color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
 }
