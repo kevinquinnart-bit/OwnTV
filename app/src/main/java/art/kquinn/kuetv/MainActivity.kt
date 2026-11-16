@@ -42,6 +42,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -77,6 +79,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -185,7 +188,13 @@ private fun App() {
 
 // --------------------------------------------------------------------------------------------- pieces
 
-/** One row that takes focus and OK: yellow while focused, a pale bar while it is the chosen one. */
+/** How a row looks on a phone, where nothing is focused: a plain row, the main button, or another button. */
+private enum class Look { ROW, MAIN, OTHER }
+
+/**
+ * One row that takes focus and OK: yellow while focused, a pale bar while it is the chosen one.
+ * On a phone a row that is a button is drawn as one, so it reads as something to tap.
+ */
 @Composable
 private fun FocusRow(
     text: String,
@@ -195,13 +204,22 @@ private fun FocusRow(
     onFocus: () -> Unit = {},
     onHold: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
+    look: Look = Look.ROW,
 ) {
     var focused by remember { mutableStateOf(false) }
+    val button = if (LocalPhone.current) look else Look.ROW
     Row(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(if (focused) Accent else if (chosen) Color(0x33FFFFFF) else Color.Transparent)
+            .background(
+                when {
+                    focused || button == Look.MAIN -> Accent
+                    chosen -> Color(0x33FFFFFF)
+                    button == Look.OTHER -> Panel
+                    else -> Color.Transparent
+                },
+            )
             .onFocusChanged {
                 val now = it.isFocused
                 if (now && !focused) onFocus()
@@ -210,14 +228,14 @@ private fun FocusRow(
             .press(onClick, onHold)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = if (button == Look.ROW) Arrangement.spacedBy(14.dp) else Arrangement.Center,
     ) {
         leading?.invoke()
         Text(
             text,
-            color = if (focused) Color.Black else Color.White,
+            color = if (focused || button == Look.MAIN) Color.Black else Color.White,
             fontSize = 21.sp,
-            fontWeight = if (focused || chosen) FontWeight.Bold else FontWeight.Normal,
+            fontWeight = if (focused || chosen || button == Look.MAIN) FontWeight.Bold else FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -302,8 +320,9 @@ private fun ProblemScreen(message: String, onRetry: () -> Unit, onEdit: () -> Un
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     Column(Modifier.fillMaxSize().padding(horizontal = if (LocalPhone.current) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
         Text(message, color = Color.White, fontSize = 26.sp, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
-        FocusRow("Try again", onRetry, Modifier.focusRequester(first))
-        FocusRow("Change provider details", onEdit)
+        FocusRow("Try again", onRetry, Modifier.focusRequester(first), look = Look.MAIN)
+        Spacer(Modifier.height(8.dp))
+        FocusRow("Change provider details", onEdit, look = Look.OTHER)
     }
 }
 
@@ -346,13 +365,14 @@ private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Un
         warning?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(top = if (phone) 10.dp else 26.dp)) }
     }
     val form: @Composable () -> Unit = {
+        // The keyboard's own button moves to the next box, and on the last one it saves.
         Field("Server address", server) { server = it }
         Field("Username", user) { user = it }
         Field("Password", pass) { pass = it }
-        Field("Or one playlist link", playlist) { playlist = it }
+        Field("Or one playlist link", playlist, onDone = { submit(server, user, pass, playlist) }) { playlist = it }
         Spacer(Modifier.height(6.dp))
-        FocusRow("Save", { submit(server, user, pass, playlist) })
-        if (canCancel) FocusRow("Cancel", onCancel)
+        FocusRow("Save", { submit(server, user, pass, playlist) }, look = Look.MAIN)
+        if (canCancel) FocusRow("Cancel", onCancel, look = Look.OTHER)
     }
     if (phone) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -368,12 +388,14 @@ private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Un
 }
 
 @Composable
-private fun Field(label: String, value: String, onChange: (String) -> Unit) {
+private fun Field(label: String, value: String, onDone: (() -> Unit)? = null, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label, fontSize = 16.sp) },
         singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Done else ImeAction.Next),
+        keyboardActions = if (onDone != null) KeyboardActions(onDone = { onDone() }) else KeyboardActions.Default,
         textStyle = MaterialTheme.typography.titleLarge,
         modifier = Modifier.fillMaxWidth(),
     )
@@ -546,18 +568,22 @@ private fun MainScreen(
             }
             Section.RECORDINGS -> RecordingsPane(state, resume, onPlay)
             Section.APPS -> TvAppsPane()
-            Section.SETTINGS -> Column(if (phone) fill() else Modifier.width(520.dp).fillMaxHeight()) {
+            Section.SETTINGS -> Column(
+                if (phone) fill() else Modifier.width(520.dp).fillMaxHeight(),
+                verticalArrangement = if (phone) Arrangement.spacedBy(8.dp) else Arrangement.Top,
+            ) {
                 Heading("Settings")
-                FocusRow("Change provider details", onEdit)
-                FocusRow("Reload channels and films", onReload)
+                FocusRow("Change provider details", onEdit, look = Look.OTHER)
+                FocusRow("Reload channels and films", onReload, look = Look.OTHER)
                 val drive = remember(Recordings.changes) { Recordings.drive(context) }
                 when {
                     !drive.isSetUp -> Note("Google Drive isn't set up in this copy of the app.")
                     drive.signedIn -> FocusRow(
                         "Sign out of Google Drive" + if (drive.email.isBlank()) "" else " (" + drive.email + ")",
                         { drive.signOut(); Recordings.changed() },
+                        look = Look.OTHER,
                     )
-                    else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn)
+                    else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn, look = Look.OTHER)
                 }
                 Text(
                     "KueTV 2 · version " + BuildConfig.VERSION_NAME,
@@ -1344,12 +1370,13 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
                 line("Signed in" + if (drive.email.isBlank()) "." else " as " + drive.email + ".")
                 line("Recordings will be copied to the folder \"" + Drive.FOLDER + "\".")
                 Spacer(Modifier.height(22.dp))
-                FocusRow("Done", onDone, Modifier.focusRequester(first))
+                FocusRow("Done", onDone, Modifier.focusRequester(first), look = Look.MAIN)
             }
             problem != null -> {
                 Text(problem.orEmpty(), color = Color.White, fontSize = 26.sp, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
-                FocusRow("Try again", { attempt++ }, Modifier.focusRequester(first))
-                FocusRow("Back", onDone)
+                FocusRow("Try again", { attempt++ }, Modifier.focusRequester(first), look = Look.MAIN)
+                Spacer(Modifier.height(8.dp))
+                FocusRow("Back", onDone, look = Look.OTHER)
             }
             shown == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
             else -> {
@@ -1364,9 +1391,10 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
                         runCatching {
                             context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(shown.url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                         }
-                    })
+                    }, look = Look.MAIN)
+                    Spacer(Modifier.height(8.dp))
                 }
-                FocusRow("Cancel", onDone, Modifier.focusRequester(first))
+                FocusRow("Cancel", onDone, Modifier.focusRequester(first), look = Look.OTHER)
             }
         }
     }
