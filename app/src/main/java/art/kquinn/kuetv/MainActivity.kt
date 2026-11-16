@@ -84,6 +84,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -872,6 +873,20 @@ private fun Pane.ChannelGuide(
         withFrameNanos { }
         runCatching { resume.requestFocus() }
     }
+    /** Opens a channel's own page: its programmes one under another. */
+    val openPage: (ChannelGroup) -> Unit = { channel ->
+        state.resumeKey = "pick:" + channel.id
+        pick.pickDay = null
+        scope.launch { pick.programmeList.scrollToItem(0) }
+        // The version asked about: for catch-up the best one the provider keeps, else the one that plays first.
+        val version = if (catchUp) channel.versions.first { it.channel.catchupDays > 0 } else channel.versions[channel.start]
+        pick.open = version.channel.copy(name = channel.name)
+    }
+    if (!catchUp && !LocalPhone.current) {
+        // On a TV the guide is a grid: channels down the side, the day running across.
+        GuideGrid(library, account, shown, pick, state, favs, resume, onPlay, openPage)
+        return
+    }
     Column(fill()) {
         Heading(if (catchUp) "Pick a channel to catch up on" else "Pick a channel to see its guide")
         LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = pick.channelList) {
@@ -879,14 +894,7 @@ private fun Pane.ChannelGuide(
                 val key = "pick:" + channel.id
                 FocusRow(
                     (if (channel.versions.any { Favourites.key(it.channel, true) in favs }) "★ " else "") + channel.name,
-                    {
-                        state.resumeKey = key
-                        pick.pickDay = null
-                        scope.launch { pick.programmeList.scrollToItem(0) }
-                        // The version asked about: for catch-up the best one the provider keeps, else the one that plays first.
-                        val version = if (catchUp) channel.versions.first { it.channel.catchupDays > 0 } else channel.versions[channel.start]
-                        pick.open = version.channel.copy(name = channel.name)
-                    },
+                    { openPage(channel) },
                     if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                     leading = { Logo(channel.logo) },
                     below = if (catchUp) null else nowLine(account, channel.versions[channel.start].channel.id),
@@ -1798,4 +1806,167 @@ private fun nowLine(account: Account?, channelId: String): String? {
         }
     }
     return line
+}
+
+// --------------------------------------------------------------------------------------------- the guide as a grid
+
+private const val GRID_DP_PER_MIN = 6
+private const val GRID_EARLIER_MIN = 120
+private const val GRID_SPAN_MIN = 26 * 60
+
+/**
+ * The TV Guide on a TV: channels down the left, the day running across, from two hours ago to a day
+ * ahead. Every row moves sideways together, so a column is one moment on every channel. OK on what is
+ * on now watches it; on a later programme sets it to record (and again takes that off); on an earlier
+ * one plays it from catch-up, where the provider keeps it. OK on a channel's name opens its own page.
+ * The programme the remote is on is described underneath.
+ */
+@Composable
+private fun Pane.GuideGrid(
+    library: Library,
+    account: Account,
+    shown: List<ChannelGroup>,
+    pick: ChannelPick,
+    state: BrowseState,
+    favs: Set<String>,
+    resume: FocusRequester,
+    onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+    onOpen: (ChannelGroup) -> Unit,
+) {
+    val context = LocalContext.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val scale = LocalTextScale.current
+    val opened = remember { System.currentTimeMillis() }
+    val start = remember { opened - opened % (30 * 60_000L) - GRID_EARLIER_MIN * 60_000L }
+    val end = start + GRID_SPAN_MIN * 60_000L
+    val total = (GRID_SPAN_MIN * GRID_DP_PER_MIN).dp
+    val across: (Long) -> Dp = { ms -> (ms / 60_000f * GRID_DP_PER_MIN).dp }
+    val strip = rememberScrollState()
+    LaunchedEffect(Unit) {
+        // Open on now, with a little of what came before showing.
+        strip.scrollTo(with(density) { across(opened - start - 20 * 60_000L).roundToPx() })
+    }
+    val timed = remember(TimedStore.changes) { TimedStore.all(context) }
+    val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+    val time: (Long) -> String = { clock.format(java.util.Date(it)) }
+    var about by remember { mutableStateOf<Pair<String, Programme>?>(null) }
+    val nameWidth = 230.dp * scale
+    val tell: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
+
+    Column(fill()) {
+        Heading("OK: watch what is on now · record a later one · catch up on an earlier one")
+        Row {
+            Spacer(Modifier.width(nameWidth))
+            Box(Modifier.weight(1f).horizontalScroll(strip, enabled = false)) {
+                Row(Modifier.width(total)) {
+                    for (i in 0 until GRID_SPAN_MIN / 30) {
+                        Text(time(start + i * 30 * 60_000L), color = Soft, fontSize = 15.sp, maxLines = 1, modifier = Modifier.width((30 * GRID_DP_PER_MIN).dp).padding(start = 8.dp))
+                    }
+                }
+            }
+        }
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = pick.channelList) {
+            itemsIndexed(shown, key = { _, c -> c.id }) { _, channel ->
+                val first = channel.versions[channel.start].channel
+                // null while it is being asked for. A row asks only after staying on screen for half a second.
+                val guide by produceState(NowNext.cached(first.id), first.id) {
+                    if (value != null) return@produceState
+                    delay(500)
+                    value = try {
+                        NowNext.get(account, first.id)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                }
+                Row(Modifier.fillMaxWidth().height(62.dp * scale)) {
+                    val nameKey = "pick:" + channel.id
+                    GridCell(
+                        (if (channel.versions.any { Favourites.key(it.channel, true) in favs }) "★ " else "") + channel.name, "",
+                        nameWidth, false, { onOpen(channel) }, { about = null },
+                        if (nameKey == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                    )
+                    Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(strip)) {
+                        Row(Modifier.width(total).fillMaxHeight()) {
+                            val listing = guide?.filter { it.stopMs > start && it.startMs < end }
+                            if (listing == null || listing.isEmpty()) {
+                                Text(
+                                    if (listing == null) "…" else "No guide for this channel", color = Soft, fontSize = 16.sp,
+                                    modifier = Modifier.padding(start = across(opened - start - 15 * 60_000L), top = 16.dp),
+                                )
+                            } else {
+                                var at = start
+                                for (programme in listing) {
+                                    val from = maxOf(programme.startMs, at)
+                                    val to = minOf(programme.stopMs, end)
+                                    if (to <= from) continue
+                                    if (from > at) Spacer(Modifier.width(across(from - at)))
+                                    at = to
+                                    val key = "cell:" + channel.id + ":" + programme.startMs
+                                    val plan = Timed.make(channel.name, programme.title.ifBlank { "Programme" }, first.url, programme.startMs, programme.stopMs)
+                                    val set = timed.any { it.id == plan.id }
+                                    GridCell(
+                                        (if (set) "● " else "") + programme.title.ifBlank { "No title" }, time(programme.startMs),
+                                        across(to - from), programme.startMs <= opened && programme.stopMs > opened,
+                                        {
+                                            val now = System.currentTimeMillis()
+                                            val kept = channel.versions.firstOrNull { it.channel.catchupDays > 0 }?.channel
+                                            when {
+                                                programme.startMs <= now && programme.stopMs > now -> onPlay(listOf(livePlayable(channel, account)), 0, true, key)
+                                                programme.startMs > now -> {
+                                                    if (set) TimedStore.remove(context, plan) else TimedStore.add(context, plan)
+                                                    tell(if (set) "No longer set to record: " + plan.title else "Set to record: " + plan.title + ", " + time(programme.startMs))
+                                                }
+                                                kept == null || programme.startMs < now - kept.catchupDays * DAY_MS -> tell("Your provider keeps no catch-up for this.")
+                                                else -> onPlay(
+                                                    listOf(Playable(channel.name + " · " + programme.title, Provider.catchupUrl(account, kept.id, programme, library.serverAheadSec))), 0, false, key,
+                                                )
+                                            }
+                                        },
+                                        { about = channel.name to programme },
+                                        if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // What the remote is on, in full. Kept clear of the small TV in the corner.
+        Column(Modifier.fillMaxWidth().height(104.dp * scale).padding(start = 16.dp, top = 8.dp, end = 410.dp)) {
+            about?.let { (channel, programme) ->
+                Text(
+                    channel + " · " + time(programme.startMs) + " to " + time(programme.stopMs) + " · " + programme.title.ifBlank { "No title" },
+                    color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Text(programme.description, color = Soft, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/** One box in the guide's grid: a channel's name, or a programme as wide as it is long. */
+@Composable
+private fun GridCell(title: String, sub: String, width: Dp, onNow: Boolean, onClick: () -> Unit, onFocus: () -> Unit, modifier: Modifier = Modifier) {
+    var focused by remember { mutableStateOf(false) }
+    Column(
+        modifier
+            .width(width)
+            .fillMaxHeight()
+            .padding(1.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (focused) Accent else if (onNow) Color(0xFF263A63) else Panel)
+            .onFocusChanged {
+                if (it.isFocused && !focused) onFocus()
+                focused = it.isFocused
+            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(title, color = if (focused) Color.Black else Color.White, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (sub.isNotEmpty()) Text(sub, color = if (focused) Color.Black else Soft, fontSize = 13.sp, maxLines = 1)
+    }
 }
