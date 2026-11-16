@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -131,6 +132,9 @@ private fun App() {
     // comes back to the same list, at the same place, on the row or poster that was playing.
     val browse = remember(library) { library?.let { BrowseState(startOnFilms = it.channels.isEmpty()) } }
     val favourites = remember { Favourites(context.applicationContext) }
+    var driveSignIn by remember { mutableStateOf(false) }
+    // Each time KueTV comes to the front: carry on copying any recordings that are waiting for Google Drive.
+    LaunchedEffect(Resumes.count) { Recordings.wake(context) }
 
     LaunchedEffect(account, reload) {
         if (!account.isSet) return@LaunchedEffect
@@ -163,6 +167,7 @@ private fun App() {
                     if (next == account) reload++ else account = next
                 },
             )
+            driveSignIn -> DriveSignInScreen(onDone = { driveSignIn = false })
             problem != null -> ProblemScreen(problem.orEmpty(), onRetry = { reload++ }, onEdit = { editing = true })
             lib == null || browse == null -> LoadingScreen()
             else -> MainScreen(
@@ -172,6 +177,7 @@ private fun App() {
                 onPlay = { items, index, live, key -> browse.resumeKey = key; playing = Playing(items, index, live) },
                 onEdit = { editing = true },
                 onReload = { reload++ },
+                onDriveSignIn = { driveSignIn = true },
             )
         }
     }
@@ -375,7 +381,7 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
 
 // --------------------------------------------------------------------------------------------- main
 
-private enum class Section(val label: String) { SEARCH("Search"), LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SERIES("Series"), APPS("TV apps"), SETTINGS("Settings") }
+private enum class Section(val label: String) { SEARCH("Search"), LIVE("Live TV"), GUIDE("TV Guide"), CATCHUP("Catch-up"), FILMS("Films"), SERIES("Series"), RECORDINGS("Recordings"), APPS("TV apps"), SETTINGS("Settings") }
 
 private const val ALL = "\u0000all"
 private const val FAVOURITES = "\u0000favourites"
@@ -434,7 +440,9 @@ private fun MainScreen(
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
     onEdit: () -> Unit,
     onReload: () -> Unit,
+    onDriveSignIn: () -> Unit,
 ) {
+    val context = LocalContext.current
     var section by state::section
     val liveCategory = state.liveCategory
     val filmCategory = state.filmCategory
@@ -536,11 +544,21 @@ private fun MainScreen(
                 state.openShow = show
                 section = Section.SERIES
             }
+            Section.RECORDINGS -> RecordingsPane(state, resume, onPlay)
             Section.APPS -> TvAppsPane()
             Section.SETTINGS -> Column(if (phone) fill() else Modifier.width(520.dp).fillMaxHeight()) {
                 Heading("Settings")
                 FocusRow("Change provider details", onEdit)
                 FocusRow("Reload channels and films", onReload)
+                val drive = remember(Recordings.changes) { Recordings.drive(context) }
+                when {
+                    !drive.isSetUp -> Note("Google Drive isn't set up in this copy of the app.")
+                    drive.signedIn -> FocusRow(
+                        "Sign out of Google Drive" + if (drive.email.isBlank()) "" else " (" + drive.email + ")",
+                        { drive.signOut(); Recordings.changed() },
+                    )
+                    else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn)
+                }
                 Text(
                     "KueTV 2 · version " + BuildConfig.VERSION_NAME,
                     color = Soft, fontSize = 18.sp, modifier = Modifier.padding(start = 16.dp, top = 22.dp),
@@ -1173,6 +1191,183 @@ private fun TvAppRow(title: String, line: String, icon: android.graphics.Bitmap?
         Column {
             Text(title, color = if (focused) Color.Black else Color.White, fontSize = 22.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(line, color = if (focused) Color.Black else Soft, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------- recordings
+
+private fun sizeText(bytes: Long): String =
+    if (bytes >= 1024L * 1024 * 1024) String.format(java.util.Locale.US, "%.1f GB", bytes / (1024.0 * 1024 * 1024))
+    else (bytes / (1024 * 1024)).coerceAtLeast(1).toString() + " MB"
+
+/**
+ * Recordings: the ones still on this TV or phone first, then the ones in Google Drive. OK plays one.
+ * Each row says where the recording is and, while it is being copied to Drive, how far it has got.
+ */
+@Composable
+private fun Pane.RecordingsPane(
+    state: BrowseState,
+    resume: FocusRequester,
+    onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val scope = rememberCoroutineScope()
+    val changes = Recordings.changes
+    val drive = remember(changes) { Recordings.drive(context) }
+    val canCopy = drive.isSetUp && drive.signedIn
+    val here = remember(changes, Resumes.count) { Recordings.here(context) }
+    // null while loading; a failure carries the sentence to show.
+    val inDrive by produceState<Result<List<Drive.Saved>>?>(null, changes, Resumes.count) {
+        value = if (!canCopy) Result.success(emptyList()) else withContext(Dispatchers.IO) {
+            try {
+                Result.success(drive.list())
+            } catch (e: DriveProblem) {
+                Result.failure(e)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Result.failure(DriveProblem("Couldn't list the recordings in Google Drive."))
+            }
+        }
+    }
+    val copying = Recordings.copying
+    val saved = inDrive?.getOrNull().orEmpty()
+    val title: (String) -> String = { it.removeSuffix(".ts") }
+
+    Column(fill()) {
+        Heading("Recordings")
+        when {
+            !drive.isSetUp -> Note("Google Drive isn't set up in this copy of the app. Recordings stay here.")
+            !drive.signedIn -> Note("Google Drive isn't signed in, so recordings stay here. Sign in under Settings.")
+        }
+        Recordings.problem?.let { Note(it) }
+        inDrive?.exceptionOrNull()?.let { Note(it.message ?: "Couldn't list the recordings in Google Drive.") }
+        if (here.isEmpty() && saved.isEmpty() && inDrive != null) {
+            Note(if (phone) "No recordings yet. While watching a live channel, tap the picture, then Record." else "No recordings yet. While watching a live channel, press ≡ on the remote to record it.")
+        }
+        LazyColumn(Modifier.fillMaxSize().focusRestorer()) {
+            itemsIndexed(here, key = { _, f -> "here:" + f.name }) { _, file ->
+                val key = "rec:" + file.name
+                val where = when {
+                    file == Recordings.recordingNow -> "Recording now"
+                    copying?.first == file.name -> "Copying to Google Drive · " + (copying?.second ?: 0) + "%"
+                    canCopy -> "Waiting to copy to Google Drive"
+                    else -> if (phone) "On this phone" else "On this TV"
+                }
+                ProgrammeRow(
+                    whenText = where + " · " + sizeText(file.length()),
+                    title = title(file.name),
+                    description = "",
+                    onClick = { onPlay(listOf(Playable(title(file.name), android.net.Uri.fromFile(file).toString())), 0, false, key) },
+                    modifier = if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                )
+            }
+            itemsIndexed(saved, key = { _, s -> "drive:" + s.id }) { _, recording ->
+                val key = "rec:" + recording.id
+                ProgrammeRow(
+                    whenText = "In Google Drive · " + sizeText(recording.size),
+                    title = title(recording.name),
+                    description = "",
+                    onClick = {
+                        scope.launch {
+                            val pass = withContext(Dispatchers.IO) { runCatching { drive.token() } }
+                            val token = pass.getOrNull()
+                            if (token != null) {
+                                onPlay(listOf(Playable(title(recording.name), drive.playUrl(recording.id), headers = mapOf("Authorization" to "Bearer $token"))), 0, false, key)
+                            } else {
+                                val why = (pass.exceptionOrNull() as? DriveProblem)?.message ?: "Couldn't open Google Drive."
+                                android.widget.Toast.makeText(context, why, android.widget.Toast.LENGTH_LONG).show()
+                                Recordings.changed()
+                            }
+                        }
+                    },
+                    modifier = if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Signing in to Google Drive. The screen shows a short code; the user opens google.com/device on a
+ * phone or computer, types it, and picks the Google account the recordings should go to.
+ */
+@Composable
+private fun DriveSignInScreen(onDone: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val drive = remember { Recordings.drive(context) }
+    var attempt by remember { mutableIntStateOf(0) }
+    var code by remember { mutableStateOf<Drive.Code?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var done by remember { mutableStateOf(false) }
+    BackHandler { onDone() }
+
+    LaunchedEffect(attempt) {
+        code = null
+        problem = null
+        try {
+            val asked = withContext(Dispatchers.IO) { drive.beginSignIn() }
+            code = asked
+            while (true) {
+                delay((asked.intervalSec + 1) * 1000L)
+                if (System.currentTimeMillis() > asked.expiresAtMs) throw DriveProblem("That code ran out of time. Start again.")
+                if (withContext(Dispatchers.IO) { drive.checkSignIn(asked) }) break
+            }
+            done = true
+            Recordings.changed()
+            Recordings.wake(context)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: DriveProblem) {
+            problem = e.message
+        } catch (e: Exception) {
+            problem = "Something went wrong signing in. Try again."
+        }
+    }
+
+    val first = remember { FocusRequester() }
+    val shown = code
+    LaunchedEffect(done, problem, shown != null) {
+        withFrameNanos { }
+        runCatching { first.requestFocus() }
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
+        val line: @Composable (String) -> Unit = { Text(it, color = Soft, fontSize = 22.sp, modifier = Modifier.padding(start = 16.dp)) }
+        val big: @Composable (String) -> Unit = {
+            Text(it, color = Accent, fontSize = 38.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 14.dp))
+        }
+        Text("Google Drive", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 22.dp))
+        when {
+            done -> {
+                line("Signed in" + if (drive.email.isBlank()) "." else " as " + drive.email + ".")
+                line("Recordings will be copied to the folder \"" + Drive.FOLDER + "\".")
+                Spacer(Modifier.height(22.dp))
+                FocusRow("Done", onDone, Modifier.focusRequester(first))
+            }
+            problem != null -> {
+                Text(problem.orEmpty(), color = Color.White, fontSize = 26.sp, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
+                FocusRow("Try again", { attempt++ }, Modifier.focusRequester(first))
+                FocusRow("Back", onDone)
+            }
+            shown == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
+            else -> {
+                line(if (phone) "Open this page:" else "On your phone or computer, open")
+                big(shown.url.removePrefix("https://").removePrefix("www."))
+                line("and type this code:")
+                big(shown.userCode)
+                line("Then choose the Google account your recordings should go to. This screen moves on by itself.")
+                Spacer(Modifier.height(22.dp))
+                if (phone) {
+                    FocusRow("Open that page", {
+                        runCatching {
+                            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(shown.url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    })
+                }
+                FocusRow("Cancel", onDone, Modifier.focusRequester(first))
+            }
         }
     }
 }

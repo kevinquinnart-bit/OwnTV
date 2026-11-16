@@ -17,6 +17,11 @@ android {
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
+        // Kevin's own Google keys for the Drive sign-in, handed to the build; a build without them has no Drive.
+        val driveId = (System.getenv("KUETV_DRIVE_CLIENT_ID") ?: "").filter { it.isLetterOrDigit() || it in "-_." }
+        val driveSecret = (System.getenv("KUETV_DRIVE_CLIENT_SECRET") ?: "").filter { it.isLetterOrDigit() || it in "-_." }
+        buildConfigField("String", "DRIVE_CLIENT_ID", "\"$driveId\"")
+        buildConfigField("String", "DRIVE_CLIENT_SECRET", "\"$driveSecret\"")
     }
 
     signingConfigs {

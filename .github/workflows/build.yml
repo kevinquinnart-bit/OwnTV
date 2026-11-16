@@ -19,6 +19,8 @@ jobs:
     env:
       VERSION_NAME: 0.1.${{ github.run_number }}
       VERSION_CODE: ${{ github.run_number }}
+      KUETV_DRIVE_CLIENT_ID: ${{ secrets.KUETV_DRIVE_CLIENT_ID }}
+      KUETV_DRIVE_CLIENT_SECRET: ${{ secrets.KUETV_DRIVE_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v7
 
@@ -44,6 +46,7 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/KueTV2.apk
           printf 'KueTV 2, version %s\n' "$VERSION_NAME" > dist/NOTES.md
+          if [ -n "$KUETV_DRIVE_CLIENT_ID" ] && [ -n "$KUETV_DRIVE_CLIENT_SECRET" ]; then echo "Google Drive keys: in this build"; else echo "Google Drive keys: MISSING from this build"; fi
 
       - name: Publish
         uses: softprops/action-gh-release@v3

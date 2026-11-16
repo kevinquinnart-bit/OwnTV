@@ -3,6 +3,7 @@ package art.kquinn.kuetv
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -40,6 +41,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -55,7 +59,38 @@ data class Stream(val label: String, val url: String)
  * One thing the player can show: a channel or a film. A channel the provider lists in several
  * versions carries them in [streams], best picture first, and starts on [startStream].
  */
-data class Playable(val name: String, val url: String, val streams: List<Stream> = emptyList(), val startStream: Int = 0)
+data class Playable(
+    val name: String,
+    val url: String,
+    val streams: List<Stream> = emptyList(),
+    val startStream: Int = 0,
+    /** Sent with every request for it; a recording in Google Drive needs its pass. */
+    val headers: Map<String, String> = emptyMap(),
+)
+
+/** Recording needs this much room to start. */
+private const val ROOM_TO_RECORD = 500L * 1024 * 1024
+
+/** Sits between the player and the internet and shows [recorder] everything the player is sent. */
+@OptIn(UnstableApi::class)
+private class Tap(private val upstream: DataSource, private val recorder: Recorder) : DataSource {
+    override fun addTransferListener(transferListener: TransferListener) = upstream.addTransferListener(transferListener)
+
+    override fun open(dataSpec: DataSpec): Long {
+        recorder.newConnection()
+        return upstream.open(dataSpec)
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        val count = upstream.read(buffer, offset, length)
+        if (count > 0) recorder.take(buffer, offset, count)
+        return count
+    }
+
+    override fun getUri(): android.net.Uri? = upstream.uri
+    override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
+    override fun close() = upstream.close()
+}
 
 private const val MAX_TRIES = 6
 
@@ -99,6 +134,10 @@ private object Settled {
  * [LONG_STOP_MS], or stops [STOPS_TO_MOVE] times in [STOPS_WINDOW_MS], it moves down one version and
  * says so. If a version won't play at all, the next is tried. It never moves back up by itself, because
  * each move interrupts the picture. ◀ is a better version, ▶ a lighter one; on a phone, swipe sideways.
+ *
+ * Live: the ≡ (menu) button starts recording the channel and ends it; on a phone, a button in the name
+ * box does. Changing channel or closing the player also ends it. The recording is a copy of what the
+ * player is being sent, so it uses no second connection to the provider.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -117,18 +156,38 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
     var tries by remember { mutableIntStateOf(0) }
     var retryTick by remember { mutableIntStateOf(0) }
 
-    val player = remember {
-        val http = DefaultHttpDataSource.Factory()
+    var recording by remember { mutableStateOf(false) }
+    val main = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    /** Says [text] on screen for a few seconds, with the channel's name. */
+    val say: (String) -> Unit = { text -> moved = text; showName += 1 }
+    /** Ends the recording, if there is one. The file stays in Recordings and goes to Drive from there. */
+    val recorderHolder = remember { arrayOfNulls<Recorder>(1) }
+    val finishRecording: () -> Boolean = {
+        val was = recording
+        recorderHolder[0]?.stop()
+        Recordings.recordingNow = null
+        recording = false
+        if (was) Recordings.changed()
+        was
+    }
+    val recorder = remember {
+        // A problem writing the file arrives from the player's own thread; the screen is told on the main one.
+        Recorder(onProblem = { why -> main.post { finishRecording(); say(why) } }).also { recorderHolder[0] = it }
+    }
+    val http = remember {
+        DefaultHttpDataSource.Factory()
             .setUserAgent(Provider.USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(20_000)
+    }
+    val player = remember {
         val load = DefaultLoadControl.Builder()
             // Holds more picture in hand than the default before and during play, to ride out short stalls.
             .setBufferDurationsMs(20_000, 60_000, 2_500, 6_000)
             .build()
         ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http)))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(DataSource.Factory { Tap(DefaultDataSource.Factory(context, http).createDataSource(), recorder) }))
             .setLoadControl(load)
             .build().apply {
                 trackSelectionParameters = trackSelectionParameters.buildUpon()
@@ -142,11 +201,32 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
 
     /** Another channel, film or episode: start it on the version it should start on. */
     val go: (Int) -> Unit = { next ->
+        val wasRecording = finishRecording()
         index = next
         stream = items.getOrNull(next)?.let { Settled.startFor(it) } ?: 0
         tries = 0
         note = null
-        moved = null
+        moved = if (wasRecording) "Recording saved." else null
+    }
+    val toggleRecording: () -> Unit = {
+        val item = items.getOrNull(index) ?: Playable("", "")
+        val url = item.streams.getOrNull(stream)?.url ?: item.url
+        when {
+            url.isEmpty() -> Unit
+            recording -> { finishRecording(); say("Recording saved.") }
+            // Only a stream that arrives as one unbroken run can be copied as it plays.
+            url.substringBefore('?').endsWith(".m3u8", ignoreCase = true) -> say("This channel can't be recorded.")
+            Recordings.folder(context).usableSpace < ROOM_TO_RECORD -> say("Not enough storage here to record.")
+            else -> try {
+                val file = Recordings.newFile(context, item.name)
+                recorder.start(file)
+                Recordings.recordingNow = file
+                recording = true
+                say(if (phone) "Recording. Tap the picture, then Stop, to finish." else "Recording. Press ≡ again to finish.")
+            } catch (e: java.io.IOException) {
+                say("Couldn't start recording.")
+            }
+        }
     }
     /** Another version of the same channel. [why] is said on screen; null when the user chose it. */
     val change: (Int, String?) -> Unit = { next, why ->
@@ -197,9 +277,14 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             }
         }
         player.addListener(listener)
+        // Copying recordings to Google Drive waits while anything is playing.
+        Recordings.playing = true
         onDispose {
             player.removeListener(listener)
             player.release()
+            finishRecording()
+            Recordings.playing = false
+            Recordings.wake(context)
         }
     }
 
@@ -208,6 +293,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         val item = items.getOrNull(index) ?: return@LaunchedEffect
         stops.clear()
         hasPlayed[0] = false
+        http.setDefaultRequestProperties(item.headers)
         player.setMediaItem(MediaItem.fromUri(item.streams.getOrNull(stream)?.url ?: item.url))
         player.prepare()
         showName += 1
@@ -285,6 +371,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                             Key.DirectionUp, Key.ChannelUp -> { if (items.size > 1) go((index + 1) % items.size); true }
                             Key.DirectionDown, Key.ChannelDown -> { if (items.size > 1) go((index - 1 + items.size) % items.size); true }
                             Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { showName += 1; true }
+                            Key.Menu, Key.MediaRecord -> { toggleRecording(); true }
                             // A channel with several versions: left is a better one, right a lighter one. At either end the name box shows again.
                             Key.DirectionLeft, Key.DirectionRight -> {
                                 val count = items.getOrNull(index)?.streams?.size ?: 0
@@ -362,7 +449,29 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                 moved?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp) }
                 note?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp) }
                 if (phone && live && items.size > 1) Text("Swipe up or down to change channel", color = Color(0xFFB9C2D3), fontSize = 16.sp)
+                if (live && !phone) Text(if (recording) "● Recording · ≡ to finish" else "≡ records this channel", color = Color(0xFFB9C2D3), fontSize = 16.sp)
+                if (live && phone) {
+                    Text(
+                        if (recording) "■ Stop recording" else "● Record",
+                        color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .padding(top = 10.dp)
+                            .background(Color(0xFFFFD23F), RoundedCornerShape(22.dp))
+                            .clickable { toggleRecording() }
+                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                    )
+                }
             }
+        }
+        if (recording) {
+            Text(
+                "● REC", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(if (phone) 16.dp else 36.dp)
+                    .background(Color(0xCCB3261E), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+            )
         }
     }
 }
