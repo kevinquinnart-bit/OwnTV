@@ -76,7 +76,10 @@ object Torrents {
             val giveUp = System.currentTimeMillis() + PIECE_WAIT_MS
             while (!handle.havePiece(piece)) {
                 if (!handle.isValid) throw FileNotFoundException("The torrent was closed.")
-                if (System.currentTimeMillis() > giveUp) throw FileNotFoundException("The torrent is arriving too slowly to play.")
+                if (System.currentTimeMillis() > giveUp) {
+                    Report.note("Torrent", "gave up waiting 90 seconds for piece " + piece + " of " + (lastPiece + 1))
+                    throw FileNotFoundException("The torrent is arriving too slowly to play.")
+                }
                 try { Thread.sleep(150) } catch (e: InterruptedException) { throw InterruptedIOException() }
             }
         }
@@ -122,12 +125,15 @@ object Torrents {
                 Thread.sleep(100)
             }
             if (handle == null || !handle.isValid) throw FileNotFoundException("The torrent couldn't be started.")
+            Report.note("Torrent", "started: film file of " + files.fileSize(index) / (1024 * 1024) + " MB, " + count + " files in the torrent")
             return Open(address, handle, info, index, File(dir, files.filePath(index))).also { current = it }
         } catch (e: IOException) {
+            Report.note("Torrent", "not played: " + e.message)
             throw e
         } catch (e: InterruptedException) {
             throw InterruptedIOException()
         } catch (e: Throwable) {
+            Report.note("Torrent", "the engine failed: " + e.javaClass.name + " · " + e.message)
             // The torrent engine is a separate piece of machinery; if it can't run on this device, say so and move on.
             throw FileNotFoundException("Torrents can't be played on this device (" + e.javaClass.simpleName + ").")
         }

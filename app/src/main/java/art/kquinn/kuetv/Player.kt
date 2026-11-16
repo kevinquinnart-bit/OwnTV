@@ -227,7 +227,8 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
     val recorderHolder = remember { arrayOfNulls<Recorder>(1) }
     val finishRecording: () -> Boolean = {
         val was = recording
-        recorderHolder[0]?.stop()
+        val made = recorderHolder[0]?.stop()
+        if (was) Report.note("Recording", "ended: " + (made?.let { it.name + ", " + it.length() / (1024 * 1024) + " MB" } ?: "no file"))
         Recordings.recordingNow = null
         recording = false
         if (was) Recordings.changed()
@@ -293,6 +294,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                 recorder.start(file)
                 Recordings.recordingNow = file
                 recording = true
+                Report.note("Recording", "started: " + item.name)
                 say(if (phone) "Recording. Tap the picture, then Stop, to finish." else "Recording. Press ≡ again to finish.")
             } catch (e: java.io.IOException) {
                 say("Couldn't start recording.")
@@ -301,6 +303,7 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
     }
     /** Another version of the same channel. [why] is said on screen; null when the user chose it. */
     val change: (Int, String?) -> Unit = { next, why ->
+        if (why != null) Report.note("Player", items.getOrNull(index)?.name.orEmpty() + ": " + why)
         moved = why
         note = null
         stream = next
@@ -344,6 +347,16 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             override fun onPlayerError(error: PlaybackException) {
                 hasPlayed[0] = false
                 val versions = streamsAt(index)
+                val kind = when {
+                    versions.getOrNull(stream)?.url?.startsWith("magnet:") == true -> "torrent"
+                    live -> "live channel"
+                    else -> "film or recording"
+                }
+                Report.note(
+                    "Player",
+                    items.getOrNull(index)?.name.orEmpty() + " (" + kind + ", stream " + (stream + 1) + " of " + versions.size.coerceAtLeast(1) + "): " +
+                        error.errorCodeName + " · " + (error.cause?.message ?: error.message ?: "no detail"),
+                )
                 if (!live && versions.size > 1 && !started[0]) {
                     // A film's stream that never started. First without its separate subtitles, in case they are the fault.
                     val now = versions.getOrNull(stream)
@@ -398,6 +411,10 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                 null
             }
             val theirs = result?.streams.orEmpty()
+            Report.note(
+                "Add-ons",
+                item.name + ": " + if (result == null) "asking them failed" else theirs.size.toString() + " streams, " + theirs.count { it.url.startsWith("magnet:") } + " of them torrents",
+            )
             found[index] = theirs + Stream(PROVIDER_COPY, item.url)
             note = null
             if (theirs.isEmpty()) moved = "Nothing from your add-ons for this one. Playing your provider's copy."

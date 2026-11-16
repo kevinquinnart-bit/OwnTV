@@ -117,6 +117,8 @@ private val KueType = Typography().let { t ->
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Report.file == null) Report.keepIn(java.io.File(filesDir, "report.txt"))
+        Report.note("App", "opened, version " + BuildConfig.VERSION_NAME)
         // A TV is always sideways. A phone turns with the way it is held.
         val tv = isTv(this)
         if (tv) requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -175,6 +177,7 @@ private fun App() {
     var addOnsOpen by remember { mutableStateOf(false) }
     // 1: sending this device's set-up to another. 2: copying another device's set-up to here.
     var setUpShare by remember { mutableIntStateOf(0) }
+    var reportOpen by remember { mutableStateOf(false) }
     // Each time KueTV comes to the front: carry on copying any recordings that are waiting for Google Drive.
     LaunchedEffect(Resumes.count) { Recordings.wake(context) }
     // Anything a torrent left behind, if the app was closed while one played, is cleared when the app opens.
@@ -191,10 +194,13 @@ private fun App() {
         } catch (e: CancellationException) {
             throw e
         } catch (e: ProviderProblem) {
+            Report.note("Provider", "loading failed: " + e.message)
             problem = e.message
         } catch (e: Exception) {
+            Report.note("Provider", "loading failed: " + e.javaClass.name + " · " + e.message)
             problem = "Something went wrong loading your channels. Try again."
         }
+        library?.let { Report.note("Provider", "loaded: " + it.channels.size + " channels as " + it.groups.size + " rows, " + it.films.size + " films, " + it.shows.size + " series") }
     }
     // On a phone the screens keep clear of the notch and the bars; the player uses the whole screen.
     Box(Modifier.fillMaxSize().background(Page).then(if (playing == null) Modifier.safeDrawingPadding() else Modifier)) {
@@ -229,6 +235,7 @@ private fun App() {
             )
             driveSignIn -> DriveSignInScreen(onDone = { driveSignIn = false })
             addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false })
+            reportOpen -> ReportScreen(onDone = { reportOpen = false })
             problem != null -> ProblemScreen(problem.orEmpty(), onRetry = { reload++ }, onEdit = { editing = true })
             lib == null || browse == null -> LoadingScreen()
             else -> MainScreen(
@@ -247,6 +254,7 @@ private fun App() {
                 onAddOns = { addOnsOpen = true },
                 onSendSetUp = { setUpShare = 1 },
                 onTakeSetUp = { setUpShare = 2 },
+                onReport = { reportOpen = true },
             )
         }
     }
@@ -543,6 +551,7 @@ private fun MainScreen(
     onAddOns: () -> Unit,
     onSendSetUp: () -> Unit,
     onTakeSetUp: () -> Unit,
+    onReport: () -> Unit,
 ) {
     val context = LocalContext.current
     // With add-ons added, a film or episode asks them for streams first. With none, nothing changes.
@@ -681,6 +690,7 @@ private fun MainScreen(
                     val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
                     FocusRow("Small TV while browsing: " + if (smallTv) "on" else "off", { Choices.smallTv(context, !smallTv) })
                 }
+                FocusRow("Report for Claude", onReport, look = Look.OTHER)
                 Text(
                     "KueTV 2 · version " + BuildConfig.VERSION_NAME,
                     color = Soft, fontSize = 18.sp, modifier = Modifier.padding(start = 16.dp, top = 22.dp),
@@ -1533,10 +1543,13 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: DriveProblem) {
+            Report.note("Drive", "sign-in stopped: " + e.message)
             problem = e.message
         } catch (e: Exception) {
+            Report.note("Drive", "sign-in stopped: " + e.javaClass.name + " · " + e.message)
             problem = "Something went wrong signing in. Try again."
         }
+        if (done) Report.note("Drive", "signed in")
     }
 
     val first = remember { FocusRequester() }
@@ -1968,5 +1981,68 @@ private fun GridCell(title: String, sub: String, width: Dp, onNow: Boolean, onCl
     ) {
         Text(title, color = if (focused) Color.Black else Color.White, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (sub.isNotEmpty()) Text(sub, color = if (focused) Color.Black else Soft, fontSize = 13.sp, maxLines = 1)
+    }
+}
+
+// --------------------------------------------------------------------------------------------- the report
+
+/**
+ * The report: what the app did and what went wrong, to copy and send. A phone copies it with a button.
+ * A TV shows an address to open on a phone on the same Wi-Fi, where the same report can be copied.
+ */
+@Composable
+private fun ReportScreen(onDone: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val text = remember {
+        val drive = Recordings.drive(context)
+        Report.text(
+            listOf(
+                "KueTV 2, version " + BuildConfig.VERSION_NAME,
+                (if (phone) "Phone" else "TV") + ": " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + ", Android " + android.os.Build.VERSION.RELEASE,
+                "Add-ons: " + AddOnStore.all(context).size + " · Google Drive: " + (if (!drive.isSetUp) "no keys in this copy" else if (drive.signedIn) "signed in" else "not signed in") +
+                    " · Set to record: " + TimedStore.all(context).size + " · Recordings here: " + Recordings.here(context).size,
+            ),
+        )
+    }
+    var address by remember { mutableStateOf<String?>(null) }
+    var copied by remember { mutableStateOf(false) }
+    BackHandler { onDone() }
+    DisposableEffect(Unit) {
+        val server = if (phone) null else PageServer { PageServer.copyPage("KueTV report", text) }
+        val ip = PhoneSetup.localAddress()
+        address = if (server != null && ip != null && server.start() != null) "http://$ip:" + PageServer.PORT else null
+        onDispose { server?.stop() }
+    }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        if (!phone) runCatching { first.requestFocus() }
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 120.dp, vertical = if (phone) 12.dp else 30.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Report for Claude", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Note("What the app did and what went wrong, most recent last. It holds no addresses, usernames or passwords.")
+        if (phone) {
+            FocusRow(if (copied) "Copied. Paste it into your chat with Claude." else "Copy the report", {
+                runCatching {
+                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("KueTV report", text))
+                    copied = true
+                }
+            }, look = Look.MAIN)
+        } else if (address != null) {
+            Note("To send it: on your phone, on the same Wi-Fi, open")
+            Text(address.orEmpty(), color = Accent, fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+            Note("and tap Copy there. Keep this screen open while you do.")
+        } else {
+            Note("This TV isn't on a home network, so the report can only be read here.")
+        }
+        FocusRow("Done", onDone, Modifier.focusRequester(first), look = Look.OTHER)
+        // The last of it, to read here.
+        Text(
+            text.lines().takeLast(if (phone) 40 else 9).joinToString("\n"),
+            color = Soft, fontSize = 14.sp,
+            modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+        )
     }
 }

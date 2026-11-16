@@ -157,7 +157,9 @@ class TimedService : Service() {
         val end = timed.stopMs + 60_000
         val http = Provider.http.newBuilder().readTimeout(20, TimeUnit.SECONDS).build()
         Recordings.timedNow += file
+        Report.note("Timed recording", "started: " + timed.channel + " · " + timed.title)
         var failures = 0
+        var lastFailure = ""
         var written = 0L
         var checkedAt = 0L
         try {
@@ -183,6 +185,7 @@ class TimedService : Service() {
                         }
                     } catch (e: IOException) {
                         failures++
+                        lastFailure = e.message.orEmpty()
                     }
                     // The stream ended or dropped before the programme did: join again after a short wait.
                     if (System.currentTimeMillis() < end) runCatching { Thread.sleep(3_000) }
@@ -192,6 +195,10 @@ class TimedService : Service() {
             // The file couldn't be written. What was written is kept.
         } finally {
             Recordings.timedNow -= file
+            Report.note(
+                "Timed recording",
+                "ended: " + timed.title + ", " + file.length() / (1024 * 1024) + " MB" + if (lastFailure.isEmpty()) "" else ", last problem: $lastFailure",
+            )
             if (file.length() == 0L) file.delete()
         }
     }

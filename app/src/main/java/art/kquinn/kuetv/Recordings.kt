@@ -92,13 +92,16 @@ object Recordings {
                     val done = drive.upload(next, paused = { playing }) { sent -> copying = next.name to (sent * 100 / total).toInt() }
                     copying = null
                     if (done) {
+                        Report.note("Drive", "copied: " + next.name + ", " + total / (1024 * 1024) + " MB")
                         next.delete()
                         changes++
                     }
                 }
             } catch (e: DriveProblem) {
+                Report.note("Drive", "copying stopped: " + e.message)
                 problem = e.message
             } catch (e: Exception) {
+                Report.note("Drive", "copying stopped: " + e.javaClass.name + " · " + e.message)
                 problem = "Copying to Google Drive stopped. It will carry on next time."
             } finally {
                 if (held) CopyService.release(app)
