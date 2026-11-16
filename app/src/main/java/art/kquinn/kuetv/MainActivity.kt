@@ -535,7 +535,15 @@ private fun MainScreen(
                     }
                 }
                 val playables = remember(shown) {
-                    shown.map { g -> Playable(g.name, g.versions[g.start].channel.url, g.versions.map { Stream(it.label, it.channel.url) }, g.start) }
+                    val account = library.account
+                    shown.map { g ->
+                        val first = g.versions[g.start].channel
+                        Playable(
+                            g.name, first.url, g.versions.map { Stream(it.label, it.channel.url) }, g.start,
+                            // The name box says what is on now and next, when the provider has a guide to ask.
+                            guide = if (account == null) null else ({ withContext(Dispatchers.IO) { Provider.guide(account, first.id) } }),
+                        )
+                    }
                 }
                 Column(fill()) {
                     Heading((if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint())
@@ -1299,6 +1307,10 @@ private fun Pane.RecordingsPane(
     val copying = Recordings.copying
     val saved = inDrive?.getOrNull().orEmpty()
     val title: (String) -> String = { it.removeSuffix(".ts") }
+    // Deleting is a mode of its own, switched on by its own row, so a recording is never deleted by a slip.
+    var deleting by remember { mutableStateOf(false) }
+    if (deleting) BackHandler { deleting = false }
+    val tell: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
 
     Column(fill()) {
         Heading("Recordings")
@@ -1311,7 +1323,11 @@ private fun Pane.RecordingsPane(
         if (here.isEmpty() && saved.isEmpty() && inDrive != null) {
             Note(if (phone) "No recordings yet. While watching a live channel, tap the picture, then Record." else "No recordings yet. While watching a live channel, press ≡ on the remote to record it.")
         }
+        if (deleting) Note((if (phone) "Tap a recording to delete it." else "OK on a recording deletes it.") + " Ones in Google Drive go to its bin, where Google keeps them for 30 days.")
         LazyColumn(Modifier.fillMaxSize().focusRestorer()) {
+            if (here.isNotEmpty() || saved.isNotEmpty()) item(key = "deleting") {
+                FocusRow(if (deleting) "Finish deleting" else "Delete recordings", { deleting = !deleting }, look = Look.OTHER)
+            }
             itemsIndexed(here, key = { _, f -> "here:" + f.name }) { _, file ->
                 val key = "rec:" + file.name
                 val where = when {
@@ -1324,7 +1340,13 @@ private fun Pane.RecordingsPane(
                     whenText = where + " · " + sizeText(file.length()),
                     title = title(file.name),
                     description = "",
-                    onClick = { onPlay(listOf(Playable(title(file.name), android.net.Uri.fromFile(file).toString())), 0, false, key) },
+                    onClick = {
+                        when {
+                            !deleting -> onPlay(listOf(Playable(title(file.name), android.net.Uri.fromFile(file).toString())), 0, false, key)
+                            Recordings.copying?.first == file.name -> tell("That one is being copied to Google Drive. Delete it once it is there.")
+                            else -> { file.delete(); Recordings.changed() }
+                        }
+                    },
                     modifier = if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                 )
             }
@@ -1335,7 +1357,11 @@ private fun Pane.RecordingsPane(
                     title = title(recording.name),
                     description = "",
                     onClick = {
-                        scope.launch {
+                        if (deleting) scope.launch {
+                            val gone = withContext(Dispatchers.IO) { runCatching { drive.bin(recording.id) } }
+                            if (gone.isFailure) tell((gone.exceptionOrNull() as? DriveProblem)?.message ?: "Couldn't delete that recording.")
+                            Recordings.changed()
+                        } else scope.launch {
                             val pass = withContext(Dispatchers.IO) { runCatching { drive.token() } }
                             val token = pass.getOrNull()
                             if (token != null) {

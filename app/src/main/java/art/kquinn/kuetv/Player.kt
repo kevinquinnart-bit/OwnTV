@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -101,6 +102,8 @@ data class Playable(
     val startStream: Int = 0,
     /** Sent with every request for it; a recording in Google Drive needs its pass. */
     val headers: Map<String, String> = emptyMap(),
+    /** For a live channel: asks the provider what is on it, for the now-and-next lines in the name box. */
+    val guide: (suspend () -> List<Programme>)? = null,
     /**
      * For a film or episode when the user has add-ons: asks them where it can be played from. The
      * player asks when it gets to this item, tries what comes back in order, and keeps [url] for last.
@@ -433,11 +436,29 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         if (live) player.seekToDefaultPosition()
         player.prepare()
     }
+    // What is on each channel watched so far, asked for once the channel has been stayed on for a moment.
+    val guides = remember { androidx.compose.runtime.mutableStateMapOf<Int, List<Programme>>() }
+    LaunchedEffect(index) {
+        val ask = items.getOrNull(index)?.guide ?: return@LaunchedEffect
+        if (!live || index in guides) return@LaunchedEffect
+        delay(700)
+        val listing = try {
+            ask()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return@LaunchedEffect
+        }
+        guides[index] = listing
+        // If the name box is still up, keep it up long enough to read what has just arrived.
+        if (listing.isNotEmpty()) showName += 1
+    }
     var nameVisible by remember { mutableStateOf(false) }
     LaunchedEffect(showName) {
         if (showName == 0) return@LaunchedEffect
         nameVisible = true
-        delay(if (moved != null) 7_000 else 4_000)
+        // Longer when there is something to read: why the stream changed, or what the programme is about.
+        delay(if (moved != null || (live && index in guides)) 9_000 else 4_000)
         nameVisible = false
         moved = null
     }
@@ -554,10 +575,33 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                 Modifier
                     .align(Alignment.BottomStart)
                     .padding(if (phone) 16.dp else 36.dp)
+                    .widthIn(max = 980.dp)
                     .background(Color(0xCC0E1626), RoundedCornerShape(14.dp))
                     .padding(horizontal = 22.dp, vertical = 14.dp),
             ) {
-                Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+                val at = System.currentTimeMillis()
+                Text(
+                    if (live) title + "  ·  " + clock.format(java.util.Date(at)) else title,
+                    color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                )
+                val listing = if (live) guides[index].orEmpty() else emptyList()
+                val onNow = listing.firstOrNull { it.startMs <= at && it.stopMs > at }
+                val next = listing.firstOrNull { it.startMs >= (onNow?.stopMs ?: at) }
+                if (onNow != null) {
+                    Text(
+                        "Now · " + clock.format(java.util.Date(onNow.startMs)) + " to " + clock.format(java.util.Date(onNow.stopMs)) + " · " + onNow.title.ifBlank { "No title" },
+                        color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(top = 4.dp),
+                    )
+                    // The whole description, not cut short.
+                    if (onNow.description.isNotBlank()) Text(onNow.description, color = Color(0xFFB9C2D3), fontSize = 18.sp)
+                }
+                if (next != null) {
+                    Text(
+                        "Next · " + clock.format(java.util.Date(next.startMs)) + " · " + next.title.ifBlank { "No title" },
+                        color = Color(0xFFB9C2D3), fontSize = 18.sp, maxLines = 1, modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
                 if (live && versions.size > 1 && stream in versions.indices) {
                     Text(
                         versions[stream].label + " · version " + (stream + 1) + " of " + versions.size +

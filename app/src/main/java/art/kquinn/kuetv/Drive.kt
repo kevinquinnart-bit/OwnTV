@@ -188,6 +188,13 @@ class Drive(
         }
     }
 
+    /** Puts a recording in Drive's bin, where Google keeps it for 30 days before removing it. */
+    fun bin(id: String) {
+        val body = JsonObject().apply { addProperty("trashed", true) }
+        val a = send(authed("$api/drive/v3/files/$id").patch(body.toString().toRequestBody(jsonType)).build())
+        if (a.code != 200) throw DriveProblem("Google Drive wouldn't delete that recording (" + a.code + ").")
+    }
+
     /** The address a recording in Drive plays from; it must be asked for with [token]. */
     fun playUrl(id: String): String = "$api/drive/v3/files/$id?alt=media"
 

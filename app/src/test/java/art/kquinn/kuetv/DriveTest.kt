@@ -36,6 +36,7 @@ class DriveTest {
     private var total = -1L
     private var dropAfterPieces = Int.MAX_VALUE
     private var pieces = 0
+    private val binned = ArrayList<String>()
 
     private fun HttpExchange.answer(code: Int, body: String, headers: Map<String, String> = emptyMap()) {
         headers.forEach { (k, v) -> responseHeaders.add(k, v) }
@@ -72,6 +73,10 @@ class DriveTest {
             val q = java.net.URLDecoder.decode(ex.requestURI.rawQuery.orEmpty(), "UTF-8")
             when {
                 !signed -> ex.answer(401, "{}")
+                ex.requestMethod == "PATCH" -> {
+                    val wanted = String(ex.requestBody.readBytes()).contains("\"trashed\":true")
+                    if (wanted && ex.requestURI.path == "/drive/v3/files/f1") { binned += "f1"; ex.answer(200, "{}") } else ex.answer(404, "{}")
+                }
                 ex.requestMethod == "POST" -> { folderMade = true; ex.answer(200, """{"id":"folder-1"}""") }
                 q.contains("mimeType = 'application/vnd.google-apps.folder'") -> ex.answer(200, if (folderMade) """{"files":[{"id":"folder-1"}]}""" else """{"files":[]}""")
                 q.contains("'folder-1' in parents") -> ex.answer(200, """{"files":[{"id":"f2","name":"BBC One 2026-11-16 21.00.00.ts","size":"2147483648"},{"id":"f1","name":"Old.ts"},{"name":"no id"}]}""")
@@ -173,6 +178,13 @@ class DriveTest {
         assertEquals(listOf("f2", "f1"), list.map { it.id })
         assertEquals(2147483648L, list[0].size)
         assertEquals(base + "/drive/v3/files/f2?alt=media", drive.playUrl("f2"))
+    }
+
+    @Test fun deletingPutsARecordingInDrivesBin() {
+        val drive = signIn()
+        drive.bin("f1")
+        assertEquals(listOf("f1"), binned)
+        try { drive.bin("gone"); fail("should say it couldn't") } catch (e: DriveProblem) { assertEquals("Google Drive wouldn't delete that recording (404).", e.message) }
     }
 
     private fun recording(size: Int): File = File.createTempFile("BBC One", ".ts").also { f -> f.deleteOnExit(); f.writeBytes(ByteArray(size) { (it % 199).toByte() }) }
