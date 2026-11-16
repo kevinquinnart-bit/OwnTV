@@ -48,7 +48,90 @@ class Library(
     val account: Account? = null,
     /** How far the provider's own clock is ahead of world time, in seconds. Catch-up is asked for on its clock. */
     val serverAheadSec: Int = 0,
-)
+) {
+    /** The channels with the versions of the same channel (4K, FHD, HD, SD) kept together as one. */
+    val groups: List<ChannelGroup> by lazy { Versions.group(channels) }
+}
+
+/** One version of a channel: the channel as the provider lists it, and its quality as read from its name. */
+class Version(val channel: Channel, val label: String, val rank: Int)
+
+/**
+ * One channel with every version the provider lists of it, best picture first. [start] is the one
+ * to play first: the best that is not 4K, because 4K is the heaviest to carry and the likeliest to stop.
+ */
+class ChannelGroup(val name: String, val versions: List<Version>) {
+    val start: Int = versions.indexOfFirst { it.rank < Versions.RANK_4K }.coerceAtLeast(0)
+    val id: String get() = versions[0].channel.id
+    val logo: String get() = versions.firstOrNull { it.channel.logo.isNotBlank() }?.channel?.logo.orEmpty()
+}
+
+object Versions {
+    const val RANK_4K = 5
+    private const val RANK_FHD = 4
+    private const val RANK_HD = 3
+    private const val RANK_PLAIN = 2
+    private const val RANK_SD = 1
+
+    /** The words in a channel's name that say which version it is, standing on their own. */
+    private val word = Regex(
+        "(?<![A-Za-z0-9])(4K|UHD|2160P|FHD|FULL ?HD|1080[PI]|HD|720P|SD|576[PI]|480P|HEVC|H\\.?265|[56]0 ?FPS)(?![A-Za-z0-9])",
+        RegexOption.IGNORE_CASE,
+    )
+    private val emptyBrackets = Regex("[(\\[]\\s*[)\\]]")
+    private val spaces = Regex("\\s+")
+    private val notNameMarks = Regex("[^\\p{L}\\p{N}+]+")
+    private val small = listOf("ᶠᴴᴰ" to " FHD ", "ᵁᴴᴰ" to " UHD ", "ᴴᴰ" to " HD ", "ˢᴰ" to " SD ", "⁴ᴷ" to " 4K ")
+
+    /** What a name says: the name without the version words, the version's label, and how good its picture is. */
+    class Reading(val name: String, val label: String, val rank: Int)
+
+    fun read(full: String): Reading {
+        var text = full
+        for ((from, to) in small) text = text.replace(from, to)
+        var rank = RANK_PLAIN
+        var quality = "Standard"
+        var extra = ""
+        for (m in word.findAll(text)) {
+            val w = m.value.uppercase().replace(" ", "").replace(".", "")
+            val found = when (w) {
+                "4K", "UHD", "2160P" -> RANK_4K to "4K"
+                "FHD", "FULLHD", "1080P", "1080I" -> RANK_FHD to "FHD"
+                "HD", "720P" -> RANK_HD to "HD"
+                "SD", "576P", "576I", "480P" -> RANK_SD to "SD"
+                else -> null
+            }
+            if (found == null) {
+                val tag = if (w.endsWith("FPS")) w.dropLast(3) + "fps" else "HEVC"
+                if (!extra.contains(tag)) extra += " $tag"
+            } else if (quality == "Standard" || found.first > rank) {
+                rank = found.first
+                quality = found.second
+            }
+        }
+        val name = word.replace(text, " ")
+            .replace(emptyBrackets, " ")
+            .replace(spaces, " ")
+            .trim().trim('-', '|', ':', ',').trim()
+        // A channel whose whole name is a version word keeps its name.
+        return if (name.isEmpty()) Reading(full.trim(), "Standard", RANK_PLAIN) else Reading(name, quality + extra, rank)
+    }
+
+    /**
+     * Puts channels with the same name, once the version words are taken out, together. Groups stay in
+     * the provider's order, by the first version it lists. Within a group the best picture comes first.
+     */
+    fun group(channels: List<Channel>): List<ChannelGroup> {
+        val byName = LinkedHashMap<String, ArrayList<Version>>()
+        val names = HashMap<String, String>()
+        for (channel in channels) {
+            val r = read(channel.name)
+            val key = r.name.lowercase().replace(notNameMarks, " ").trim().ifEmpty { r.name.lowercase() }
+            byName.getOrPut(key) { names[key] = r.name; ArrayList() } += Version(channel, r.label, r.rank)
+        }
+        return byName.map { (key, versions) -> ChannelGroup(names.getValue(key), versions.sortedByDescending { it.rank }) }
+    }
+}
 
 /** One programme in a channel's guide. [startText] is the start exactly as the provider wrote it, on its own clock. */
 data class Programme(val title: String, val description: String, val startMs: Long, val stopMs: Long, val startText: String)
@@ -85,6 +168,12 @@ class Favourites(context: Context) {
 
     fun toggle(key: String) {
         keys = if (key in keys) keys - key else keys + key
+        prefs.edit().putStringSet("keys", keys).apply()
+    }
+
+    /** A channel with several versions: all of them are favourites together, or none. */
+    fun toggleAll(all: List<String>) {
+        keys = if (all.any { it in keys }) keys - all.toSet() else keys + all
         prefs.edit().putStringSet("keys", keys).apply()
     }
 

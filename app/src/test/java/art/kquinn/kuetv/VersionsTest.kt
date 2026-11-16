@@ -1,0 +1,53 @@
+package art.kquinn.kuetv
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+/** Keeping the 4K, FHD, HD and SD versions of one channel together, on a pretend channel list. */
+class VersionsTest {
+    private var next = 0
+    private fun channel(name: String, category: String = "uk") = Channel((++next).toString(), name, "", category, "http://tv/$next.ts", 0)
+
+    @Test fun versionsOfOneChannelBecomeOneRowBestFirst() {
+        val groups = Versions.group(
+            listOf(channel("UK: BBC One SD"), channel("UK: BBC One"), channel("UK: BBC One FHD", "uk fhd"), channel("UK: BBC One HD"), channel("UK: BBC Two HD")),
+        )
+        assertEquals(listOf("UK: BBC One", "UK: BBC Two"), groups.map { it.name })
+        assertEquals(listOf("FHD", "HD", "Standard", "SD"), groups[0].versions.map { it.label })
+        assertEquals(0, groups[0].start)
+        assertEquals(listOf("HD"), groups[1].versions.map { it.label })
+    }
+
+    @Test fun fourKIsKeptButNotPlayedFirst() {
+        val group = Versions.group(listOf(channel("Sky Sports F1 HD"), channel("Sky Sports F1 UHD"), channel("Sky Sports F1 FHD"))).single()
+        assertEquals(listOf("4K", "FHD", "HD"), group.versions.map { it.label })
+        assertEquals("FHD", group.versions[group.start].label)
+        // A channel that only comes in 4K still plays.
+        assertEquals(0, Versions.group(listOf(channel("Insight 4K"))).single().start)
+    }
+
+    @Test fun differentChannelsStayApart() {
+        val groups = Versions.group(
+            listOf(channel("Channel 4 HD"), channel("Channel 4 +1"), channel("Channel 4 +1 HD"), channel("IE: Channel 4 HD"), channel("HDNet Movies"), channel("E4 HD"), channel("E4 Extra HD")),
+        )
+        assertEquals(listOf("Channel 4", "Channel 4 +1", "IE: Channel 4", "HDNet Movies", "E4", "E4 Extra"), groups.map { it.name })
+        assertEquals(listOf(1, 2, 1, 1, 1, 1), groups.map { it.versions.size })
+    }
+
+    @Test fun readsTheWaysProvidersWriteTheVersion() {
+        val read: (String) -> String = { Versions.read(it).let { r -> r.name + " = " + r.label } }
+        assertEquals("BBC One = HD", read("BBC One ᴴᴰ"))
+        assertEquals("BBC One = FHD", read("FHD: BBC One"))
+        assertEquals("BBC One = FHD", read("BBC One 1080p"))
+        assertEquals("BBC One = FHD HEVC", read("BBC One FHD (H265)"))
+        assertEquals("BBC One = HD 50fps", read("BBC One HD 50FPS"))
+        assertEquals("BBC One = Standard", read("BBC One"))
+        assertEquals("HD = Standard", read("HD"))
+    }
+
+    @Test fun sameVersionListedTwiceIsKeptAsASpare() {
+        val group = Versions.group(listOf(channel("ITV1 HD"), channel("ITV1 HD"), channel("ITV1 SD"))).single()
+        assertEquals(listOf("HD", "HD", "SD"), group.versions.map { it.label })
+        assertEquals(listOf("1", "2", "3"), group.versions.map { it.channel.id })
+    }
+}

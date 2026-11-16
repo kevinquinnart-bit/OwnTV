@@ -5,7 +5,7 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,10 +48,40 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 
-/** One thing the player can show: a channel or a film. */
-data class Playable(val name: String, val url: String)
+/** One version of a channel: its quality as the user reads it ("FHD") and its address. */
+data class Stream(val label: String, val url: String)
+
+/**
+ * One thing the player can show: a channel or a film. A channel the provider lists in several
+ * versions carries them in [streams], best picture first, and starts on [startStream].
+ */
+data class Playable(val name: String, val url: String, val streams: List<Stream> = emptyList(), val startStream: Int = 0)
 
 private const val MAX_TRIES = 6
+
+/** A picture that stays stopped this long moves down to the next version. */
+private const val LONG_STOP_MS = 12_000L
+
+/** This many short stops inside [STOPS_WINDOW_MS] also moves down. */
+private const val STOPS_TO_MOVE = 3
+private const val STOPS_WINDOW_MS = 90_000L
+
+/** How long a channel stays on the version it last played well on, before the best is tried again. */
+private const val SETTLED_MS = 30 * 60_000L
+
+/** The version each channel last played on, and when; kept only while the app is open. */
+private object Settled {
+    private val last = HashMap<String, Pair<Int, Long>>()
+
+    fun startFor(item: Playable): Int {
+        val kept = last[item.url] ?: return item.startStream
+        return if (System.currentTimeMillis() - kept.second < SETTLED_MS && kept.first in item.streams.indices) kept.first else item.startStream
+    }
+
+    fun played(item: Playable, stream: Int) {
+        if (item.streams.size > 1) last[item.url] = stream to System.currentTimeMillis()
+    }
+}
 
 /**
  * The full-screen player.
@@ -64,6 +94,11 @@ private const val MAX_TRIES = 6
  * English audio and English subtitles are chosen whenever the stream carries them. When a stream
  * drops, the player reconnects by itself and says so; after [MAX_TRIES] failures in a row it says the
  * stream isn't playing instead of leaving a black screen.
+ *
+ * A channel with several versions starts on its best that is not 4K. If the picture stays stopped for
+ * [LONG_STOP_MS], or stops [STOPS_TO_MOVE] times in [STOPS_WINDOW_MS], it moves down one version and
+ * says so. If a version won't play at all, the next is tried. It never moves back up by itself, because
+ * each move interrupts the picture. ◀ is a better version, ▶ a lighter one; on a phone, swipe sideways.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -71,7 +106,13 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
     val context = LocalContext.current
     val phone = LocalPhone.current
     var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) }
+    var stream by remember { mutableIntStateOf(items.getOrNull(index)?.let { Settled.startFor(it) } ?: 0) }
     var note by remember { mutableStateOf<String?>(null) }
+    // Why the version was changed for the user, shown with the channel's name for a few seconds.
+    var moved by remember { mutableStateOf<String?>(null) }
+    var stopped by remember { mutableStateOf(false) }
+    val stops = remember { ArrayList<Long>() }
+    val hasPlayed = remember { booleanArrayOf(false) }
     var showName by remember { mutableIntStateOf(0) }
     var tries by remember { mutableIntStateOf(0) }
     var retryTick by remember { mutableIntStateOf(0) }
@@ -99,18 +140,56 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
             }
     }
 
+    /** Another channel, film or episode: start it on the version it should start on. */
+    val go: (Int) -> Unit = { next ->
+        index = next
+        stream = items.getOrNull(next)?.let { Settled.startFor(it) } ?: 0
+        tries = 0
+        note = null
+        moved = null
+    }
+    /** Another version of the same channel. [why] is said on screen; null when the user chose it. */
+    val change: (Int, String?) -> Unit = { next, why ->
+        moved = why
+        note = null
+        stream = next
+    }
+
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) { tries = 0; note = null }
+                stopped = state == Player.STATE_BUFFERING
+                val item = items.getOrNull(index)
+                val versions = item?.streams.orEmpty()
+                if (state == Player.STATE_READY) {
+                    tries = 0
+                    note = null
+                    hasPlayed[0] = true
+                    if (item != null) Settled.played(item, stream)
+                }
+                // The picture was playing and has stopped to catch up. Too many of those: move down a version.
+                if (state == Player.STATE_BUFFERING && live && hasPlayed[0] && stream < versions.size - 1) {
+                    val now = System.currentTimeMillis()
+                    stops.removeAll { now - it > STOPS_WINDOW_MS }
+                    stops += now
+                    if (stops.size >= STOPS_TO_MOVE) {
+                        change(stream + 1, "Kept stopping on " + versions[stream].label + ". Now on " + versions[stream + 1].label + ".")
+                    }
+                }
                 // An episode has finished and another follows it in the list: play that one.
-                if (state == Player.STATE_ENDED && !live && index < items.size - 1) index += 1
+                if (state == Player.STATE_ENDED && !live && index < items.size - 1) go(index + 1)
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 tries += 1
-                if (tries >= MAX_TRIES) {
+                hasPlayed[0] = false
+                val versions = items.getOrNull(index)?.streams.orEmpty()
+                if (tries >= maxOf(MAX_TRIES, versions.size * 2)) {
                     note = if (live) "This channel isn't playing right now." else "This film isn't playing right now."
+                } else if (live && versions.size > 1 && tries % 2 == 0) {
+                    // Two failures in a row on this version: try the next one, going round to the first after the last.
+                    val next = (stream + 1) % versions.size
+                    change(next, versions[stream].label + " isn't playing. Trying " + versions[next].label + ".")
                 } else {
                     note = "Reconnecting…"
                     retryTick += 1
@@ -124,14 +203,23 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
         }
     }
 
-    // A new channel (or film): start it clean.
-    LaunchedEffect(index) {
+    // A new channel (or film), or another version of this channel: start it clean.
+    LaunchedEffect(index, stream) {
         val item = items.getOrNull(index) ?: return@LaunchedEffect
-        tries = 0
-        note = null
-        player.setMediaItem(MediaItem.fromUri(item.url))
+        stops.clear()
+        hasPlayed[0] = false
+        player.setMediaItem(MediaItem.fromUri(item.streams.getOrNull(stream)?.url ?: item.url))
         player.prepare()
         showName += 1
+    }
+    // The picture has stayed stopped too long, at the start or part way through: move down a version.
+    LaunchedEffect(stopped, index, stream) {
+        if (!stopped || !live) return@LaunchedEffect
+        delay(LONG_STOP_MS)
+        val versions = items.getOrNull(index)?.streams.orEmpty()
+        if (stream < versions.size - 1) {
+            change(stream + 1, "Kept stopping on " + versions[stream].label + ". Now on " + versions[stream + 1].label + ".")
+        }
     }
     // After a drop: wait a moment, then pick the stream up again.
     LaunchedEffect(retryTick) {
@@ -144,8 +232,9 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
     LaunchedEffect(showName) {
         if (showName == 0) return@LaunchedEffect
         nameVisible = true
-        delay(4_000)
+        delay(if (moved != null) 7_000 else 4_000)
         nameVisible = false
+        moved = null
     }
 
     BackHandler { onClose() }
@@ -193,10 +282,16 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                     .onPreviewKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (e.key) {
-                            Key.DirectionUp, Key.ChannelUp -> { if (items.size > 1) index = (index + 1) % items.size; true }
-                            Key.DirectionDown, Key.ChannelDown -> { if (items.size > 1) index = (index - 1 + items.size) % items.size; true }
+                            Key.DirectionUp, Key.ChannelUp -> { if (items.size > 1) go((index + 1) % items.size); true }
+                            Key.DirectionDown, Key.ChannelDown -> { if (items.size > 1) go((index - 1 + items.size) % items.size); true }
                             Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { showName += 1; true }
-                            Key.DirectionLeft, Key.DirectionRight -> true
+                            // A channel with several versions: left is a better one, right a lighter one. At either end the name box shows again.
+                            Key.DirectionLeft, Key.DirectionRight -> {
+                                val count = items.getOrNull(index)?.streams?.size ?: 0
+                                val next = if (e.key == Key.DirectionLeft) stream - 1 else stream + 1
+                                if (count > 1) { if (next in 0 until count) change(next, null) else showName += 1 }
+                                true
+                            }
                             else -> false
                         }
                     },
@@ -224,20 +319,30 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                 Modifier
                     .fillMaxSize()
                     .pointerInput(items.size) {
-                        var moved = 0f
-                        detectVerticalDragGestures(
-                            onDragStart = { moved = 0f },
+                        var up = 0f
+                        var across = 0f
+                        detectDragGestures(
+                            onDragStart = { up = 0f; across = 0f },
                             onDragEnd = {
                                 val far = 60.dp.toPx()
-                                if (items.size > 1 && moved <= -far) index = (index + 1) % items.size
-                                else if (items.size > 1 && moved >= far) index = (index - 1 + items.size) % items.size
+                                val versions = items.getOrNull(index)?.streams?.size ?: 0
+                                if (kotlin.math.abs(up) >= kotlin.math.abs(across)) {
+                                    // Up and down: the next channel, or the one before.
+                                    if (items.size > 1 && up <= -far) go((index + 1) % items.size)
+                                    else if (items.size > 1 && up >= far) go((index - 1 + items.size) % items.size)
+                                } else {
+                                    // Sideways: right for a better version, left for a lighter one.
+                                    if (across >= far && stream > 0) change(stream - 1, null)
+                                    else if (across <= -far && stream < versions - 1) change(stream + 1, null)
+                                }
                             },
-                        ) { _, by -> moved += by }
+                        ) { _, by -> up += by.y; across += by.x }
                     }
                     .pointerInput(Unit) { detectTapGestures(onTap = { showName += 1 }) },
             )
         }
         val title = items.getOrNull(index)?.name.orEmpty()
+        val versions = items.getOrNull(index)?.streams.orEmpty()
         if ((nameVisible && live) || note != null) {
             Column(
                 Modifier
@@ -247,6 +352,14 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                     .padding(horizontal = 22.dp, vertical = 14.dp),
             ) {
                 Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                if (live && versions.size > 1 && stream in versions.indices) {
+                    Text(
+                        versions[stream].label + " · version " + (stream + 1) + " of " + versions.size +
+                            if (phone) " · swipe sideways to change" else " · ◀ ▶ to change",
+                        color = Color(0xFFB9C2D3), fontSize = 18.sp, maxLines = 1,
+                    )
+                }
+                moved?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp) }
                 note?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp) }
                 if (phone && live && items.size > 1) Text("Swipe up or down to change channel", color = Color(0xFFB9C2D3), fontSize = 16.sp)
             }

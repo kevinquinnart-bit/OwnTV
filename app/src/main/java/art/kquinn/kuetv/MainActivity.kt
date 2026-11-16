@@ -463,25 +463,28 @@ private fun MainScreen(
                         scope.launch { state.channelList.scrollToItem(0) }
                     }
                 }
+                // One row for each channel: its 4K, FHD, HD and SD versions are kept together behind it.
                 val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null) {
                     when (liveCategory) {
-                        ALL -> library.channels
-                        FAVOURITES -> library.channels.filter { Favourites.key(it, login) in favs }
-                        else -> library.channels.filter { it.categoryId == liveCategory }
+                        ALL -> library.groups
+                        FAVOURITES -> library.groups.filter { g -> g.versions.any { Favourites.key(it.channel, login) in favs } }
+                        else -> library.groups.filter { g -> g.versions.any { it.channel.categoryId == liveCategory } }
                     }
                 }
-                val playables = remember(shown) { shown.map { Playable(it.name, it.url) } }
+                val playables = remember(shown) {
+                    shown.map { g -> Playable(g.name, g.versions[g.start].channel.url, g.versions.map { Stream(it.label, it.channel.url) }, g.start) }
+                }
                 Column(fill()) {
                     Heading((if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint())
                     LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = state.channelList) {
                         itemsIndexed(shown, key = { _, c -> c.id }) { i, channel ->
                             val key = "live:" + channel.id
-                            val favKey = Favourites.key(channel, login)
+                            val favKeys = channel.versions.map { Favourites.key(it.channel, login) }
                             FocusRow(
-                                (if (favKey in favs) "★ " else "") + channel.name,
+                                (if (favKeys.any { it in favs }) "★ " else "") + channel.name,
                                 { onPlay(playables, i, true, key) },
                                 if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
-                                onHold = { favourites.toggle(favKey) },
+                                onHold = { favourites.toggleAll(favKeys) },
                                 leading = { Logo(channel.logo) },
                             )
                         }
