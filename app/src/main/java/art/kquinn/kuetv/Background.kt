@@ -109,6 +109,13 @@ object Choices {
         changes++
     }
 
+    /** Pause and rewind for live TV: the channel is kept in a copy on the device while it plays. */
+    fun timeShift(context: Context): Boolean = prefs(context).getBoolean("timeShift", true)
+    fun timeShift(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("timeShift", on).apply()
+        changes++
+    }
+
     fun smallTv(context: Context): Boolean = prefs(context).getBoolean("smallTv", true)
     fun smallTv(context: Context, on: Boolean) {
         prefs(context).edit().putBoolean("smallTv", on).apply()

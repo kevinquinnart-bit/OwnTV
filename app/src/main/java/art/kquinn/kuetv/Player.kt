@@ -26,6 +26,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -80,7 +81,7 @@ private const val SLOW_TORRENT_MS = 80_000L
 
 /** Sends the player's reading to the torrent engine for a torrent's address, and to the internet for any other. */
 @OptIn(UnstableApi::class)
-private class Either(private val web: DataSource, private val torrent: DataSource) : DataSource {
+private class Either(private val web: DataSource, private val torrent: DataSource, private val shift: DataSource) : DataSource {
     private var using: DataSource = web
 
     override fun addTransferListener(transferListener: TransferListener) {
@@ -89,7 +90,12 @@ private class Either(private val web: DataSource, private val torrent: DataSourc
     }
 
     override fun open(dataSpec: DataSpec): Long {
-        using = if (dataSpec.uri.scheme == "magnet") torrent else web
+        // A torrent, the copy kept for pause and rewind, or the internet.
+        using = when (dataSpec.uri.scheme) {
+            "magnet" -> torrent
+            "shift" -> shift
+            else -> web
+        }
         return using.open(dataSpec)
     }
 
@@ -247,6 +253,14 @@ fun PlayerScreen(
     var paused by remember { mutableStateOf(false) }
     // Paused at some point since this channel started, so the picture is behind live.
     var behind by remember { mutableStateOf(false) }
+    // Pause and rewind: the copy of this channel being kept on the device, if it is playing through one.
+    val shiftWanted = remember { Choices.timeShift(context) }
+    val shiftHolder = remember { arrayOfNulls<ShiftBuffer>(1) }
+    val shiftUrl = remember { arrayOfNulls<String>(1) }
+    var shifting by remember { mutableStateOf(false) }
+    // When the place the player was last started at in the copy arrived from the provider.
+    var shiftBase by remember { mutableLongStateOf(0L) }
+    var tick by remember { mutableIntStateOf(0) }
     val main = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     /** Says [text] on screen for a few seconds, with the channel's name. */
     val say: (String) -> Unit = { text -> moved = text; showName += 1 }
@@ -285,7 +299,7 @@ fun PlayerScreen(
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(
-                    DataSource.Factory { Either(Tap(DefaultDataSource.Factory(context, http).createDataSource(), recorder), TorrentSource(context.applicationContext)) },
+                    DataSource.Factory { Either(Tap(DefaultDataSource.Factory(context, http).createDataSource(), recorder), TorrentSource(context.applicationContext), ShiftSource()) },
                 ),
             )
             .setLoadControl(load)
@@ -439,6 +453,8 @@ fun PlayerScreen(
             keepPlace()
             player.removeListener(listener)
             player.release()
+            shiftHolder[0]?.close()
+            shiftHolder[0] = null
             finishRecording()
             Recordings.playing = false
             Recordings.wake(context)
@@ -486,7 +502,38 @@ fun PlayerScreen(
         if (torrent && moved == null) moved = "This one is a torrent. It can take a minute to start."
         if (!torrent) Thread({ Torrents.stopCurrent() }, "kuetv-torrent-stop").start()
         http.setDefaultRequestProperties(now?.headers?.takeIf { it.isNotEmpty() } ?: item.headers)
-        val media = MediaItem.Builder().setUri(now?.url ?: item.url)
+        // Live, with pause and rewind on: the channel is fetched into a copy here and played from that.
+        // A stream that comes in many small files (.m3u8) can't be copied this way, so it plays as before.
+        val address = now?.url ?: item.url
+        var playFrom = address
+        if (live && shiftWanted && !torrent && !address.substringBefore('?').endsWith(".m3u8", ignoreCase = true)) {
+            var copy = shiftHolder[0]
+            if (copy == null || copy.closed || shiftUrl[0] != address) {
+                copy?.close()
+                copy = ShiftBuffer.begin(context, address, now?.headers?.takeIf { it.isNotEmpty() } ?: item.headers)
+                shiftHolder[0] = copy
+                shiftUrl[0] = address
+                if (copy != null) {
+                    // Recording copies what arrives from the provider, as it arrives: the channel live, whatever is on screen.
+                    copy.onJoined = { recorder.newConnection() }
+                    copy.onBytes = { b, o, n -> recorder.take(b, o, n) }
+                    Report.note("Pause and rewind", "keeping a copy of " + item.name + ", up to " + copy.capBytes / (1024 * 1024) + " MB")
+                } else {
+                    Report.note("Pause and rewind", "not enough storage here; " + item.name + " plays without it")
+                }
+            }
+            if (copy != null) {
+                playFrom = ShiftBuffer.address(copy, copy.head)
+                shiftBase = System.currentTimeMillis()
+            }
+            shifting = copy != null
+        } else {
+            shiftHolder[0]?.close()
+            shiftHolder[0] = null
+            shiftUrl[0] = null
+            shifting = false
+        }
+        val media = MediaItem.Builder().setUri(playFrom)
         val subtitle = now?.subtitle?.takeIf { now.url !in withoutSubtitles }
         if (subtitle != null) {
             val kind = if (subtitle.substringBefore('?').endsWith(".vtt", ignoreCase = true)) androidx.media3.common.MimeTypes.TEXT_VTT else androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
@@ -530,6 +577,11 @@ fun PlayerScreen(
     LaunchedEffect(retryTick) {
         if (retryTick == 0) return@LaunchedEffect
         delay(1_500)
+        if (shifting) {
+            // Playing from the copy: start again at its newest end.
+            reload += 1
+            return@LaunchedEffect
+        }
         if (live) player.seekToDefaultPosition()
         player.prepare()
     }
@@ -575,6 +627,35 @@ fun PlayerScreen(
             onFromStart(make(onNow))
         })
     }
+    // How far behind live the picture is, when playing from the copy. Refreshed each second while the box is up.
+    LaunchedEffect(nameVisible, shifting) {
+        while (nameVisible && shifting) {
+            delay(1_000)
+            tick += 1
+        }
+    }
+    val behindMs = if (!shifting) 0L else {
+        tick
+        (System.currentTimeMillis() - (shiftBase + player.currentPosition)).coerceAtLeast(0L)
+    }
+    // Starting up takes a few seconds, so only past this is the picture counted as behind.
+    val isBehind = if (shifting) behindMs > 15_000 else behind
+    /** Moves the picture [byMs] through the copy: back is negative. Past the newest end, it goes back to live. */
+    val jump: (Long) -> Unit = jump@{ byMs ->
+        val copy = shiftHolder[0]
+        if (!shifting || copy == null) return@jump
+        val showing = shiftBase + player.currentPosition
+        val target = (showing + byMs).coerceAtLeast(copy.oldestTime())
+        if (target >= System.currentTimeMillis() - 5_000) {
+            reload += 1
+        } else {
+            val offset = copy.offsetAt(target)
+            shiftBase = copy.timeAt(offset)
+            player.setMediaItem(MediaItem.fromUri(ShiftBuffer.address(copy, offset)))
+            player.prepare()
+        }
+        showName += 1
+    }
     val togglePause: () -> Unit = {
         if (player.playWhenReady) {
             player.pause()
@@ -590,9 +671,11 @@ fun PlayerScreen(
     }
     // The buttons along the bottom of the live name box, left to right.
     val buttons = if (!live) emptyList() else buildList {
+        if (shifting) add(Control("◀◀ 30 s") { jump(-30_000) })
         add(Control(if (paused) "Play" else "Pause", togglePause))
-        // Live channels can't be wound back here. After a pause, this jumps to what is on now.
-        if (behind) add(Control("Back to live") { reload += 1 })
+        if (shifting && isBehind) add(Control("30 s ▶▶") { jump(30_000) })
+        // After a pause or a rewind, this jumps to what is on now.
+        if (isBehind) add(Control("Back to live") { reload += 1 })
         if (fromStart != null) add(Control("From the start", fromStart))
         add(Control(if (recording) "■ Stop recording" else "● Record", toggleRecording))
         if (versions.size > 1 && stream in versions.indices) add(Control("Picture: " + versions[stream].label) { change((stream + 1) % versions.size, null) })
@@ -617,9 +700,13 @@ fun PlayerScreen(
         if (!visible && !recording) {
             leftScreen[0] = true
             player.pause()
+            // Away from KueTV, the copy stops too, so nothing holds the connection to the provider.
+            shiftHolder[0]?.close()
+            shiftHolder[0] = null
         } else if (visible && leftScreen[0]) {
             leftScreen[0] = false
-            if (live) { player.seekToDefaultPosition(); player.prepare() }
+            if (live && shiftWanted) reload += 1
+            else if (live) { player.seekToDefaultPosition(); player.prepare() }
             player.play()
         }
     }
@@ -676,14 +763,17 @@ fun PlayerScreen(
                                     buttons[pick.coerceIn(0, buttons.size - 1)].act()
                                 } else {
                                     controls = true
-                                    pick = 0
+                                    // Start on Pause, whichever buttons come before it.
+                                    pick = buttons.indexOfFirst { it.label == "Pause" || it.label == "Play" }.coerceAtLeast(0)
                                 }
                                 showName += 1
                                 true
                             }
                             Key.Menu, Key.MediaRecord -> { toggleRecording(); true }
                             Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> { togglePause(); showName += 1; true }
-                            Key.MediaRewind, Key.MediaPrevious -> { fromStart?.invoke(); true }
+                            Key.MediaRewind -> { if (shifting) jump(-30_000) else fromStart?.invoke(); true }
+                            Key.MediaFastForward -> { jump(30_000); true }
+                            Key.MediaPrevious -> { fromStart?.invoke(); true }
                             // With the buttons up, left and right move along them.
                             Key.DirectionLeft, Key.DirectionRight -> if (buttonsUp) {
                                 pick = (pick.coerceIn(0, buttons.size - 1) + if (e.key == Key.DirectionLeft) -1 else 1).coerceIn(0, buttons.size - 1)
@@ -805,7 +895,16 @@ fun PlayerScreen(
                             )
                         }
                         if (paused) Label("Paused", Color(0xFFFFD23F), Color.Black)
-                        else if (behind) Label("Behind live")
+                        if (shifting && isBehind) {
+                            Label(if (behindMs < 60_000) (behindMs / 1000).toString() + " s behind live" else (behindMs / 60_000).toString() + " min behind live")
+                        } else if (!shifting && behind && !paused) {
+                            Label("Behind live")
+                        }
+                        val copy = shiftHolder[0]
+                        if (shifting && copy != null) {
+                            tick
+                            Label("Can go back " + ((System.currentTimeMillis() - copy.oldestTime()) / 60_000) + " min")
+                        }
                         if (recording) Label("● Recording", Color(0xFFB3261E), Color.White)
                     }
                 }

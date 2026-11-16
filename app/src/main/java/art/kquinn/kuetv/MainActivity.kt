@@ -210,7 +210,7 @@ private fun App() {
         }
     }
     // A newer version downloaded last time is no longer needed once the app starts afresh.
-    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updates.tidy(context) } }
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updates.tidy(context); ShiftBuffer.tidy(context) } }
     // Each time KueTV comes to the front: is a newer version on the download?
     LaunchedEffect(Resumes.count) { withContext(Dispatchers.IO) { Updates.checkOnOpen() } }
 
@@ -987,6 +987,8 @@ private fun MainScreen(
                 FocusRow("Categories to show" + if (hiddenCount == 0) "" else " ($hiddenCount hidden)", onCategories, look = Look.OTHER)
                 val textSize = remember(Choices.changes) { Choices.textSize(context) }
                 FocusRow("Text size: " + Choices.textSizeNames[textSize], { Choices.textSize(context, (textSize + 1) % 3) }, look = Look.OTHER)
+                val shiftOn = remember(Choices.changes) { Choices.timeShift(context) }
+                FocusRow("Pause and rewind live TV: " + if (shiftOn) "on" else "off", { Choices.timeShift(context, !shiftOn) }, look = Look.OTHER)
                 val subtitlesOn = remember(Choices.changes) { Choices.subtitles(context) }
                 FocusRow("Subtitles: " + if (subtitlesOn) "on" else "off", { Choices.subtitles(context, !subtitlesOn) }, look = Look.OTHER)
                 FocusRow("Send this set-up to another device", onSendSetUp, look = Look.OTHER)
