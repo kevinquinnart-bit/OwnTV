@@ -185,10 +185,11 @@ class ShiftBuffer(
      */
     fun read(position: Long, target: ByteArray, offset: Int, length: Int, waitMs: Long): Int {
         if (length == 0) return 0
-        val until = clock() + waitMs
+        // The wait is timed on the device's own running clock, whatever clock the arrival times are noted by.
+        val until = System.nanoTime() + waitMs * 1_000_000
         synchronized(lock) {
             while (!closed && head <= position) {
-                val left = until - clock()
+                val left = (until - System.nanoTime()) / 1_000_000
                 if (left <= 0) return 0
                 try {
                     lock.wait(minOf(left, 250))
