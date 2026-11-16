@@ -171,7 +171,7 @@ private fun App() {
     var playing by remember { mutableStateOf<Playing?>(null) }
     // What the browsing screen was showing, kept while the player covers it, so closing the player
     // comes back to the same list, at the same place, on the row or poster that was playing.
-    val browse = remember(library) { library?.let { BrowseState(startOnFilms = it.channels.isEmpty()) } }
+    val browse = remember(library) { library?.let { BrowseState(startOnFilms = it.channels.isEmpty(), saved = Place.read(context)) } }
     val favourites = remember { Favourites(context.applicationContext) }
     var driveSignIn by remember { mutableStateOf(false) }
     var addOnsOpen by remember { mutableStateOf(false) }
@@ -505,10 +505,14 @@ private const val FAVOURITES = "\u0000favourites"
 private fun holdHint() = if (LocalPhone.current) " · press and hold for favourite" else " · hold OK for favourite"
 
 /** Where the browsing screen is: the section, the category in each, how far each list is scrolled. */
-private class BrowseState(startOnFilms: Boolean) {
-    var section by mutableStateOf(if (startOnFilms) Section.FILMS else Section.LIVE)
-    var liveCategory by mutableStateOf(ALL)
-    var filmCategory by mutableStateOf(ALL)
+private class BrowseState(startOnFilms: Boolean, saved: Map<String, String> = emptyMap()) {
+    // The app opens where it was last left. Search and Settings are not places to come back to.
+    var section by mutableStateOf(
+        Section.entries.firstOrNull { it.name == saved["section"] && it != Section.SEARCH && it != Section.SETTINGS && !(startOnFilms && it == Section.LIVE) }
+            ?: if (startOnFilms) Section.FILMS else Section.LIVE,
+    )
+    var liveCategory by mutableStateOf(saved["live"] ?: ALL)
+    var filmCategory by mutableStateOf(saved["film"] ?: ALL)
     val liveCategoryList = LazyListState()
     val filmCategoryList = LazyListState()
     val channelList = LazyListState()
@@ -520,7 +524,7 @@ private class BrowseState(startOnFilms: Boolean) {
     var query by mutableStateOf("")
     val searchList = LazyListState()
 
-    var showCategory by mutableStateOf(ALL)
+    var showCategory by mutableStateOf(saved["show"] ?: ALL)
     val showCategoryList = LazyListState()
     val showGrid = LazyGridState()
     var openShow by mutableStateOf<Show?>(null)
@@ -569,6 +573,10 @@ private fun MainScreen(
     onCategories: () -> Unit,
 ) {
     val context = LocalContext.current
+    // Where the user is, kept for the next time the app opens.
+    LaunchedEffect(state.section, state.liveCategory, state.filmCategory, state.showCategory) {
+        Place.keep(context, mapOf("section" to state.section.name, "live" to state.liveCategory, "film" to state.filmCategory, "show" to state.showCategory))
+    }
     // A category that has just been hidden can't stay the one being shown.
     LaunchedEffect(library) {
         if (state.liveCategory != ALL && state.liveCategory != FAVOURITES && library.liveCategories.none { it.id == state.liveCategory }) state.liveCategory = ALL

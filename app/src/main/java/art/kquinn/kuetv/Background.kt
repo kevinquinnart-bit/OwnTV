@@ -106,3 +106,16 @@ object Choices {
         changes++
     }
 }
+
+/** Where the user was in the lists when the app was last used: the section, and the category in each. */
+object Place {
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("place", Context.MODE_PRIVATE)
+
+    fun read(context: Context): Map<String, String> = prefs(context).all.mapNotNull { (key, value) -> (value as? String)?.let { key to it } }.toMap()
+
+    fun keep(context: Context, place: Map<String, String>) {
+        val edit = prefs(context).edit()
+        place.forEach { (key, value) -> edit.putString(key, value) }
+        edit.apply()
+    }
+}
