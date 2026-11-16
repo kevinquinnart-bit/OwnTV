@@ -65,4 +65,29 @@ class CarryOnTest {
         assertEquals("lists.example · uk.m3u", FreeStore.label("https://lists.example/tv/uk.m3u?x=1"))
         assertEquals("lists.example", FreeStore.label("https://lists.example"))
     }
+
+    @Test fun anAddOnsCataloguesAreReadAndKept() {
+        val manifest = com.google.gson.JsonParser.parseString(
+            """{"name":"Lists","resources":["catalog"],"catalogs":[
+                {"type":"movie","id":"top","name":"Popular","extra":[{"name":"search"},{"name":"skip"}]},
+                {"type":"series","id":"top","name":"Popular"},
+                {"type":"movie","id":"byyear","name":"By year","extra":[{"name":"genre","isRequired":true}]},
+                {"type":"movie","id":"find","name":"Search","extraRequired":["search"]},
+                {"type":"channel","id":"tv","name":"Channels"}]}""",
+        ).asJsonObject
+        // The ones that need something chosen first, or only answer a search, or aren't films or series, are left out.
+        assertEquals(listOf("movie|top|Popular", "series|top|Popular"), AddOns.readCatalogues(manifest))
+        val addOn = AddOn("http://lists.example", "Lists", streams = false, subtitles = false, catalogues = listOf("movie|top|Popular"))
+        assertEquals(addOn, AddOn.fromJson(addOn.toJson()))
+        // One kept by an older version of the app, with no catalogues noted, still reads.
+        assertEquals(
+            AddOn("http://a.example", "A", streams = true, subtitles = false),
+            AddOn.fromJson("""{"base":"http://a.example","name":"A","streams":true,"subtitles":false}"""),
+        )
+    }
+
+    @Test fun somethingWithNoAddressOfItsOwnIsKnownByItsName() {
+        assertEquals("kue:The Thing", Playable("The Thing", "").key)
+        assertEquals("http://tv.example/1.mkv", Playable("The Thing", "http://tv.example/1.mkv").key)
+    }
 }

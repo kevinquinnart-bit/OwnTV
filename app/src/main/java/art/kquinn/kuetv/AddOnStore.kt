@@ -27,5 +27,8 @@ object AddOnStore {
     /** Adds [addOn], or replaces the one already there from the same place. */
     fun add(context: Context, addOn: AddOn) = save(context, all(context).filter { it.base != addOn.base } + addOn)
 
+    /** Takes a fresh reading of an add-on already added, keeping its place in the order. */
+    fun update(context: Context, addOn: AddOn) = save(context, all(context).map { if (it.base == addOn.base) addOn else it })
+
     fun remove(context: Context, addOn: AddOn) = save(context, all(context).filter { it.base != addOn.base })
 }

@@ -127,7 +127,14 @@ data class Playable(
     val fromStart: ((Programme) -> Playable)? = null,
     /** For a film or episode: its picture (empty if it has none). Set only on those, which go on Home's "Carry on watching". */
     val poster: String? = null,
-)
+) {
+    /** What it is known by when its place is kept: its address, or, with no address of its own (add-on only), its name. */
+    val key: String get() = url.ifEmpty { NO_ADDRESS + name }
+
+    companion object {
+        const val NO_ADDRESS = "kue:"
+    }
+}
 
 /** One button along the bottom of the live name box. */
 private class Control(val label: String, val act: () -> Unit)
@@ -173,12 +180,12 @@ private object Settled {
     private val last = HashMap<String, Pair<Int, Long>>()
 
     fun startFor(item: Playable, count: Int = item.streams.size): Int {
-        val kept = last[item.url] ?: return item.startStream
+        val kept = last[item.key] ?: return item.startStream
         return if (System.currentTimeMillis() - kept.second < SETTLED_MS && kept.first in 0 until count) kept.first else item.startStream
     }
 
     fun played(item: Playable, stream: Int, count: Int) {
-        if (count > 1) last[item.url] = stream to System.currentTimeMillis()
+        if (count > 1) last[item.key] = stream to System.currentTimeMillis()
     }
 }
 
@@ -320,7 +327,7 @@ fun PlayerScreen(
     /** Notes how far into a film the player has got, so it can carry on from there next time. */
     val keepPlace: () -> Unit = {
         val item = items.getOrNull(index)
-        if (!live && item != null && started[0] && player.duration > 0) Positions.keep(context, item.url, player.currentPosition, player.duration, item.name, item.poster)
+        if (!live && item != null && started[0] && player.duration > 0) Positions.keep(context, item.key, player.currentPosition, player.duration, item.name, item.poster)
     }
     /** Another channel, film or episode: start it on the version it should start on. */
     val go: (Int) -> Unit = { next ->
@@ -374,7 +381,7 @@ fun PlayerScreen(
                     hasPlayed[0] = true
                     if (!live && !started[0] && item != null) {
                         // A film that was left part way through carries on from there, on whichever stream is playing it.
-                        val place = Positions.of(context, item.url)
+                        val place = Positions.of(context, item.key)
                         if (place > 0 && player.duration > 0 && place < player.duration && carriedOn.add(index)) {
                             player.seekTo(place)
                             say("Carrying on from " + place / 60_000 + " minutes in. Rewind to start again.")
@@ -395,7 +402,7 @@ fun PlayerScreen(
                         change(stream + 1, "Kept stopping on " + versions[stream].label + ". Now on " + versions[stream + 1].label + ".")
                     }
                 }
-                if (state == Player.STATE_ENDED && !live && item != null) Positions.forget(context, item.url)
+                if (state == Player.STATE_ENDED && !live && item != null) Positions.forget(context, item.key)
                 // An episode has finished and another follows it in the list: play that one.
                 if (state == Player.STATE_ENDED && !live && index < items.size - 1) go(index + 1)
             }
@@ -491,10 +498,15 @@ fun PlayerScreen(
                 "Add-ons",
                 item.name + ": " + if (result == null) "asking them failed" else theirs.size.toString() + " streams, " + theirs.count { it.url.startsWith("magnet:") } + " of them torrents",
             )
-            found[index] = theirs + Stream(PROVIDER_COPY, item.url)
+            // Something with no copy at the provider plays from the add-ons alone.
+            found[index] = if (item.url.isEmpty()) theirs else theirs + Stream(PROVIDER_COPY, item.url)
             note = null
+            if (theirs.isEmpty() && item.url.isEmpty()) {
+                note = if (result == null) "Couldn't ask your add-ons. Check the internet and try again." else "Your add-ons have nothing to play this from."
+                return@LaunchedEffect
+            }
             if (theirs.isEmpty()) moved = "Nothing from your add-ons for this one. Playing your provider's copy."
-            val start = Settled.startFor(item, theirs.size + 1)
+            val start = Settled.startFor(item, found[index].orEmpty().size)
             if (start != stream) {
                 stream = start
                 return@LaunchedEffect

@@ -168,6 +168,22 @@ object Health {
                 index.count("metas") == 0 -> Check("The film index", Check.DOUBT, "It answers, but found nothing for a test search.")
                 else -> Check("The film index", Check.WORKING, "Found " + index.count("metas") + " films for a test search.")
             }
+            // The lists of films and series to browse, beyond the provider's own: a few of them are tried.
+            val catalogues = runCatching { AddOns.catalogues(AddOnStore.all(context)) }.getOrDefault(emptyList())
+            if (catalogues.isEmpty()) {
+                out += Check("Film and series catalogues", Check.DOUBT, "None found. The film index listed none, and no add-on gives any.")
+            } else {
+                val tried = catalogues.take(6)
+                val pages = tried.map { c -> c to runCatching { AddOns.page(c, 0) }.getOrNull() }
+                val dead = pages.filter { it.second == null }.map { it.first.name }
+                val empty = pages.filter { it.second?.isEmpty() == true }.map { it.first.name }
+                out += when {
+                    dead.size == tried.size -> Check("Film and series catalogues", Check.DEAD, "None of the " + tried.size + " tried answered.")
+                    dead.isNotEmpty() -> Check("Film and series catalogues", Check.DOUBT, (tried.size - dead.size).toString() + " of " + tried.size + " tried answered. Not answering: " + dead.joinToString(", ") + ".")
+                    empty.isNotEmpty() -> Check("Film and series catalogues", Check.DOUBT, "All " + tried.size + " tried answered, but these were empty: " + empty.joinToString(", ") + ".")
+                    else -> Check("Film and series catalogues", Check.WORKING, catalogues.size.toString() + " catalogues. The " + tried.size + " tried all answered, " + pages.sumOf { it.second?.size ?: 0 } + " titles on their first pages.")
+                }
+            }
             for (a in AddOnStore.all(context)) out += addOn(a, lang)
             for (list in FreeStore.all(context)) {
                 out += try {

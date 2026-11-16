@@ -13,18 +13,40 @@ import java.util.concurrent.TimeUnit
 class AddOnProblem(message: String) : Exception(message)
 
 /** One add-on the user has added: where it answers, its name, and what it can be asked for. */
-data class AddOn(val base: String, val name: String, val streams: Boolean, val subtitles: Boolean) {
+data class AddOn(
+    val base: String, val name: String, val streams: Boolean, val subtitles: Boolean,
+    /** The lists of films and series it offers to browse, each written "type|id|name". */
+    val catalogues: List<String> = emptyList(),
+) {
     fun toJson(): String = JsonObject().apply {
         addProperty("base", base); addProperty("name", name); addProperty("streams", streams); addProperty("subtitles", subtitles)
+        add("catalogues", com.google.gson.JsonArray().apply { catalogues.forEach { add(it) } })
     }.toString()
 
     companion object {
         fun fromJson(text: String): AddOn? = runCatching {
             val o = JsonParser.parseString(text).asJsonObject
-            AddOn(o.get("base").asString, o.get("name").asString, o.get("streams").asBoolean, o.get("subtitles").asBoolean)
+            AddOn(
+                o.get("base").asString, o.get("name").asString, o.get("streams").asBoolean, o.get("subtitles").asBoolean,
+                // One kept by an older version has none noted yet.
+                o.get("catalogues")?.takeIf { it.isJsonArray }?.asJsonArray?.map { it.asString }.orEmpty(),
+            )
         }.getOrNull()
     }
 }
+
+/** A list of films or series to browse, from the film index or an add-on. [type] is "movie" or "series". */
+data class Catalogue(val base: String, val type: String, val id: String, val name: String, val from: String) {
+    /** What it is known by as a category in Films or Series. */
+    val key: String get() = PREFIX + base + "|" + type + "|" + id
+
+    companion object {
+        const val PREFIX = "cat:"
+    }
+}
+
+/** One film or series in a catalogue. [id] is the number add-ons know it by. */
+data class CatItem(val id: String, val type: String, val name: String, val poster: String, val about: About)
 
 /** What the add-ons had for one film or episode, the best to try first. */
 class Search(val streams: List<Stream>)
@@ -75,10 +97,91 @@ object AddOns {
         val offers = o.list("resources").map { r -> if (r.isJsonObject) r.asJsonObject.text("name") else runCatching { r.asString }.getOrDefault("") }
         val streams = "stream" in offers
         val subtitles = "subtitles" in offers
-        if (!streams && !subtitles) throw AddOnProblem("That add-on has no streams or subtitles, so KueTV has no use for it.")
+        val catalogues = readCatalogues(o)
+        if (!streams && !subtitles && catalogues.isEmpty()) throw AddOnProblem("That add-on has no streams or subtitles, so KueTV has no use for it.")
         val base = link.substringBefore('?').removeSuffix("/manifest.json")
-        return AddOn(base, o.text("name").ifBlank { base.substringAfter("://").substringBefore('/') }, streams, subtitles)
+        return AddOn(base, o.text("name").ifBlank { base.substringAfter("://").substringBefore('/') }, streams, subtitles, catalogues)
     }
+
+    // ------------------------------------------------------------------------------------------ catalogues
+
+    /**
+     * The lists of films and series an add-on's description offers, each as "type|id|name". Ones that
+     * only answer a search, or need something chosen first (a genre, say), are left out.
+     */
+    fun readCatalogues(manifest: JsonObject): List<String> = manifest.list("catalogs").mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.mapNotNull { c ->
+        val type = c.text("type")
+        val id = c.text("id")
+        val needed = c.list("extraRequired").map { runCatching { it.asString }.getOrDefault("") } +
+            c.list("extra").mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.filter { it.get("isRequired")?.let { r -> runCatching { r.asBoolean }.getOrDefault(false) } == true }.map { it.text("name") }
+        if ((type != "movie" && type != "series") || id.isBlank() || needed.isNotEmpty()) null
+        else type + "|" + id + "|" + c.text("name").ifBlank { id }.replace("|", " ")
+    }.distinct()
+
+    @Volatile private var indexCatalogues: List<Catalogue>? = null
+
+    private fun toCatalogue(base: String, written: String, from: String): Catalogue? {
+        val p = written.split("|", limit = 3)
+        return if (p.size < 3) null else Catalogue(base, p[0], p[1], p[2], from)
+    }
+
+    /** Every list of films and series there is to browse: the film index's own, then each add-on's. Call off the main thread. */
+    fun catalogues(addOns: List<AddOn>): List<Catalogue> {
+        val own = indexCatalogues ?: fetch("$index/manifest.json")?.let { m -> readCatalogues(m).mapNotNull { toCatalogue(index, it, "") } }?.also { indexCatalogues = it } ?: emptyList()
+        return (own + addOns.filter { it.base != index }.flatMap { a -> a.catalogues.mapNotNull { toCatalogue(a.base, it, a.name) } }).also { lastCatalogues = it }
+    }
+
+    /** What [catalogues] last found, so a screen coming back has them at once. */
+    @Volatile var lastCatalogues: List<Catalogue> = emptyList()
+        private set
+
+    private fun item(type: String, m: JsonObject): CatItem? {
+        val id = m.text("id")
+        val name = m.text("name")
+        if (id.isBlank() || name.isBlank()) return null
+        val genres = (m.list("genres").ifEmpty { m.list("genre") }).mapNotNull { runCatching { it.asString }.getOrNull() }.take(2).joinToString(", ")
+        val about = About(
+            plot = m.text("description"), genre = genres, year = m.text("releaseInfo").ifEmpty { m.text("year") },
+            rating = About.rating(m.text("imdbRating")), minutes = Regex("\\d+").find(m.text("runtime"))?.value?.toIntOrNull() ?: 0,
+        )
+        return CatItem(id, type, name, m.text("poster"), about)
+    }
+
+    /** Notes the number a film or series is known by, so asking for its streams by name finds it at once. */
+    fun know(type: String, name: String, id: String) = synchronized(ids) { ids["$type:$name"] = id }
+
+    private fun items(type: String, answer: JsonObject): List<CatItem> =
+        answer.list("metas").mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.mapNotNull { item(type, it) }.onEach { know(type, it.name, it.id) }
+
+    /** One page of a catalogue, starting after the first [skip]; null when it didn't answer. Call off the main thread. */
+    fun page(c: Catalogue, skip: Int): List<CatItem>? {
+        val id = java.net.URLEncoder.encode(c.id, "UTF-8").replace("+", "%20")
+        val answer = fetch(c.base + "/catalog/" + c.type + "/" + id + (if (skip > 0) "/skip=$skip" else "") + ".json") ?: return null
+        return items(c.type, answer)
+    }
+
+    /** Films ("movie") or series the film index finds for what was typed. Call off the main thread. */
+    fun search(type: String, typed: String): List<CatItem> {
+        val asked = java.net.URLEncoder.encode(typed.trim(), "UTF-8").replace("+", "%20")
+        return fetch("$index/catalog/$type/top/search=$asked.json")?.let { items(type, it) }.orEmpty()
+    }
+
+    /** A series' episodes, from the film index, in order; null when it didn't answer. Call off the main thread. */
+    fun episodes(id: String): List<Episode>? {
+        val meta = fetch("$index/meta/series/$id.json")?.inner("meta") ?: return null
+        return meta.list("videos").mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.mapNotNull { v ->
+            val season = v.text("season").toIntOrNull() ?: return@mapNotNull null
+            val number = (v.text("episode").ifEmpty { v.text("number") }).toIntOrNull() ?: return@mapNotNull null
+            // Season 0 is extras and specials, which stream add-ons rarely have.
+            if (season < 1) null else Episode(v.text("id").ifBlank { "$id:$season:$number" }, season, number, v.text("name").ifEmpty { v.text("title") }, "")
+        }.sortedWith(compareBy({ it.season }, { it.number })).distinctBy { it.season to it.number }
+    }
+
+    /** A film's name as plain words, for telling whether the provider lists the same film. */
+    fun titleKey(name: String): String = plain(title(name).first)
+
+    /** The year in a provider's name for a film, when it gives one. */
+    fun titleYear(name: String): Int? = title(name).second
 
     // ------------------------------------------------------------------------------------------ which film is it
 

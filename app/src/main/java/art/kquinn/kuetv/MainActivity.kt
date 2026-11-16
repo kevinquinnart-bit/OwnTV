@@ -59,6 +59,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -214,6 +215,12 @@ private fun App() {
     }
     // A newer version downloaded last time is no longer needed once the app starts afresh.
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updates.tidy(context); ShiftBuffer.tidy(context) } }
+    // Each add-on is read again when the app opens, so the lists of films and series it offers are up to date.
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            for (a in AddOnStore.all(context)) runCatching { AddOns.read(a.base) }.getOrNull()?.let { fresh -> if (fresh != a) AddOnStore.update(context, fresh) }
+        }
+    }
     // The health check's last results, and once a day a fresh one, quietly, once the lists have loaded.
     LaunchedEffect(Unit) { Health.restore(context) }
     LaunchedEffect(library != null) {
@@ -344,7 +351,10 @@ private fun App() {
                     if (live) items.getOrNull(index)?.let { LastLive.item = Playable(it.name, it.streams.lastOrNull()?.url ?: it.url) }
                     val item = items.getOrNull(index)
                     // Both an add-on's stream and the provider's own copy: the user picks. Only one of them: it plays.
-                    if (!live && item?.find != null && item.url.isNotEmpty()) choice = Playing(items, index, false)
+                    if (!live && item != null && item.url.isEmpty() && item.find == null) {
+                        // From a catalogue, with no copy at the provider and no add-on that gives streams.
+                        android.widget.Toast.makeText(context, "Nothing to play this from yet. Add an add-on that gives streams, in Settings › Add-ons.", android.widget.Toast.LENGTH_LONG).show()
+                    } else if (!live && item?.find != null && item.url.isNotEmpty()) choice = Playing(items, index, false)
                     else playing = Playing(items, index, live)
                 },
                 onEdit = { editing = true },
@@ -698,6 +708,11 @@ private class BrowseState(saved: Map<String, String> = emptyMap()) {
     /** The row or poster that was sent to the player; focus returns to it. */
     var resumeKey by mutableStateOf<String?>(null)
 
+    /** What has been fetched of each catalogue so far, where each one's grid is scrolled to, and the ones fetched to the end. */
+    val catItems = HashMap<String, androidx.compose.runtime.snapshots.SnapshotStateList<CatItem>>()
+    val catGrids = HashMap<String, LazyGridState>()
+    val catDone = HashSet<String>()
+
     /** The channel the remote is on in Live TV, for the picture and programme details beside the list. */
     var liveOn by mutableStateOf<ChannelGroup?>(null)
 }
@@ -800,8 +815,9 @@ private fun MainScreen(
     // A category that has just been hidden can't stay the one being shown.
     LaunchedEffect(library) {
         if (state.liveCategory != ALL && state.liveCategory != FAVOURITES && library.liveCategories.none { it.id == state.liveCategory }) state.liveCategory = ALL
-        if (state.filmCategory != ALL && state.filmCategory != FAVOURITES && library.filmCategories.none { it.id == state.filmCategory }) state.filmCategory = ALL
-        if (state.showCategory != ALL && state.showCategory != FAVOURITES && library.showCategories.none { it.id == state.showCategory }) state.showCategory = ALL
+        // A catalogue isn't one of the provider's categories, and is left alone.
+        if (state.filmCategory != ALL && state.filmCategory != FAVOURITES && !state.filmCategory.startsWith(Catalogue.PREFIX) && library.filmCategories.none { it.id == state.filmCategory }) state.filmCategory = ALL
+        if (state.showCategory != ALL && state.showCategory != FAVOURITES && !state.showCategory.startsWith(Catalogue.PREFIX) && library.showCategories.none { it.id == state.showCategory }) state.showCategory = ALL
         for (pick in listOf(state.guide, state.catchUp)) {
             if (pick.category != ALL && pick.category != FAVOURITES && library.liveCategories.none { it.id == pick.category }) pick.category = ALL
         }
@@ -811,6 +827,26 @@ private fun MainScreen(
     val subtitleLang = remember(Choices.changes) { Langs.of(Choices.subtitleLang(context)) }
     val finder: (String, String, Int?, Int?) -> (suspend () -> Search)? = remember(addOns, subtitleLang) {
         { type, name, season, episode -> streamFinder(addOns, type, name, season, episode, subtitleLang) }
+    }
+    // The lists of films and series to browse beyond the provider's own: the film index's, and each add-on's.
+    val catalogues by produceState(AddOns.lastCatalogues, addOns) {
+        value = withContext(Dispatchers.IO) { runCatching { AddOns.catalogues(addOns) }.getOrDefault(AddOns.lastCatalogues) }
+    }
+    val catCategory: (Catalogue) -> Category = { c -> Category(c.key, "More: " + c.name + if (c.from.isBlank()) "" else " · " + c.from) }
+    val filmCatalogues = remember(catalogues) { catalogues.filter { it.type == "movie" } }
+    val showCatalogues = remember(catalogues) { catalogues.filter { it.type == "series" } }
+    // The provider's films by their plain titles, to tell whether it has a copy of a film found in a catalogue.
+    val providerByTitle by produceState<Map<String, List<Film>>>(emptyMap(), library) {
+        value = withContext(Dispatchers.Default) { library.films.groupBy { AddOns.titleKey(it.name) } }
+    }
+    /** OK on a film from a catalogue: with a copy at the provider too, the user gets the choice; otherwise the add-ons play it. */
+    val playCat: (CatItem, String) -> Unit = { item, key ->
+        val year = item.about.year.take(4).toIntOrNull()
+        val mine = providerByTitle[AddOns.titleKey(item.name)]?.firstOrNull { f ->
+            val theirs = AddOns.titleYear(f.name)
+            theirs == null || year == null || kotlin.math.abs(theirs - year) <= 1
+        }
+        onPlay(listOf(Playable(item.name, mine?.url.orEmpty(), find = finder("movie", item.name, null, null), poster = item.poster)), 0, false, key)
     }
     var section by state::section
     val liveCategory = state.liveCategory
@@ -874,7 +910,15 @@ private fun MainScreen(
     // A film or episode from "Carry on watching": a film is found again in the lists, so its add-ons are asked as before.
     val carryOn: (Positions.Watching) -> Unit = { w ->
         val film = library.films.firstOrNull { it.url == w.url }
-        val item = if (film != null) Playable(film.name, film.url, find = finder("movie", film.name, null, null), poster = film.poster) else Playable(w.name, w.url, poster = w.poster)
+        val episode = Regex("^(.*) · S(\\d+) E(\\d+)$").find(w.name)
+        val item = when {
+            film != null -> Playable(film.name, film.url, find = finder("movie", film.name, null, null), poster = film.poster)
+            // From a catalogue, with no address of its own: the add-ons are asked again, by its name.
+            w.url.startsWith(Playable.NO_ADDRESS) && episode != null ->
+                Playable(w.name, "", find = finder("series", episode.groupValues[1], episode.groupValues[2].toIntOrNull(), episode.groupValues[3].toIntOrNull()), poster = w.poster)
+            w.url.startsWith(Playable.NO_ADDRESS) -> Playable(w.name, "", find = finder("movie", w.name, null, null), poster = w.poster)
+            else -> Playable(w.name, w.url, poster = w.poster)
+        }
         onPlay(listOf(item), 0, false, "carry:" + w.url)
     }
     val openFromHome: (Section) -> Unit = { s ->
@@ -934,12 +978,15 @@ private fun MainScreen(
                 }
             }
             Section.FILMS -> {
-                Categories(library.filmCategories, filmCategory, state.filmCategoryList) {
+                Categories(library.filmCategories + filmCatalogues.map(catCategory), filmCategory, state.filmCategoryList) {
                     if (it != state.filmCategory) {
                         state.filmCategory = it
                         scope.launch { state.filmGrid.scrollToItem(0) }
                     }
                 }
+                val filmCatalogue = filmCatalogues.firstOrNull { it.key == filmCategory }
+                if (filmCatalogue != null) CatalogueGrid(filmCatalogue, state, resume, playCat, fill())
+                else {
                 val shown = remember(library, filmCategory, if (filmCategory == FAVOURITES) favs else null) {
                     when (filmCategory) {
                         ALL -> library.films
@@ -983,10 +1030,11 @@ private fun MainScreen(
                     }
                 }
             }
-            Section.SERIES -> SeriesPane(library, state, favourites, resume, finder, onPlay)
+            }
+            Section.SERIES -> SeriesPane(library, state, favourites, resume, finder, onPlay, showCatalogues, catCategory)
             Section.GUIDE -> ChannelGuide(library, false, state.guide, state, favs, resume, onPlay)
             Section.CATCHUP -> ChannelGuide(library, true, state.catchUp, state, favs, resume, onPlay)
-            Section.SEARCH -> SearchPane(library, state, resume, finder, onPlay) { show ->
+            Section.SEARCH -> SearchPane(library, state, resume, finder, onPlay, playCat) { show ->
                 state.openShow = show
                 section = Section.SERIES
             }
@@ -1492,26 +1540,38 @@ private fun Pane.SeriesPane(
     resume: FocusRequester,
     finder: (String, String, Int?, Int?) -> (suspend () -> Search)?,
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+    catalogues: List<Catalogue>,
+    catCategory: (Catalogue) -> Category,
 ) {
     val favs = favourites.keys
     val account = library.account
-    if (account == null || library.shows.isEmpty()) {
+    val opened = state.openShow
+    if (opened != null && (account != null || opened.id.startsWith(Catalogue.PREFIX))) {
+        EpisodePage(opened, account, state, resume, finder, onPlay)
+        return
+    }
+    if ((account == null || library.shows.isEmpty()) && catalogues.isEmpty()) {
         Column(fill()) {
             Note(if (account == null) "Series need a login: server address, username and password. A playlist link on its own doesn't list them." else "Your provider listed no series.")
         }
         return
     }
-    val opened = state.openShow
-    if (opened != null) {
-        EpisodePage(opened, account, state, resume, finder, onPlay)
-        return
-    }
     val scope = rememberCoroutineScope()
-    Categories(library.showCategories, state.showCategory, state.showCategoryList) {
+    Categories(library.showCategories + catalogues.map(catCategory), state.showCategory, state.showCategoryList) {
         if (it != state.showCategory) {
             state.showCategory = it
             scope.launch { state.showGrid.scrollToItem(0) }
         }
+    }
+    val catalogue = catalogues.firstOrNull { it.key == state.showCategory }
+    if (catalogue != null) {
+        // A series from a catalogue opens its episodes the same way as one of the provider's.
+        CatalogueGrid(catalogue, state, resume, { item, key ->
+            state.resumeKey = key
+            scope.launch { state.episodeList.scrollToItem(0) }
+            state.openShow = catShow(item)
+        }, fill())
+        return
     }
     val shown = remember(library, state.showCategory, if (state.showCategory == FAVOURITES) favs else null) {
         when (state.showCategory) {
@@ -1560,7 +1620,7 @@ private fun Pane.SeriesPane(
 @Composable
 private fun Pane.EpisodePage(
     show: Show,
-    account: Account,
+    account: Account?,
     state: BrowseState,
     resume: FocusRequester,
     finder: (String, String, Int?, Int?) -> (suspend () -> Search)?,
@@ -1572,7 +1632,13 @@ private fun Pane.EpisodePage(
         if (value != null) return@produceState
         value = withContext(Dispatchers.IO) {
             try {
-                Result.success(Provider.episodes(account, show.id))
+                when {
+                    // A series from a catalogue: its episodes come from the film index.
+                    show.id.startsWith(Catalogue.PREFIX) -> AddOns.episodes(show.id.removePrefix(Catalogue.PREFIX))?.let { Result.success(it) }
+                        ?: Result.failure(ProviderProblem("Couldn't load the episodes for this series. Check the internet and try again."))
+                    account == null -> Result.failure(ProviderProblem("Couldn't load the episodes for this series."))
+                    else -> Result.success(Provider.episodes(account, show.id))
+                }
             } catch (e: ProviderProblem) {
                 Result.failure(e)
             } catch (e: Exception) {
@@ -1598,7 +1664,7 @@ private fun Pane.EpisodePage(
         when {
             result == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
             episodes == null -> Note(result.exceptionOrNull()?.message ?: "Couldn't load the episodes for this series.")
-            episodes.isEmpty() -> Note("Your provider listed no episodes for this series.")
+            episodes.isEmpty() -> Note(if (show.id.startsWith(Catalogue.PREFIX)) "No episodes are listed for this series." else "Your provider listed no episodes for this series.")
             else -> {
                 val label: (Episode) -> String = { e ->
                     val plain = "Episode " + e.number
@@ -1643,9 +1709,20 @@ private fun Pane.SearchPane(
     resume: FocusRequester,
     finder: (String, String, Int?, Int?) -> (suspend () -> Search)?,
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+    onCat: (CatItem, String) -> Unit,
     onOpenShow: (Show) -> Unit,
 ) {
     val found = remember(library, state.query) { Finder.search(library, state.query) }
+    val asked = state.query.trim()
+    // The catalogues are asked too, once the typing has stopped for a moment. Null while they are being asked.
+    val more by produceState<Pair<List<CatItem>, List<CatItem>>?>(null, asked) {
+        value = null
+        if (asked.length < 3) { value = emptyList<CatItem>() to emptyList(); return@produceState }
+        delay(700)
+        value = withContext(Dispatchers.IO) { runCatching { AddOns.search("movie", asked).take(20) to AddOns.search("series", asked).take(20) }.getOrDefault(emptyList<CatItem>() to emptyList()) }
+    }
+    val moreFilms = more?.first.orEmpty()
+    val moreShows = more?.second.orEmpty()
     // One row for each channel found, as in Live TV, whichever of its versions matched.
     val channelsFound = remember(found) { found.channels.mapNotNull { library.groupOf[it.id] }.distinct() }
     Column(fill()) {
@@ -1659,7 +1736,8 @@ private fun Pane.SearchPane(
         )
         when {
             state.query.trim().length < 2 -> Note("Press OK on the box and type at least two letters.")
-            found.isEmpty -> Note("Nothing matches \"" + state.query.trim() + "\".")
+            found.isEmpty && more == null -> Note("Nothing in your provider's lists matches. Looking in the catalogues…")
+            found.isEmpty && moreFilms.isEmpty() && moreShows.isEmpty() -> Note("Nothing matches \"" + state.query.trim() + "\".")
             else -> LazyColumn(Modifier.fillMaxSize(), state = state.searchList) {
                 if (channelsFound.isNotEmpty()) item(key = "h:live") { Heading("Channels") }
                 itemsIndexed(channelsFound, key = { _, c -> "live:" + c.id }) { _, channel ->
@@ -1683,6 +1761,23 @@ private fun Pane.SearchPane(
                 if (found.shows.isNotEmpty()) item(key = "h:show") { Box(Modifier.padding(top = 14.dp)) { Heading("Series") } }
                 itemsIndexed(found.shows, key = { _, s -> "show:" + s.id }) { _, show ->
                     FocusRow(show.name, { state.resumeKey = "show:" + show.id; onOpenShow(show) })
+                }
+                if (more == null) item(key = "h:looking") { Box(Modifier.padding(top = 14.dp)) { Heading("Looking in the catalogues…") } }
+                if (moreFilms.isNotEmpty()) item(key = "h:catfilm") { Box(Modifier.padding(top = 14.dp)) { Heading("More films, from the catalogues") } }
+                itemsIndexed(moreFilms, key = { _, f -> "catfilm:" + f.id }) { _, film ->
+                    val key = Catalogue.PREFIX + film.id
+                    FocusRow(
+                        film.name + if (film.about.year.isBlank()) "" else " (" + film.about.year + ")",
+                        { onCat(film, key) },
+                        if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                    )
+                }
+                if (moreShows.isNotEmpty()) item(key = "h:catshow") { Box(Modifier.padding(top = 14.dp)) { Heading("More series, from the catalogues") } }
+                itemsIndexed(moreShows, key = { _, s -> "catshow:" + s.id }) { _, show ->
+                    FocusRow(
+                        show.name + if (show.about.year.isBlank()) "" else " (" + show.about.year + ")",
+                        { state.resumeKey = Catalogue.PREFIX + show.id; onOpenShow(catShow(show)) },
+                    )
                 }
             }
         }
@@ -3059,5 +3154,76 @@ private fun HealthRow(title: String, detail: String, state: Int) {
     ) {
         Text(title, color = when (state) { Check.WORKING -> Color.White; Check.DOUBT -> Accent; else -> Color(0xFFFF6B5E) }, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Text(detail, color = Soft, fontSize = 16.sp)
+    }
+}
+
+// --------------------------------------------------------------------------------------------- catalogues
+
+/** A series from a catalogue, as the series screens know one. */
+private fun catShow(item: CatItem) = Show(Catalogue.PREFIX + item.id, item.name, item.poster, "", item.about)
+
+/**
+ * One catalogue's films or series as posters. The first page is fetched when it is opened, and the next
+ * each time the remote nears the end of what has been fetched so far.
+ */
+@Composable
+private fun CatalogueGrid(catalogue: Catalogue, state: BrowseState, resume: FocusRequester, onOk: (CatItem, String) -> Unit, modifier: Modifier) {
+    val phone = LocalPhone.current
+    val items = remember(catalogue.key) { state.catItems.getOrPut(catalogue.key) { mutableStateListOf() } }
+    val grid = remember(catalogue.key) { state.catGrids.getOrPut(catalogue.key) { LazyGridState() } }
+    var wanted by remember(catalogue.key) { mutableIntStateOf(0) }
+    var problem by remember(catalogue.key) { mutableStateOf(false) }
+    var busy by remember(catalogue.key) { mutableStateOf(false) }
+    var on by remember(catalogue.key) { mutableStateOf<CatItem?>(null) }
+    LaunchedEffect(catalogue.key, wanted) {
+        if (catalogue.key in state.catDone) return@LaunchedEffect
+        if (wanted == 0 && items.isNotEmpty()) return@LaunchedEffect
+        busy = true
+        try {
+            val page = withContext(Dispatchers.IO) { runCatching { AddOns.page(catalogue, items.size) }.getOrNull() }
+            if (page == null) {
+                problem = items.isEmpty()
+            } else {
+                problem = false
+                val have = items.mapTo(HashSet()) { it.id }
+                val fresh = page.filter { have.add(it.id) }
+                // A page with nothing new is the end of the catalogue.
+                if (fresh.isEmpty()) state.catDone += catalogue.key else items.addAll(fresh)
+            }
+        } finally {
+            busy = false
+        }
+    }
+    Column(modifier) {
+        Heading(catalogue.name + " · " + items.size + (if (catalogue.key in state.catDone) "" else "+") + (if (catalogue.type == "movie") " films" else " series") + " from the catalogue")
+        if (!phone) AboutStrip(on?.name, on?.about)
+        when {
+            problem -> Note("This catalogue didn't answer. Check the internet, or see Settings › Health check.")
+            items.isEmpty() && busy -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
+            items.isEmpty() -> Note("This catalogue is empty.")
+            else -> LazyVerticalGrid(
+                columns = if (phone) GridCells.Adaptive(104.dp) else GridCells.Fixed(4),
+                state = grid,
+                modifier = Modifier.fillMaxSize().focusRestorer(),
+                contentPadding = PaddingValues(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                itemsIndexed(items, key = { _, f -> f.id }) { i, item ->
+                    val key = Catalogue.PREFIX + item.id
+                    // On a phone nothing takes focus, so the next page is asked for as the end scrolls into view.
+                    if (phone && i >= items.size - 6) LaunchedEffect(items.size) { wanted = items.size }
+                    Poster(
+                        item.name, item.poster,
+                        { onOk(item, key) },
+                        if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                        onFocus = {
+                            on = item
+                            if (i >= items.size - 8) wanted = items.size
+                        },
+                    )
+                }
+            }
+        }
     }
 }
