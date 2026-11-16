@@ -45,6 +45,9 @@ jobs:
           ./gradlew :app:assembleRelease --stacktrace
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/KueTV2.apk
+          # The TV's Downloader code asks for the newest download by these two older names: give it KueTV 2.
+          cp dist/KueTV2.apk dist/KueTV.apk
+          cp dist/KueTV2.apk dist/OwnTV.apk
           printf 'KueTV 2, version %s\n' "$VERSION_NAME" > dist/NOTES.md
           echo "Torrent engine in this build:"; unzip -l dist/KueTV2.apk | grep '\.so$' || echo "MISSING"
           if [ -n "$KUETV_DRIVE_CLIENT_ID" ] && [ -n "$KUETV_DRIVE_CLIENT_SECRET" ]; then echo "Google Drive keys: in this build"; else echo "Google Drive keys: MISSING from this build"; fi
@@ -55,7 +58,10 @@ jobs:
           tag_name: kuetv2
           target_commitish: ${{ github.sha }}
           name: KueTV 2 (${{ env.VERSION_NAME }})
-          files: dist/KueTV2.apk
+          files: |
+            dist/KueTV2.apk
+            dist/KueTV.apk
+            dist/OwnTV.apk
           body_path: dist/NOTES.md
-          prerelease: true
-          make_latest: false
+          prerelease: false
+          make_latest: true
