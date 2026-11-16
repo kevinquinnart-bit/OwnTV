@@ -51,6 +51,9 @@ class Library(
 ) {
     /** The channels with the versions of the same channel (4K, FHD, HD, SD) kept together as one. */
     val groups: List<ChannelGroup> by lazy { Versions.group(channels) }
+
+    /** For each channel as the provider lists it, the one row it sits behind. */
+    val groupOf: Map<String, ChannelGroup> by lazy { groups.flatMap { g -> g.versions.map { it.channel.id to g } }.toMap() }
 }
 
 /** One version of a channel: the channel as the provider lists it, and its quality as read from its name. */

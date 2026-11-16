@@ -573,17 +573,7 @@ private fun MainScreen(
                         else -> library.groups.filter { g -> g.versions.any { it.channel.categoryId == liveCategory } }
                     }
                 }
-                val playables = remember(shown) {
-                    val account = library.account
-                    shown.map { g ->
-                        val first = g.versions[g.start].channel
-                        Playable(
-                            g.name, first.url, g.versions.map { Stream(it.label, it.channel.url) }, g.start,
-                            // The name box says what is on now and next, when the provider has a guide to ask.
-                            guide = if (account == null) null else ({ withContext(Dispatchers.IO) { Provider.guide(account, first.id) } }),
-                        )
-                    }
-                }
+                val playables = remember(shown) { shown.map { livePlayable(it, library.account) } }
                 Column(fill()) {
                     Heading((if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint())
                     LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = state.channelList) {
@@ -824,19 +814,23 @@ private fun Pane.ChannelGuide(
         Column(fill()) { Note("The guide and catch-up need a login: server address, username and password. A playlist link on its own doesn't give them.") }
         return
     }
-    val channels = remember(library, catchUp) { if (catchUp) library.channels.filter { it.catchupDays > 0 } else library.channels }
+    // One row for each channel, as in Live TV. For catch-up: the channels with a version the provider keeps.
+    val channels = remember(library, catchUp) { if (catchUp) library.groups.filter { g -> g.versions.any { it.channel.catchupDays > 0 } } else library.groups }
     if (channels.isEmpty()) {
         Column(fill()) { Note(if (catchUp) "Your provider marks no channel as having catch-up." else "Your provider listed no channels.") }
         return
     }
     val opened = pick.open
     if (opened != null) {
-        ProgrammePage(opened, catchUp, account, library.serverAheadSec, pick, state, resume, onPlay)
+        // Watching from here plays the channel the same way Live TV does: best version first, moving down if it must.
+        val watch = remember(opened.id) { library.groupOf[opened.id]?.let { livePlayable(it, account) } ?: Playable(opened.name, opened.url) }
+        val rowKey = "pick:" + (library.groupOf[opened.id]?.id ?: opened.id)
+        ProgrammePage(opened, watch, rowKey, catchUp, account, library.serverAheadSec, pick, state, resume, onPlay)
         return
     }
     val scope = rememberCoroutineScope()
     val categories = remember(library, channels) {
-        val used = channels.mapTo(HashSet()) { it.categoryId }
+        val used = channels.flatMapTo(HashSet()) { g -> g.versions.map { it.channel.categoryId } }
         library.liveCategories.filter { it.id in used }
     }
     Categories(categories, pick.category, pick.categoryList) {
@@ -848,8 +842,8 @@ private fun Pane.ChannelGuide(
     val shown = remember(channels, pick.category, if (pick.category == FAVOURITES) favs else null) {
         when (pick.category) {
             ALL -> channels
-            FAVOURITES -> channels.filter { Favourites.key(it, true) in favs }
-            else -> channels.filter { it.categoryId == pick.category }
+            FAVOURITES -> channels.filter { g -> g.versions.any { Favourites.key(it.channel, true) in favs } }
+            else -> channels.filter { g -> g.versions.any { it.channel.categoryId == pick.category } }
         }
     }
     LaunchedEffect(Unit) {
@@ -865,12 +859,14 @@ private fun Pane.ChannelGuide(
             itemsIndexed(shown, key = { _, c -> c.id }) { _, channel ->
                 val key = "pick:" + channel.id
                 FocusRow(
-                    (if (Favourites.key(channel, true) in favs) "★ " else "") + channel.name,
+                    (if (channel.versions.any { Favourites.key(it.channel, true) in favs }) "★ " else "") + channel.name,
                     {
                         state.resumeKey = key
                         pick.pickDay = null
                         scope.launch { pick.programmeList.scrollToItem(0) }
-                        pick.open = channel
+                        // The version asked about: for catch-up the best one the provider keeps, else the one that plays first.
+                        val version = if (catchUp) channel.versions.first { it.channel.catchupDays > 0 } else channel.versions[channel.start]
+                        pick.open = version.channel.copy(name = channel.name)
                     },
                     if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                     leading = { Logo(channel.logo) },
@@ -883,6 +879,9 @@ private fun Pane.ChannelGuide(
 @Composable
 private fun Pane.ProgrammePage(
     channel: Channel,
+    watch: Playable,
+    /** The channel's row in the list behind this page; closing the page lands back on it. */
+    rowKey: String,
     catchUp: Boolean,
     account: Account,
     serverAheadSec: Int,
@@ -901,7 +900,7 @@ private fun Pane.ProgrammePage(
 
     BackHandler {
         when (step) {
-            null -> { pick.justClosed = true; pick.open = null }
+            null -> { state.resumeKey = rowKey; pick.justClosed = true; pick.open = null }
             CHOOSING_DAY -> pick.pickDay = null
             else -> pick.pickDay = CHOOSING_DAY
         }
@@ -989,7 +988,7 @@ private fun Pane.ProgrammePage(
                         Note(if (catchUp) "Your provider sent no past programmes for this channel. Pick a date and time instead." else "Your provider sent no guide for this channel.")
                     }
                     if (!catchUp && rows.isEmpty()) item(key = "watch") {
-                        FocusRow("Watch " + channel.name, { onPlay(listOf(Playable(channel.name, channel.url)), 0, true, "pick:" + channel.id) }, Modifier.focusRequester(first))
+                        FocusRow("Watch " + channel.name, { onPlay(listOf(watch), 0, true, rowKey) }, Modifier.focusRequester(first))
                     }
                     itemsIndexed(rows, key = { _, p -> p.startMs }) { i, programme ->
                         val key = "prog:" + programme.startMs
@@ -1014,7 +1013,7 @@ private fun Pane.ProgrammePage(
                                         android.widget.Toast.LENGTH_LONG,
                                     ).show()
                                 } else {
-                                    onPlay(listOf(Playable(channel.name, channel.url)), 0, true, key)
+                                    onPlay(listOf(watch), 0, true, key)
                                 }
                             },
                             modifier = (if (i == 0 && lead == 0) Modifier.focusRequester(first) else Modifier)
@@ -1225,6 +1224,8 @@ private fun Pane.SearchPane(
     onOpenShow: (Show) -> Unit,
 ) {
     val found = remember(library, state.query) { Finder.search(library, state.query) }
+    // One row for each channel found, as in Live TV, whichever of its versions matched.
+    val channelsFound = remember(found) { found.channels.mapNotNull { library.groupOf[it.id] }.distinct() }
     Column(fill()) {
         OutlinedTextField(
             value = state.query,
@@ -1238,12 +1239,12 @@ private fun Pane.SearchPane(
             state.query.trim().length < 2 -> Note("Press OK on the box and type at least two letters.")
             found.isEmpty -> Note("Nothing matches \"" + state.query.trim() + "\".")
             else -> LazyColumn(Modifier.fillMaxSize(), state = state.searchList) {
-                if (found.channels.isNotEmpty()) item(key = "h:live") { Heading("Channels") }
-                itemsIndexed(found.channels, key = { _, c -> "live:" + c.id }) { _, channel ->
+                if (channelsFound.isNotEmpty()) item(key = "h:live") { Heading("Channels") }
+                itemsIndexed(channelsFound, key = { _, c -> "live:" + c.id }) { _, channel ->
                     val key = "live:" + channel.id
                     FocusRow(
                         channel.name,
-                        { onPlay(listOf(Playable(channel.name, channel.url)), 0, true, key) },
+                        { onPlay(listOf(livePlayable(channel, library.account)), 0, true, key) },
                         if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                         leading = { Logo(channel.logo) },
                     )
@@ -1746,4 +1747,13 @@ private fun TakeSetUpScreen(onDone: () -> Unit, onTaken: (SetUp) -> Unit) {
         Spacer(Modifier.height(8.dp))
         FocusRow("Cancel", onDone, look = Look.OTHER)
     }
+}
+
+/** A channel ready for the player: every version behind it, the one to start on, and where to ask what is on. */
+private fun livePlayable(group: ChannelGroup, account: Account?): Playable {
+    val first = group.versions[group.start].channel
+    return Playable(
+        group.name, first.url, group.versions.map { Stream(it.label, it.channel.url) }, group.start,
+        guide = if (account == null) null else ({ withContext(Dispatchers.IO) { Provider.guide(account, first.id) } }),
+    )
 }
