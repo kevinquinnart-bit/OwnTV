@@ -11,6 +11,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 /** The small notice Android asks for while the app does work with its screens closed. */
 object Notices {
@@ -60,7 +64,7 @@ class CopyService : Service() {
 
 /** Whether KueTV's screens are showing. Anything that plays stops when they are not. */
 object Screen {
-    var visible by androidx.compose.runtime.mutableStateOf(true)
+    var visible by mutableStateOf(true)
 }
 
 /** The live channel last watched, in its lightest version, for the small TV shown while browsing. */
@@ -71,7 +75,7 @@ object LastLive {
 /** The few choices the app keeps. */
 object Choices {
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("choices", Context.MODE_PRIVATE)
-    var changes by androidx.compose.runtime.mutableIntStateOf(0)
+    var changes by mutableIntStateOf(0)
         private set
 
     fun smallTv(context: Context): Boolean = prefs(context).getBoolean("smallTv", true)
