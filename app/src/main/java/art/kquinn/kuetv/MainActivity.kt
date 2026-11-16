@@ -178,13 +178,19 @@ private fun App() {
     val context = LocalContext.current
     var account by remember { mutableStateOf(AccountStore.load(context)) }
     var editing by remember { mutableStateOf(false) }
-    var library by remember { mutableStateOf<Library?>(null) }
+    // What the provider last sent. The lists the screens use, [library], are these with any free channels added.
+    var loaded by remember { mutableStateOf<Library?>(null) }
+    val noProvider = remember(Choices.changes) { Choices.noProvider(context) }
+    val freeLinks = remember(FreeStore.changes) { FreeStore.all(context) }
+    var free by remember { mutableStateOf<List<Channel>>(emptyList()) }
+    var freeOpen by remember { mutableStateOf(false) }
+    val library = remember(loaded, free) { loaded?.withFree(free) }
     var problem by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var playing by remember { mutableStateOf<Playing?>(null) }
     // What the browsing screen was showing, kept while the player covers it, so closing the player
     // comes back to the same list, at the same place, on the row or poster that was playing.
-    val browse = remember(library) { library?.let { BrowseState(saved = Place.read(context)) } }
+    val browse = remember(account, reload) { BrowseState(saved = Place.read(context)) }
     val favourites = remember { Favourites(context.applicationContext) }
     var driveSignIn by remember { mutableStateOf(false) }
     var addOnsOpen by remember { mutableStateOf(false) }
@@ -232,12 +238,27 @@ private fun App() {
     // Each time KueTV comes to the front: is a newer version on the download?
     LaunchedEffect(Resumes.count) { withContext(Dispatchers.IO) { Updates.checkOnOpen() } }
 
-    LaunchedEffect(account, reload) {
-        if (!account.isSet) return@LaunchedEffect
-        library = null
+    // The free channel lists: read when the app opens, when one is added or removed, and on a reload.
+    LaunchedEffect(freeLinks, reload) {
+        free = withContext(Dispatchers.IO) {
+            freeLinks.flatMap { link ->
+                runCatching { Provider.loadFree(link) }
+                    .onFailure { Report.note("Free channels", FreeStore.label(link) + " couldn't be read: " + it.message) }
+                    .getOrDefault(emptyList())
+            }
+        }
+        if (freeLinks.isNotEmpty()) Report.note("Free channels", free.size.toString() + " channels from " + freeLinks.size + " lists")
+    }
+    LaunchedEffect(account, reload, noProvider) {
+        if (!account.isSet) {
+            // No provider: the app runs on free channel lists and add-ons alone.
+            loaded = if (noProvider) Library(emptyList(), emptyList(), emptyList(), emptyList()) else null
+            return@LaunchedEffect
+        }
+        loaded = null
         problem = null
         try {
-            library = withContext(Dispatchers.IO) { Provider.load(account) }
+            loaded = withContext(Dispatchers.IO) { Provider.load(account) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: ProviderProblem) {
@@ -247,7 +268,7 @@ private fun App() {
             Report.note("Provider", "loading failed: " + e.javaClass.name + " · " + e.message)
             problem = "Something went wrong loading your channels. Try again."
         }
-        library?.let { Report.note("Provider", "loaded: " + it.channels.size + " channels as " + it.groups.size + " rows, " + it.films.size + " films, " + it.shows.size + " series") }
+        loaded?.let { Report.note("Provider", "loaded: " + it.channels.size + " channels as " + it.groups.size + " rows, " + it.films.size + " films, " + it.shows.size + " series") }
     }
     // On a phone the screens keep clear of the notch and the bars; the player uses the whole screen.
     val reminder = Reminders.showing
@@ -257,8 +278,8 @@ private fun App() {
         Reminders.showing = null
         val group = r?.let { library?.groupOf?.get(it.channelId) }
         if (group != null) {
-            browse?.resumeKey = null
-            LastLive.item = Playable(group.name, group.versions.last().channel.url)
+            browse.resumeKey = null
+            LastLive.item = Playable(group.name, group.lightest.url)
             playing = Playing(listOf(livePlayable(group, library?.account, library?.serverAheadSec ?: 0)), 0, true)
         }
     }
@@ -312,14 +333,16 @@ private fun App() {
                     favourites.replaceAll(taken.favourites)
                     AddOnStore.replaceAll(context, taken.addOns)
                     Choices.smallTv(context, taken.smallTv)
+                    FreeStore.replaceAll(context, taken.free)
                     for (kind in listOf("live", "film", "show")) Choices.hidden(context, kind, taken.hidden[kind].orEmpty())
                     editing = false
                     if (taken.account == account) reload++ else account = taken.account
                 },
             )
-            !account.isSet || editing -> SetupScreen(
+            (!account.isSet && !noProvider) || editing -> SetupScreen(
                 current = account,
-                canCancel = account.isSet,
+                canCancel = account.isSet || noProvider,
+                onNoProvider = if (account.isSet) null else ({ Choices.noProvider(context, true); editing = false }),
                 onCancel = { editing = false },
                 onCopy = { setUpShare = 2 },
                 onSave = { next ->
@@ -337,10 +360,11 @@ private fun App() {
             addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false })
             reportOpen -> ReportScreen(onDone = { reportOpen = false })
             aboutOpen -> AboutScreen(onDone = { aboutOpen = false })
+            freeOpen -> FreeListsScreen(onDone = { freeOpen = false })
             healthOpen -> HealthScreen(account, library, onDone = { healthOpen = false })
             categoriesOpen && whole != null -> CategoriesScreen(whole, onDone = { categoriesOpen = false })
             problem != null -> ProblemScreen(problem.orEmpty(), onRetry = { reload++ }, onEdit = { editing = true })
-            lib == null || browse == null -> LoadingScreen()
+            lib == null -> LoadingScreen()
             else -> MainScreen(
                 library = lib,
                 state = browse,
@@ -348,7 +372,7 @@ private fun App() {
                 onPlay = { items, index, live, key ->
                     browse.resumeKey = key
                     // The small TV shown while browsing carries on with this channel, in its lightest version.
-                    if (live) items.getOrNull(index)?.let { LastLive.item = Playable(it.name, it.streams.lastOrNull()?.url ?: it.url) }
+                    if (live) items.getOrNull(index)?.let { LastLive.item = Playable(it.name, (it.streams.lastOrNull { s -> !s.label.startsWith("Free ") } ?: it.streams.lastOrNull())?.url ?: it.url) }
                     val item = items.getOrNull(index)
                     // Both an add-on's stream and the provider's own copy: the user picks. Only one of them: it plays.
                     if (!live && item != null && item.url.isEmpty() && item.find == null) {
@@ -367,6 +391,7 @@ private fun App() {
                 onCategories = { categoriesOpen = true },
                 onAbout = { aboutOpen = true },
                 onHealth = { healthOpen = true },
+                onFree = { freeOpen = true },
             )
         }
         if (reminder != null) ReminderPopUp(reminder, onWatch = watchReminded, onClose = { Reminders.showing = null }, Modifier.align(Alignment.TopCenter))
@@ -584,7 +609,7 @@ private fun ProblemScreen(message: String, onRetry: () -> Unit, onEdit: () -> Un
 // --------------------------------------------------------------------------------------------- setup
 
 @Composable
-private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Unit, onCopy: () -> Unit, onSave: (Account) -> Unit) {
+private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Unit, onCopy: () -> Unit, onSave: (Account) -> Unit, onNoProvider: (() -> Unit)? = null) {
     var server by remember { mutableStateOf(current.server) }
     var user by remember { mutableStateOf(current.user) }
     var pass by remember { mutableStateOf(current.pass) }
@@ -629,6 +654,8 @@ private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Un
         FocusRow("Save", { submit(server, user, pass, playlist) }, look = Look.MAIN)
         // Already set up on the TV or the phone: bring it all across instead of typing it again.
         FocusRow("Copy set-up from another device", onCopy, look = Look.OTHER)
+        // No provider at all: free channel lists and add-ons can still be used.
+        if (onNoProvider != null) FocusRow("Use without a provider", onNoProvider, look = Look.OTHER)
         if (canCancel) FocusRow("Cancel", onCancel, look = Look.OTHER)
     }
     if (phone) {
@@ -806,6 +833,7 @@ private fun MainScreen(
     onCategories: () -> Unit,
     onAbout: () -> Unit,
     onHealth: () -> Unit,
+    onFree: () -> Unit,
 ) {
     val context = LocalContext.current
     // The category in each section, kept for the next time the app opens.
@@ -1059,6 +1087,8 @@ private fun MainScreen(
                     else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn, look = Look.OTHER)
                 }
                 FocusRow("Add-ons for films and series (" + addOns.size + ")", onAddOns, look = Look.OTHER)
+                val freeCount = remember(FreeStore.changes) { FreeStore.all(context).size }
+                FocusRow("Free channel lists ($freeCount)", onFree, look = Look.OTHER)
                 val hiddenCount = remember(Choices.changes) { listOf("live", "film", "show").sumOf { Choices.hidden(context, it).size } }
                 FocusRow("Categories to show" + if (hiddenCount == 0) "" else " ($hiddenCount hidden)", onCategories, look = Look.OTHER)
                 val textSize = remember(Choices.changes) { Choices.textSize(context) }
@@ -2218,7 +2248,7 @@ private fun SendSetUpScreen(account: Account, favourites: Favourites, onDone: ()
         val app = context.applicationContext
         val sender = SetUpSender(
             code,
-            { SetUp(account, favourites.keys, AddOnStore.all(app), Choices.smallTv(app), listOf("live", "film", "show").associateWith { Choices.hidden(app, it) }).pack() },
+            { SetUp(account, favourites.keys, AddOnStore.all(app), Choices.smallTv(app), listOf("live", "film", "show").associateWith { Choices.hidden(app, it) }, FreeStore.all(app)).pack() },
             { main.post { taken = true } },
         )
         ready = PhoneSetup.localAddress() != null && sender.start() != null
@@ -3042,7 +3072,7 @@ private fun LivePreview(on: ChannelGroup?, account: Account?, modifier: Modifier
         showing = on
     }
     val group = showing
-    val item = remember(group?.id) { group?.let { Playable(it.name, it.versions.last().channel.url) } } ?: LastLive.item
+    val item = remember(group?.id) { group?.let { Playable(it.name, it.lightest.url) } } ?: LastLive.item
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (item != null) {
             MiniTv(item, Modifier.fillMaxWidth())
@@ -3225,5 +3255,92 @@ private fun CatalogueGrid(catalogue: Catalogue, state: BrowseState, resume: Focu
                 }
             }
         }
+    }
+}
+
+// --------------------------------------------------------------------------------------------- free channel lists
+
+/**
+ * Free channel lists: playlists of channels that are free to watch on the internet, added by their links.
+ * A free channel with the same name as one of the provider's becomes that channel's backup. The rest show
+ * in Live TV under categories that start "Free:". KueTV comes with none.
+ */
+@Composable
+private fun FreeListsScreen(onDone: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val scope = rememberCoroutineScope()
+    val lists = remember(FreeStore.changes) { FreeStore.all(context) }
+    var link by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var said by remember { mutableStateOf<String?>(null) }
+    var phoneAddress by remember { mutableStateOf<String?>(null) }
+    BackHandler { onDone() }
+
+    val add: (String) -> Unit = { typed ->
+        val tidy = FreeStore.tidy(typed)
+        if (tidy == null) {
+            said = "Paste the list's link first."
+        } else if (!busy) {
+            busy = true
+            said = null
+            scope.launch {
+                said = try {
+                    // The list is read before it is kept, so a dead link is never added.
+                    val found = withContext(Dispatchers.IO) { Provider.loadFree(tidy) }
+                    if (found.isEmpty()) "That list holds no channels."
+                    else {
+                        FreeStore.add(context, tidy)
+                        link = ""
+                        "Added. " + found.size + " channels. They are in Live TV under categories that start \"Free:\"."
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: ProviderProblem) {
+                    e.message
+                } catch (e: Exception) {
+                    "That link couldn't be read as a channel list."
+                }
+                busy = false
+            }
+        }
+    }
+    DisposableEffect(Unit) {
+        val main = Handler(Looper.getMainLooper())
+        val server = if (phone) null else PhoneSetup(onAddOn = { typed -> main.post { add(typed) } }, freeList = true) { _, _, _, _ -> }
+        phoneAddress = server?.start()
+        onDispose { server?.stop() }
+    }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 36.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Free channel lists", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Note("A backup for your provider. If a channel from your provider won't play, a free channel of the same name is tried next. KueTV comes with no lists: you add your own by its link.")
+        phoneAddress?.let { address ->
+            Note("Easiest: on your phone, on the same Wi-Fi, open")
+            Text(address, color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+            Note("and paste the link there.")
+        }
+        Field("List link", link, onDone = { add(link) }) { link = it }
+        val first = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            if (!phone) runCatching { first.requestFocus() }
+        }
+        FocusRow(if (busy) "Reading the list…" else "Add", { add(link) }, Modifier.focusRequester(first), look = Look.MAIN)
+        said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
+        if (lists.isNotEmpty()) Box(Modifier.padding(top = 14.dp)) { Heading("Added") }
+        lists.forEach { list ->
+            val health = when (Health.stateOf("Free list: " + FreeStore.label(list))) {
+                Check.WORKING -> "✓ working · "
+                Check.DOUBT -> "! look at Health check · "
+                Check.DEAD -> "✗ NOT WORKING · "
+                else -> ""
+            }
+            FocusRow(health + "Remove " + FreeStore.label(list), { FreeStore.remove(context, list); said = "Removed." }, look = Look.OTHER)
+        }
+        FocusRow("Done", onDone, look = Look.OTHER)
     }
 }

@@ -23,6 +23,8 @@ object NowNext {
     fun cached(channelId: String): List<Programme>? = kept[channelId]?.takeIf { System.currentTimeMillis() - it.first < KEEP_MS }?.second
 
     suspend fun get(account: Account, channelId: String): List<Programme> {
+        // A channel from a free list isn't one the provider has a guide for.
+        if (channelId.startsWith(Library.FREE)) return emptyList()
         cached(channelId)?.let { return it }
         return gate.withPermit {
             cached(channelId) ?: withContext(Dispatchers.IO) { Provider.guide(account, channelId) }.also { kept[channelId] = System.currentTimeMillis() to it }

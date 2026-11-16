@@ -21,6 +21,8 @@ data class SetUp(
     val smallTv: Boolean,
     /** The hidden categories, under "live", "film" and "show". */
     val hidden: Map<String, Set<String>> = emptyMap(),
+    /** The free channel lists, by their links. */
+    val free: List<String> = emptyList(),
 ) {
     fun pack(): String = JsonObject().apply {
         add("account", JsonObject().apply {
@@ -30,6 +32,7 @@ data class SetUp(
         add("addOns", JsonArray().apply { addOns.forEach { add(it.toJson()) } })
         addProperty("smallTv", smallTv)
         add("hidden", JsonObject().apply { hidden.forEach { (kind, ids) -> add(kind, JsonArray().apply { ids.sorted().forEach { add(it) } }) } })
+        add("free", JsonArray().apply { free.forEach { add(it) } })
     }.toString()
 
     companion object {
@@ -43,6 +46,7 @@ data class SetUp(
                 o.get("smallTv")?.asBoolean ?: true,
                 // A set-up sent by an older version has none.
                 o.getAsJsonObject("hidden")?.entrySet()?.associate { (kind, ids) -> kind to ids.asJsonArray.map { it.asString }.toSet() }.orEmpty(),
+                o.getAsJsonArray("free")?.map { it.asString }.orEmpty(),
             )
         }.getOrNull()
     }

@@ -90,4 +90,30 @@ class CarryOnTest {
         assertEquals("kue:The Thing", Playable("The Thing", "").key)
         assertEquals("http://tv.example/1.mkv", Playable("The Thing", "http://tv.example/1.mkv").key)
     }
+
+    @Test fun aFreeChannelOfTheSameNameBecomesTheBackup() {
+        val provider = Library(
+            listOf(Category("1", "UK")),
+            listOf(Channel("10", "BBC News HD", "", "1", "http://tv.example/live/10.ts", 0), Channel("11", "BBC News 4K", "", "1", "http://tv.example/live/11.ts", 0)),
+            emptyList(), emptyList(),
+        )
+        val free = listOf(
+            Channel(Library.FREE + "a1", "BBC News (1080p)", "", Library.FREE + "News", "http://free.example/bbcnews.m3u8", 0),
+            Channel(Library.FREE + "b2", "Sky News", "", Library.FREE + "News", "http://free.example/sky.m3u8", 0),
+        )
+        val both = provider.withFree(free)
+        assertEquals(listOf("UK", "Free: News"), both.liveCategories.map { it.name })
+        assertEquals(2, both.groups.size)
+        val bbc = both.groups[0]
+        // The provider's versions first, best picture first; the free one last, though its picture is better than HD.
+        assertEquals(listOf("4K", "HD", "Free FHD"), bbc.versions.map { it.label })
+        // It starts on the provider's best that isn't 4K, and the small pictures use the provider's lightest.
+        assertEquals("HD", bbc.versions[bbc.start].label)
+        assertEquals("10", bbc.lightest.id)
+        // A free channel the provider doesn't have gets a row of its own.
+        assertEquals("Sky News", both.groups[1].name)
+        assertEquals(0, both.groups[1].start)
+        // With no free channels, nothing changes.
+        assertEquals(provider, provider.withFree(emptyList()))
+    }
 }

@@ -89,20 +89,48 @@ class Library(
         )
     }
 
+    /**
+     * The same lists with channels from free channel lists added. A free channel with the same name as
+     * one of the provider's joins that channel's row as a backup version; the rest get rows of their own.
+     * Each group in a free list becomes a category called "Free: " and its name.
+     */
+    fun withFree(free: List<Channel>): Library {
+        if (free.isEmpty()) return this
+        val have = channels.mapTo(HashSet()) { it.id }
+        val added = free.filter { have.add(it.id) }
+        val categories = added.map { it.categoryId }.distinct().map { Category(it, "Free: " + it.removePrefix(FREE)) }
+        return Library(liveCategories + categories, channels + added, filmCategories, films, showCategories, shows, account, serverAheadSec)
+    }
+
+    companion object {
+        /** How a free channel's number and category begin, to tell them from the provider's. */
+        const val FREE = "free:"
+    }
+
     /** For each channel as the provider lists it, the one row it sits behind. */
     val groupOf: Map<String, ChannelGroup> by lazy { groups.flatMap { g -> g.versions.map { it.channel.id to g } }.toMap() }
 }
 
 /** One version of a channel: the channel as the provider lists it, and its quality as read from its name. */
-class Version(val channel: Channel, val label: String, val rank: Int)
+class Version(val channel: Channel, val label: String, val rank: Int) {
+    /** From a free channel list, not from the provider: kept behind the provider's versions, as a backup. */
+    val free: Boolean get() = channel.id.startsWith(Library.FREE)
+}
 
 /**
  * One channel with every version the provider lists of it, best picture first. [start] is the one
  * to play first: the best that is not 4K, because 4K is the heaviest to carry and the likeliest to stop.
  */
 class ChannelGroup(val name: String, val versions: List<Version>) {
-    val start: Int = versions.indexOfFirst { it.rank < Versions.RANK_4K }.coerceAtLeast(0)
+    val start: Int = when {
+        // The provider's own versions come before any free one, whatever their picture.
+        versions.any { !it.free } -> versions.indexOfFirst { !it.free && it.rank < Versions.RANK_4K }.coerceAtLeast(0)
+        else -> versions.indexOfFirst { it.rank < Versions.RANK_4K }.coerceAtLeast(0)
+    }
     val id: String get() = versions[0].channel.id
+
+    /** The lightest of the provider's own versions, for the small pictures shown while browsing; a free one only if there is no other. */
+    val lightest: Channel get() = (versions.lastOrNull { !it.free } ?: versions.last()).channel
     val logo: String get() = versions.firstOrNull { it.channel.logo.isNotBlank() }?.channel?.logo.orEmpty()
 }
 
@@ -169,9 +197,11 @@ object Versions {
         for (channel in channels) {
             val r = read(channel.name)
             val key = r.name.lowercase().replace(notNameMarks, " ").trim().ifEmpty { r.name.lowercase() }
-            byName.getOrPut(key) { names[key] = r.name; ArrayList() } += Version(channel, r.label, r.rank)
+            val free = channel.id.startsWith(Library.FREE)
+            byName.getOrPut(key) { names[key] = r.name; ArrayList() } += Version(channel, if (free) "Free " + r.label else r.label, r.rank)
         }
-        return byName.map { (key, versions) -> ChannelGroup(names.getValue(key), versions.sortedByDescending { it.rank }) }
+        // Best picture first among the provider's own; then the free ones, best first, as the backup.
+        return byName.map { (key, versions) -> ChannelGroup(names.getValue(key), versions.sortedWith(compareBy<Version> { it.free }.thenByDescending { it.rank })) }
     }
 }
 
@@ -290,6 +320,8 @@ object Provider {
         .readTimeout(90, TimeUnit.SECONDS)
         .build()
 
+    private val freeNote = Regex("\\s*\\[[^\\]]*]")
+
     /** Signs in (or opens the playlist) to see that the provider answers. Throws a [ProviderProblem] saying why not. */
     fun reach(account: Account) {
         if (account.isLogin) checkLogin(account) else open(account.playlist).close()
@@ -297,7 +329,11 @@ object Provider {
 
     /** The channels in a free channel list, read from its link. Call off the main thread. */
     fun loadFree(link: String): List<Channel> = try {
-        open(link).use { parsePlaylist(BufferedReader(it.body.charStream())).channels }
+        open(link).use { parsePlaylist(BufferedReader(it.body.charStream())).channels }.map { c ->
+            // Known by its address, so a favourite survives the list being reordered. Notes in square brackets
+            // ("[Geo-blocked]") are dropped from the name so it can match the provider's channel of the same name.
+            Channel(Library.FREE + Integer.toHexString(c.url.hashCode()), c.name.replace(freeNote, "").trim().ifEmpty { c.name }, c.logo, Library.FREE + c.categoryId, c.url, 0)
+        }.distinctBy { it.id }
     } catch (e: ProviderProblem) {
         throw ProviderProblem(
             e.message.orEmpty().replace("Your provider", "The list's site").replace("your provider", "the list's site")

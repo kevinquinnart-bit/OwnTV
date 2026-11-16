@@ -103,6 +103,13 @@ object Choices {
         changes++
     }
 
+    /** Using the app with no provider: free channel lists and add-ons only. */
+    fun noProvider(context: Context): Boolean = prefs(context).getBoolean("noProvider", false)
+    fun noProvider(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("noProvider", on).apply()
+        changes++
+    }
+
     /** The language subtitles are wanted in, as its short code. */
     fun subtitleLang(context: Context): String = prefs(context).getString("subtitleLang", "en").orEmpty()
     fun subtitleLang(context: Context, code: String) {

@@ -17,6 +17,8 @@ import kotlin.concurrent.thread
 class PhoneSetup(
     /** Given: the page asks for an add-on's link instead of the provider details, and the link arrives here. */
     private val onAddOn: ((link: String) -> Unit)? = null,
+    /** With [onAddOn]: the link asked for is a free channel list's, and the page says so. */
+    private val freeList: Boolean = false,
     private val onDetails: (server: String, user: String, pass: String, playlist: String) -> Unit,
 ) {
     @Volatile private var socket: ServerSocket? = null
@@ -70,7 +72,7 @@ class PhoneSetup(
                 send(client, page("<h1>Sent to your TV</h1><p>You can close this page.</p>"))
             }
         } else {
-            send(client, page(if (onAddOn != null) ADDON_FORM else FORM))
+            send(client, page(if (onAddOn == null) FORM else if (freeList) FREE_FORM else ADDON_FORM))
         }
     }
 
@@ -101,6 +103,12 @@ class PhoneSetup(
             "<label>Password</label><input name=\"pass\" autocapitalize=\"none\" autocorrect=\"off\">" +
             "<hr><p>Or, if your provider gave you one playlist link instead, paste it here and leave the three boxes above empty.</p>" +
             "<label>Playlist link</label><input name=\"playlist\" autocapitalize=\"none\" autocorrect=\"off\">" +
+            "<button type=\"submit\">Send to TV</button></form>"
+
+        private const val FREE_FORM = "<h1>KueTV: add a free channel list</h1>" +
+            "<p>Paste the list's link here. It usually ends in .m3u or .m3u8.</p>" +
+            "<form method=\"post\" action=\"/\">" +
+            "<label>List link</label><input name=\"link\" autocapitalize=\"none\" autocorrect=\"off\">" +
             "<button type=\"submit\">Send to TV</button></form>"
 
         private const val ADDON_FORM = "<h1>KueTV: add an add-on</h1>" +
