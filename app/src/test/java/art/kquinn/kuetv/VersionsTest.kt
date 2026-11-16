@@ -43,6 +43,12 @@ class VersionsTest {
         assertEquals("BBC One = HD 50fps", read("BBC One HD 50FPS"))
         assertEquals("BBC One = Standard", read("BBC One"))
         assertEquals("HD = Standard", read("HD"))
+        // The mark that joined the version to the name goes too, whichever mark the provider uses.
+        assertEquals("BBC One = FHD", read("BBC One | FHD"))
+        assertEquals("BBC One = HD", read("BBC One \u2502 HD\u00A0"))
+        assertEquals("BBC One = Standard", read("BBC One |"))
+        assertEquals("UK: Channel 4 +1 = SD", read("UK: Channel 4 +1 - SD"))
+        assertEquals("Film4 (Ireland) = HD", read("HD | Film4 (Ireland)"))
     }
 
     @Test fun sameVersionListedTwiceIsKeptAsASpare() {

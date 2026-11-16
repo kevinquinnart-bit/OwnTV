@@ -112,7 +112,9 @@ object Versions {
         val name = word.replace(text, " ")
             .replace(emptyBrackets, " ")
             .replace(spaces, " ")
-            .trim().trim('-', '|', ':', ',').trim()
+            // Whatever joined the version word to the name (a bar, a dash, a colon, odd spaces) goes with it.
+            .trimStart { !it.isLetterOrDigit() && it !in "([+'\"#" }
+            .trimEnd { !it.isLetterOrDigit() && it !in ")]+!?.'\"&%" }
         // A channel whose whole name is a version word keeps its name.
         return if (name.isEmpty()) Reading(full.trim(), "Standard", RANK_PLAIN) else Reading(name, quality + extra, rank)
     }
