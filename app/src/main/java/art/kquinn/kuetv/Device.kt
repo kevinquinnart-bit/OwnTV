@@ -9,6 +9,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 /** True on a phone or tablet (touch); false on a TV (remote). The screens lay themselves out by it. */
 val LocalPhone = staticCompositionLocalOf { false }
 
+/** How much bigger than standard the lettering is; the menu and category columns widen with it. */
+val LocalTextScale = staticCompositionLocalOf { 1f }
+
 /** Is this a TV: a Fire TV, an Android TV, or anything else that says it is a television. */
 fun isTv(context: Context): Boolean {
     val pm = context.packageManager

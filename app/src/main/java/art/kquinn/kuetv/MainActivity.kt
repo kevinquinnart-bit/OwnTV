@@ -121,7 +121,14 @@ class MainActivity : ComponentActivity() {
         if (tv) requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Accent), typography = KueType) {
-                CompositionLocalProvider(LocalPhone provides !tv) { App() }
+                // The text size chosen in Settings makes every line of lettering bigger, on every screen.
+                val scale = remember(Choices.changes) { Choices.textSizeScales[Choices.textSize(this)] }
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                CompositionLocalProvider(
+                    LocalPhone provides !tv,
+                    LocalTextScale provides scale,
+                    androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, density.fontScale * scale),
+                ) { App() }
             }
         }
     }
@@ -645,7 +652,8 @@ private fun MainScreen(
             Section.RECORDINGS -> RecordingsPane(state, resume, onPlay)
             Section.APPS -> TvAppsPane()
             Section.SETTINGS -> Column(
-                if (phone) fill() else Modifier.width(520.dp).fillMaxHeight(),
+                // The rows run past the bottom of a TV screen, so the list scrolls as the remote moves down it.
+                (if (phone) fill() else Modifier.width(560.dp * LocalTextScale.current).fillMaxHeight()).verticalScroll(rememberScrollState()),
                 verticalArrangement = if (phone) Arrangement.spacedBy(8.dp) else Arrangement.Top,
             ) {
                 Heading("Settings")
@@ -662,6 +670,8 @@ private fun MainScreen(
                     else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn, look = Look.OTHER)
                 }
                 FocusRow("Add-ons for films and series (" + addOns.size + ")", onAddOns, look = Look.OTHER)
+                val textSize = remember(Choices.changes) { Choices.textSize(context) }
+                FocusRow("Text size: " + Choices.textSizeNames[textSize], { Choices.textSize(context, (textSize + 1) % 3) }, look = Look.OTHER)
                 val subtitlesOn = remember(Choices.changes) { Choices.subtitles(context) }
                 FocusRow("Subtitles: " + if (subtitlesOn) "on" else "off", { Choices.subtitles(context, !subtitlesOn) }, look = Look.OTHER)
                 FocusRow("Send this set-up to another device", onSendSetUp, look = Look.OTHER)
@@ -690,7 +700,7 @@ private fun MainScreen(
         Row(Modifier.fillMaxSize().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
             // The menu.
             Column(
-                Modifier.width(190.dp).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp)
+                Modifier.width(190.dp * LocalTextScale.current).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp)
                     .focusRestorer().focusGroup(),
             ) {
                 Heading("Menu")
@@ -731,7 +741,7 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
             chosen = chosen == id, onFocus = { onChoose(id) },
         )
     }
-    Column(Modifier.width(270.dp).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp)) {
+    Column(Modifier.width(270.dp * LocalTextScale.current).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp)) {
         Heading("Categories")
         LazyColumn(
             Modifier.fillMaxSize()
@@ -787,7 +797,8 @@ private fun Poster(
             fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp).height(54.dp),
+            minLines = 2,
+            modifier = Modifier.padding(top = 6.dp),
         )
     }
 }

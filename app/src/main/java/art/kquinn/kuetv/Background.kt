@@ -78,6 +78,15 @@ object Choices {
     var changes by mutableIntStateOf(0)
         private set
 
+    /** How much bigger than standard the lettering is drawn: 0 standard, 1 large, 2 larger. */
+    fun textSize(context: Context): Int = prefs(context).getInt("textSize", 0).coerceIn(0, 2)
+    fun textSize(context: Context, size: Int) {
+        prefs(context).edit().putInt("textSize", size.coerceIn(0, 2)).apply()
+        changes++
+    }
+    val textSizeNames = listOf("standard", "large", "larger")
+    val textSizeScales = listOf(1f, 1.2f, 1.4f)
+
     fun subtitles(context: Context): Boolean = prefs(context).getBoolean("subtitles", true)
     fun subtitles(context: Context, on: Boolean) {
         prefs(context).edit().putBoolean("subtitles", on).apply()
