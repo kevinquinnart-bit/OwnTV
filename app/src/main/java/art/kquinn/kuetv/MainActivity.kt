@@ -6,16 +6,24 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -27,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -39,6 +48,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -84,7 +94,14 @@ private val Soft = Color(0xFFB9C2D3)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme(colorScheme = darkColorScheme(primary = Accent)) { App() } }
+        // A TV is always sideways. A phone turns with the way it is held.
+        val tv = isTv(this)
+        if (tv) requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        setContent {
+            MaterialTheme(colorScheme = darkColorScheme(primary = Accent)) {
+                CompositionLocalProvider(LocalPhone provides !tv) { App() }
+            }
+        }
     }
 
     override fun onResume() {
@@ -129,7 +146,8 @@ private fun App() {
             problem = "Something went wrong loading your channels. Try again."
         }
     }
-    Box(Modifier.fillMaxSize().background(Page)) {
+    // On a phone the screens keep clear of the notch and the bars; the player uses the whole screen.
+    Box(Modifier.fillMaxSize().background(Page).then(if (playing == null) Modifier.safeDrawingPadding() else Modifier)) {
         val lib = library
         val now = playing
         when {
@@ -183,8 +201,7 @@ private fun FocusRow(
                 if (now && !focused) onFocus()
                 focused = now
             }
-            .holdOk(onHold)
-            .clickable(onClick = onClick)
+            .press(onClick, onHold)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -222,6 +239,43 @@ private fun Modifier.holdOk(onHold: (() -> Unit)?): Modifier {
     }
 }
 
+/** OK or a tap does [onClick]. Holding OK on a TV, or pressing and holding on a phone, does [onHold]. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun Modifier.press(onClick: () -> Unit, onHold: (() -> Unit)?): Modifier =
+    if (LocalPhone.current && onHold != null) this.combinedClickable(onClick = onClick, onLongClick = onHold)
+    else this.holdOk(onHold).clickable(onClick = onClick)
+
+/** A pill to tap, for the phone's menu and category strips: yellow while it is the chosen one. */
+@Composable
+private fun Chip(text: String, chosen: Boolean, onClick: () -> Unit) {
+    Text(
+        text,
+        color = if (chosen) Color.Black else Color.White,
+        fontSize = 17.sp,
+        fontWeight = if (chosen) FontWeight.Bold else FontWeight.Normal,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (chosen) Accent else Panel)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 11.dp),
+    )
+}
+
+/**
+ * Where a section's screen goes. On a TV it sits to the right of the menu, categories beside the
+ * list. On a phone it sits under the menu strip, categories in a strip above the list.
+ */
+private class Pane(private val row: RowScope?, private val column: ColumnScope?) {
+    /** Takes all the room that is left. */
+    fun fill(): Modifier = when {
+        row != null -> with(row) { Modifier.weight(1f).fillMaxHeight() }
+        column != null -> with(column) { Modifier.weight(1f).fillMaxWidth() }
+        else -> Modifier
+    }
+}
+
 @Composable
 private fun Heading(text: String) {
     Text(text.uppercase(), color = Soft, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 8.dp))
@@ -240,7 +294,7 @@ private fun LoadingScreen() {
 private fun ProblemScreen(message: String, onRetry: () -> Unit, onEdit: () -> Unit) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-    Column(Modifier.fillMaxSize().padding(horizontal = 220.dp), verticalArrangement = Arrangement.Center) {
+    Column(Modifier.fillMaxSize().padding(horizontal = if (LocalPhone.current) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
         Text(message, color = Color.White, fontSize = 26.sp, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
         FocusRow("Try again", onRetry, Modifier.focusRequester(first))
         FocusRow("Change provider details", onEdit)
@@ -262,36 +316,47 @@ private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Un
         val next = AccountStore.tidy(s, u, p, l)
         if (next.isSet) onSave(next) else warning = "Fill in the server, username and password, or a playlist link."
     }
+    val phone = LocalPhone.current
     DisposableEffect(Unit) {
+        // Typing from a phone is for the TV. On a phone the boxes are right here.
         val main = Handler(Looper.getMainLooper())
-        val phone = PhoneSetup { s, u, p, l -> main.post { submit(s, u, p, l) } }
-        phoneAddress = phone.start()
-        onDispose { phone.stop() }
+        val server = if (phone) null else PhoneSetup { s, u, p, l -> main.post { submit(s, u, p, l) } }
+        phoneAddress = server?.start()
+        onDispose { server?.stop() }
     }
     if (canCancel) BackHandler { onCancel() }
 
-    Row(Modifier.fillMaxSize().padding(48.dp), horizontalArrangement = Arrangement.spacedBy(48.dp)) {
-        Column(Modifier.weight(1f)) {
-            Text("Set up KueTV", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(26.dp))
-            val address = phoneAddress
-            if (address != null) {
-                Text("Easiest: on your phone, open", color = Soft, fontSize = 22.sp)
-                Text(address, color = Accent, fontSize = 38.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 10.dp))
-                Text("and type your provider details there. Your phone must be on the same Wi-Fi as this TV.", color = Soft, fontSize = 20.sp)
-            } else {
-                Text("Type your provider details in the boxes on the right.", color = Soft, fontSize = 22.sp)
-            }
-            warning?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(top = 26.dp)) }
+    val intro: @Composable () -> Unit = {
+        Text("Set up KueTV", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(if (phone) 8.dp else 26.dp))
+        val address = phoneAddress
+        if (address != null) {
+            Text("Easiest: on your phone, open", color = Soft, fontSize = 22.sp)
+            Text(address, color = Accent, fontSize = 38.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 10.dp))
+            Text("and type your provider details there. Your phone must be on the same Wi-Fi as this TV.", color = Soft, fontSize = 20.sp)
+        } else {
+            Text(if (phone) "Type your provider details in the boxes below." else "Type your provider details in the boxes on the right.", color = Soft, fontSize = 22.sp)
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Field("Server address", server) { server = it }
-            Field("Username", user) { user = it }
-            Field("Password", pass) { pass = it }
-            Field("Or one playlist link", playlist) { playlist = it }
-            Spacer(Modifier.height(6.dp))
-            FocusRow("Save", { submit(server, user, pass, playlist) })
-            if (canCancel) FocusRow("Cancel", onCancel)
+        warning?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(top = if (phone) 10.dp else 26.dp)) }
+    }
+    val form: @Composable () -> Unit = {
+        Field("Server address", server) { server = it }
+        Field("Username", user) { user = it }
+        Field("Password", pass) { pass = it }
+        Field("Or one playlist link", playlist) { playlist = it }
+        Spacer(Modifier.height(6.dp))
+        FocusRow("Save", { submit(server, user, pass, playlist) })
+        if (canCancel) FocusRow("Cancel", onCancel)
+    }
+    if (phone) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            intro()
+            form()
+        }
+    } else {
+        Row(Modifier.fillMaxSize().padding(48.dp), horizontalArrangement = Arrangement.spacedBy(48.dp)) {
+            Column(Modifier.weight(1f)) { intro() }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) { form() }
         }
     }
 }
@@ -314,7 +379,8 @@ private enum class Section(val label: String) { SEARCH("Search"), LIVE("Live TV"
 
 private const val ALL = "\u0000all"
 private const val FAVOURITES = "\u0000favourites"
-private const val HOLD_HINT = " · hold OK for favourite"
+@Composable
+private fun holdHint() = if (LocalPhone.current) " · press and hold for favourite" else " · hold OK for favourite"
 
 /** Where the browsing screen is: the section, the category in each, how far each list is scrolled. */
 private class BrowseState(startOnFilms: Boolean) {
@@ -386,17 +452,9 @@ private fun MainScreen(
         if (!back) runCatching { menuFocus.requestFocus() }
     }
 
-    Row(Modifier.fillMaxSize().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-        // The menu.
-        Column(
-            Modifier.width(190.dp).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp)
-                .focusRestorer().focusGroup(),
-        ) {
-            Heading("Menu")
-            Section.entries.forEach { s ->
-                FocusRow(s.label, { section = s }, if (s == section) Modifier.focusRequester(menuFocus) else Modifier, chosen = s == section)
-            }
-        }
+    val phone = LocalPhone.current
+    // The chosen section's screen. Where it sits is decided underneath, by TV or phone.
+    val body: @Composable Pane.() -> Unit = {
         when (section) {
             Section.LIVE -> {
                 Categories(library.liveCategories, liveCategory, state.liveCategoryList) {
@@ -413,8 +471,8 @@ private fun MainScreen(
                     }
                 }
                 val playables = remember(shown) { shown.map { Playable(it.name, it.url) } }
-                Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Heading((if (shown.size == 1) "1 channel" else "${shown.size} channels") + HOLD_HINT)
+                Column(fill()) {
+                    Heading((if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint())
                     LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = state.channelList) {
                         itemsIndexed(shown, key = { _, c -> c.id }) { i, channel ->
                             val key = "live:" + channel.id
@@ -444,10 +502,10 @@ private fun MainScreen(
                         else -> library.films.filter { it.categoryId == filmCategory }
                     }
                 }
-                Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Heading((if (shown.size == 1) "1 film" else "${shown.size} films") + HOLD_HINT)
+                Column(fill()) {
+                    Heading((if (shown.size == 1) "1 film" else "${shown.size} films") + holdHint())
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
+                        columns = if (LocalPhone.current) GridCells.Adaptive(104.dp) else GridCells.Fixed(4),
                         state = state.filmGrid,
                         modifier = Modifier.fillMaxSize().focusRestorer(),
                         contentPadding = PaddingValues(4.dp),
@@ -476,7 +534,7 @@ private fun MainScreen(
                 section = Section.SERIES
             }
             Section.APPS -> TvAppsPane()
-            Section.SETTINGS -> Column(Modifier.width(520.dp).fillMaxHeight()) {
+            Section.SETTINGS -> Column(if (phone) fill() else Modifier.width(520.dp).fillMaxHeight()) {
                 Heading("Settings")
                 FocusRow("Change provider details", onEdit)
                 FocusRow("Reload channels and films", onReload)
@@ -487,6 +545,29 @@ private fun MainScreen(
             }
         }
     }
+    if (phone) {
+        // Phone: the menu is a strip across the top that slides sideways; the section fills the rest.
+        Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Section.entries.forEach { s -> Chip(s.label, s == section) { section = s } }
+            }
+            Pane(null, this).body()
+        }
+    } else {
+        Row(Modifier.fillMaxSize().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            // The menu.
+            Column(
+                Modifier.width(190.dp).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp)
+                    .focusRestorer().focusGroup(),
+            ) {
+                Heading("Menu")
+                Section.entries.forEach { s ->
+                    FocusRow(s.label, { section = s }, if (s == section) Modifier.focusRequester(menuFocus) else Modifier, chosen = s == section)
+                }
+            }
+            Pane(this, null).body()
+        }
+    }
 }
 
 /**
@@ -495,6 +576,15 @@ private fun MainScreen(
  */
 @Composable
 private fun Categories(categories: List<Category>, chosen: String, list: LazyListState, onChoose: (String) -> Unit) {
+    if (LocalPhone.current) {
+        // Phone: a strip of categories that slides sideways. A tap shows that category.
+        LazyRow(Modifier.fillMaxWidth(), state = list, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item(key = ALL) { Chip("All", chosen == ALL) { onChoose(ALL) } }
+            item(key = FAVOURITES) { Chip("★ Favourites", chosen == FAVOURITES) { onChoose(FAVOURITES) } }
+            itemsIndexed(categories, key = { _, c -> c.id }) { _, c -> Chip(c.name, chosen == c.id) { onChoose(c.id) } }
+        }
+        return
+    }
     val chosenFocus = remember { FocusRequester() }
     val row: @Composable (String, String) -> Unit = { id, name ->
         FocusRow(
@@ -540,8 +630,7 @@ private fun Poster(
             .clip(RoundedCornerShape(12.dp))
             .border(3.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
-            .holdOk(onHold)
-            .clickable(onClick = onClick)
+            .press(onClick, onHold)
             .padding(6.dp),
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Panel)) {
@@ -581,7 +670,7 @@ private fun Note(text: String) {
  * newest first, under "Pick a date and time", and OK plays from the start. Back returns to the channels.
  */
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.ChannelGuide(
+private fun Pane.ChannelGuide(
     library: Library,
     catchUp: Boolean,
     pick: ChannelPick,
@@ -592,12 +681,12 @@ private fun androidx.compose.foundation.layout.RowScope.ChannelGuide(
 ) {
     val account = library.account
     if (account == null) {
-        Column(Modifier.weight(1f)) { Note("The guide and catch-up need a login: server address, username and password. A playlist link on its own doesn't give them.") }
+        Column(fill()) { Note("The guide and catch-up need a login: server address, username and password. A playlist link on its own doesn't give them.") }
         return
     }
     val channels = remember(library, catchUp) { if (catchUp) library.channels.filter { it.catchupDays > 0 } else library.channels }
     if (channels.isEmpty()) {
-        Column(Modifier.weight(1f)) { Note(if (catchUp) "Your provider marks no channel as having catch-up." else "Your provider listed no channels.") }
+        Column(fill()) { Note(if (catchUp) "Your provider marks no channel as having catch-up." else "Your provider listed no channels.") }
         return
     }
     val opened = pick.open
@@ -630,7 +719,7 @@ private fun androidx.compose.foundation.layout.RowScope.ChannelGuide(
         withFrameNanos { }
         runCatching { resume.requestFocus() }
     }
-    Column(Modifier.weight(1f).fillMaxHeight()) {
+    Column(fill()) {
         Heading(if (catchUp) "Pick a channel to catch up on" else "Pick a channel to see its guide")
         LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = pick.channelList) {
             itemsIndexed(shown, key = { _, c -> c.id }) { _, channel ->
@@ -652,7 +741,7 @@ private fun androidx.compose.foundation.layout.RowScope.ChannelGuide(
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.ProgrammePage(
+private fun Pane.ProgrammePage(
     channel: Channel,
     catchUp: Boolean,
     account: Account,
@@ -703,7 +792,7 @@ private fun androidx.compose.foundation.layout.RowScope.ProgrammePage(
         if (!back) runCatching { first.requestFocus() }
     }
 
-    Column(Modifier.weight(1f).fillMaxHeight()) {
+    Column(fill()) {
         Heading(channel.name + if (catchUp) " · catch-up" else " · guide")
         val result = loaded
         when {
@@ -824,7 +913,7 @@ private fun ProgrammeRow(whenText: String, title: String, description: String, o
  * ends. Back returns to the posters.
  */
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.SeriesPane(
+private fun Pane.SeriesPane(
     library: Library,
     state: BrowseState,
     favourites: Favourites,
@@ -834,7 +923,7 @@ private fun androidx.compose.foundation.layout.RowScope.SeriesPane(
     val favs = favourites.keys
     val account = library.account
     if (account == null || library.shows.isEmpty()) {
-        Column(Modifier.weight(1f)) {
+        Column(fill()) {
             Note(if (account == null) "Series need a login: server address, username and password. A playlist link on its own doesn't list them." else "Your provider listed no series.")
         }
         return
@@ -865,10 +954,10 @@ private fun androidx.compose.foundation.layout.RowScope.SeriesPane(
         withFrameNanos { }
         runCatching { resume.requestFocus() }
     }
-    Column(Modifier.weight(1f).fillMaxHeight()) {
-        Heading((if (shown.size == 1) "1 series" else "${shown.size} series") + HOLD_HINT)
+    Column(fill()) {
+        Heading((if (shown.size == 1) "1 series" else "${shown.size} series") + holdHint())
         LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
+            columns = if (LocalPhone.current) GridCells.Adaptive(104.dp) else GridCells.Fixed(4),
             state = state.showGrid,
             modifier = Modifier.fillMaxSize().focusRestorer(),
             contentPadding = PaddingValues(4.dp),
@@ -894,7 +983,7 @@ private fun androidx.compose.foundation.layout.RowScope.SeriesPane(
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.EpisodePage(
+private fun Pane.EpisodePage(
     show: Show,
     account: Account,
     state: BrowseState,
@@ -926,7 +1015,7 @@ private fun androidx.compose.foundation.layout.RowScope.EpisodePage(
         if (!back) runCatching { first.requestFocus() }
     }
 
-    Column(Modifier.weight(1f).fillMaxHeight()) {
+    Column(fill()) {
         Heading(show.name)
         val result = loaded
         val episodes = result?.getOrNull()
@@ -970,7 +1059,7 @@ private fun androidx.compose.foundation.layout.RowScope.EpisodePage(
  * channel or film plays it; OK on a series opens its episodes.
  */
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.SearchPane(
+private fun Pane.SearchPane(
     library: Library,
     state: BrowseState,
     resume: FocusRequester,
@@ -978,7 +1067,7 @@ private fun androidx.compose.foundation.layout.RowScope.SearchPane(
     onOpenShow: (Show) -> Unit,
 ) {
     val found = remember(library, state.query) { Finder.search(library, state.query) }
-    Column(Modifier.weight(1f).fillMaxHeight()) {
+    Column(fill()) {
         OutlinedTextField(
             value = state.query,
             onValueChange = { state.query = it },
@@ -1026,13 +1115,13 @@ private fun androidx.compose.foundation.layout.RowScope.SearchPane(
  * if it is, or the TV's app store on a search for it if not. Back in the other app returns here.
  */
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.TvAppsPane() {
+private fun Pane.TvAppsPane() {
     val context = LocalContext.current
     // Looked at again each time KueTV comes back to the front, so an app just installed shows as installed.
     val found by produceState<List<TvAppsOnDevice.Found?>?>(null, Resumes.count) {
         value = withContext(Dispatchers.IO) { TvAppsOnDevice.find(context.applicationContext) }
     }
-    Column(Modifier.weight(1f).fillMaxHeight()) {
+    Column(fill()) {
         Heading("TV apps · these play in their own apps")
         val apps = found
         if (apps == null) {

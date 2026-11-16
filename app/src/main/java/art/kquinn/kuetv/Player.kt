@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +30,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,6 +57,7 @@ private const val MAX_TRIES = 6
  * The full-screen player.
  *
  * Live: ▲ / CH+ is the next channel, ▼ / CH− the one before, OK shows the channel's name, Back closes.
+ * On a phone: swipe up for the next channel, down for the one before, tap for the name.
  * A film or an episode: the player's own bar handles play, pause and skipping; Back closes. When an
  * episode ends, the next one in the list starts.
  *
@@ -65,6 +69,7 @@ private const val MAX_TRIES = 6
 @Composable
 fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose: () -> Unit) {
     val context = LocalContext.current
+    val phone = LocalPhone.current
     var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) }
     var note by remember { mutableStateOf<String?>(null) }
     var showName by remember { mutableIntStateOf(0) }
@@ -145,6 +150,35 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
 
     BackHandler { onClose() }
 
+    // Phone: the picture takes the whole screen while playing. A swipe from the edge brings the bars back.
+    if (phone) {
+        DisposableEffect(Unit) {
+            val window = (context as? android.app.Activity)?.window
+            if (window != null) {
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    window.insetsController?.let {
+                        it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                        it.hide(android.view.WindowInsets.Type.systemBars())
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                        android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                }
+            }
+            onDispose {
+                if (window != null) {
+                    if (android.os.Build.VERSION.SDK_INT >= 30) {
+                        window.insetsController?.show(android.view.WindowInsets.Type.navigationBars())
+                    } else {
+                        @Suppress("DEPRECATION")
+                        window.decorView.systemUiVisibility = 0
+                    }
+                }
+            }
+        }
+    }
+
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { if (live) runCatching { focus.requestFocus() } }
 
@@ -184,17 +218,37 @@ fun PlayerScreen(items: List<Playable>, startIndex: Int, live: Boolean, onClose:
                 }
             },
         )
+        if (phone && live) {
+            // A clear sheet over the picture that takes the touches: swipe to change channel, tap for the name.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(items.size) {
+                        var moved = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { moved = 0f },
+                            onDragEnd = {
+                                val far = 60.dp.toPx()
+                                if (items.size > 1 && moved <= -far) index = (index + 1) % items.size
+                                else if (items.size > 1 && moved >= far) index = (index - 1 + items.size) % items.size
+                            },
+                        ) { _, by -> moved += by }
+                    }
+                    .pointerInput(Unit) { detectTapGestures(onTap = { showName += 1 }) },
+            )
+        }
         val title = items.getOrNull(index)?.name.orEmpty()
         if ((nameVisible && live) || note != null) {
             Column(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .padding(36.dp)
+                    .padding(if (phone) 16.dp else 36.dp)
                     .background(Color(0xCC0E1626), RoundedCornerShape(14.dp))
                     .padding(horizontal = 22.dp, vertical = 14.dp),
             ) {
                 Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 note?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp) }
+                if (phone && live && items.size > 1) Text("Swipe up or down to change channel", color = Color(0xFFB9C2D3), fontSize = 16.sp)
             }
         }
     }
