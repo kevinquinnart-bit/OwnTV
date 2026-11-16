@@ -103,7 +103,10 @@ object TimedStore {
 class TimedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == START) TimedService.start(context.applicationContext, intent.getIntExtra("id", 0))
-        else TimedStore.arm(context)
+        else {
+            TimedStore.arm(context)
+            Reminders.arm(context)
+        }
     }
 
     companion object {

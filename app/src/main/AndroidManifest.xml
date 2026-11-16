@@ -60,6 +60,7 @@
         </provider>
         <service android:name=".CopyService" android:exported="false" android:foregroundServiceType="dataSync" />
         <service android:name=".TimedService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <receiver android:name=".ReminderReceiver" android:exported="false" />
         <receiver android:name=".TimedReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

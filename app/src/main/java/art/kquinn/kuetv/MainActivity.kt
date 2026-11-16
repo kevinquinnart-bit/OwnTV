@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -199,8 +200,15 @@ private fun App() {
     LaunchedEffect(Resumes.count) { Recordings.wake(context) }
     // Anything a torrent left behind, if the app was closed while one played, is cleared when the app opens.
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { runCatching { Torrents.folder(context).deleteRecursively() } } }
-    // Programmes set to record: make sure each still has its alarm.
-    LaunchedEffect(Unit) { runCatching { TimedStore.arm(context) } }
+    // Programmes set to record or to remind: make sure each still has its alarm.
+    LaunchedEffect(Unit) { runCatching { TimedStore.arm(context); Reminders.arm(context) } }
+    // While KueTV is on screen: every few seconds, is a reminded programme starting?
+    LaunchedEffect(Screen.visible) {
+        while (Screen.visible) {
+            runCatching { Reminders.check(context) }
+            delay(10_000)
+        }
+    }
     // A newer version downloaded last time is no longer needed once the app starts afresh.
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updates.tidy(context) } }
     // Each time KueTV comes to the front: is a newer version on the download?
@@ -224,7 +232,36 @@ private fun App() {
         library?.let { Report.note("Provider", "loaded: " + it.channels.size + " channels as " + it.groups.size + " rows, " + it.films.size + " films, " + it.shows.size + " series") }
     }
     // On a phone the screens keep clear of the notch and the bars; the player uses the whole screen.
-    Box(Modifier.fillMaxSize().background(Page).then(if (playing == null) Modifier.safeDrawingPadding() else Modifier)) {
+    val reminder = Reminders.showing
+    /** OK on a reminder: watch that channel, in place of whatever is showing. */
+    val watchReminded: () -> Unit = {
+        val r = Reminders.showing
+        Reminders.showing = null
+        val group = r?.let { library?.groupOf?.get(it.channelId) }
+        if (group != null) {
+            browse?.resumeKey = null
+            LastLive.item = Playable(group.name, group.versions.last().channel.url)
+            playing = Playing(listOf(livePlayable(group, library?.account, library?.serverAheadSec ?: 0)), 0, true)
+        }
+    }
+    // A reminder that isn't answered goes after a minute and a half.
+    LaunchedEffect(reminder) {
+        if (reminder == null) return@LaunchedEffect
+        delay(90_000)
+        if (Reminders.showing == reminder) Reminders.showing = null
+    }
+    Box(
+        Modifier.fillMaxSize().background(Page).then(if (playing == null) Modifier.safeDrawingPadding() else Modifier)
+            // With a reminder up, OK watches it and Back puts it away, before anything underneath sees those keys.
+            .onPreviewKeyEvent { e ->
+                if (Reminders.showing == null) return@onPreviewKeyEvent false
+                when (e.key) {
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { if (e.type == KeyEventType.KeyUp) watchReminded(); true }
+                    Key.Back -> { if (e.type == KeyEventType.KeyUp) Reminders.showing = null; true }
+                    else -> false
+                }
+            },
+    ) {
         val lib = shownLibrary
         val whole = library
         val now = playing
@@ -295,6 +332,63 @@ private fun App() {
                 onCategories = { categoriesOpen = true },
                 onAbout = { aboutOpen = true },
             )
+        }
+        if (reminder != null) ReminderPopUp(reminder, onWatch = watchReminded, onClose = { Reminders.showing = null }, Modifier.align(Alignment.TopCenter))
+    }
+}
+
+/** A reminded programme starting: over whatever is on screen, at the top. */
+@Composable
+private fun ReminderPopUp(reminder: Reminder, onWatch: () -> Unit, onClose: () -> Unit, modifier: Modifier) {
+    val phone = LocalPhone.current
+    val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+    val started = System.currentTimeMillis() >= reminder.startMs
+    Column(
+        modifier.padding(top = if (phone) 12.dp else 28.dp, start = 12.dp, end = 12.dp).widthIn(max = 720.dp)
+            .background(Color(0xF216213A), RoundedCornerShape(16.dp)).border(2.dp, Accent, RoundedCornerShape(16.dp))
+            .padding(horizontal = 22.dp, vertical = 16.dp),
+    ) {
+        Text(
+            (if (started) "Started at " else "Starting at ") + clock.format(java.util.Date(reminder.startMs)) + " on " + reminder.channel,
+            color = Accent, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+        )
+        Text(reminder.title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (phone) {
+            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Watch", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.background(Accent, RoundedCornerShape(22.dp)).clickable(onClick = onWatch).padding(horizontal = 18.dp, vertical = 9.dp),
+                )
+                Text(
+                    "Not now", color = Color.White, fontSize = 18.sp,
+                    modifier = Modifier.background(Panel, RoundedCornerShape(22.dp)).clickable(onClick = onClose).padding(horizontal = 18.dp, vertical = 9.dp),
+                )
+            }
+        } else {
+            Text("OK to watch  ·  Back to put this away", color = Soft, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp))
+        }
+    }
+}
+
+/**
+ * OK on a programme that hasn't started steps it along: a reminder, then set to record, then neither.
+ * Says on screen what it is now set to.
+ */
+private fun stepLater(context: android.content.Context, plan: Timed, remind: Reminder, reminded: Boolean, recording: Boolean, at: String) {
+    val say: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
+    when {
+        recording -> {
+            TimedStore.remove(context, plan)
+            say("Nothing set for " + plan.title)
+        }
+        reminded -> {
+            Reminders.remove(context, remind)
+            TimedStore.add(context, plan)
+            say("Set to record: " + plan.title + ", " + at + ". OK again for nothing.")
+        }
+        else -> {
+            Reminders.add(context, remind)
+            say("Reminder set: " + plan.title + ", " + at + ". OK again to record it instead.")
         }
     }
 }
@@ -749,6 +843,12 @@ private fun MainScreen(
         state.cameFrom = section
         section = Section.HOME
     }
+    // A film or episode from "Carry on watching": a film is found again in the lists, so its add-ons are asked as before.
+    val carryOn: (Positions.Watching) -> Unit = { w ->
+        val film = library.films.firstOrNull { it.url == w.url }
+        val item = if (film != null) Playable(film.name, film.url, find = finder("movie", film.name, null, null), poster = film.poster) else Playable(w.name, w.url, poster = w.poster)
+        onPlay(listOf(item), 0, false, "carry:" + w.url)
+    }
     val openFromHome: (Section) -> Unit = { s ->
         state.cameFrom = s
         section = s
@@ -758,7 +858,7 @@ private fun MainScreen(
     // The chosen section's screen. Where it sits is decided underneath, by TV or phone.
     val body: @Composable Pane.() -> Unit = {
         when (section) {
-            Section.HOME -> HomeScreen(library, state, favourites, homeFocus, resume, onPlay, openFromHome, fill())
+            Section.HOME -> HomeScreen(library, state, favourites, homeFocus, resume, onPlay, openFromHome, carryOn, fill())
             Section.LIVE -> {
                 Categories(library.liveCategories, liveCategory, state.liveCategoryList) {
                     if (it != state.liveCategory) {
@@ -845,7 +945,7 @@ private fun MainScreen(
                             val favKey = Favourites.key(film, login)
                             Poster(
                                 film.name, film.poster,
-                                { onPlay(listOf(Playable(film.name, film.url, find = finder("movie", film.name, null, null))), 0, false, key) },
+                                { onPlay(listOf(Playable(film.name, film.url, find = finder("movie", film.name, null, null), poster = film.poster)), 0, false, key) },
                                 if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
                                 favourite = favKey in favs,
                                 onHold = { favourites.toggle(favKey) },
@@ -1222,8 +1322,9 @@ private fun Pane.ProgrammePage(
 
     val context = LocalContext.current
     val timed = remember(TimedStore.changes) { TimedStore.all(context) }
+    val reminders = remember(Reminders.changes) { Reminders.all(context) }
     Column(fill()) {
-        Heading(channel.name + if (catchUp) " · catch-up" else " · guide · OK on a later programme sets it to record")
+        Heading(channel.name + if (catchUp) " · catch-up" else " · guide · OK on a later programme: ◆ reminder, then ● record, then neither")
         val result = loaded
         when {
             result == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
@@ -1285,8 +1386,10 @@ private fun Pane.ProgrammePage(
                         val later = !catchUp && programme.startMs > System.currentTimeMillis()
                         val plan = Timed.make(channel.name, programme.title.ifBlank { "Programme" }, channel.url, programme.startMs, programme.stopMs)
                         val set = timed.any { it.id == plan.id }
+                        val remind = Reminder.make(channel.id, channel.name, programme.title.ifBlank { "Programme" }, programme.startMs, programme.stopMs)
+                        val reminded = reminders.any { it.id == remind.id }
                         ProgrammeRow(
-                            whenText = (if (set) "● Will record · " else "") + (if (onNow) "Now · " else day(programme.startMs) + " · ") + time(programme.startMs) + " to " + time(programme.stopMs),
+                            whenText = (if (set) "● Will record · " else "") + (if (reminded) "◆ Reminder · " else "") + (if (onNow) "Now · " else day(programme.startMs) + " · ") + time(programme.startMs) + " to " + time(programme.stopMs),
                             title = programme.title.ifBlank { "No title" },
                             description = programme.description,
                             onClick = {
@@ -1294,13 +1397,8 @@ private fun Pane.ProgrammePage(
                                     val url = Provider.catchupUrl(account, channel.id, programme, serverAheadSec)
                                     onPlay(listOf(Playable(channel.name + " · " + programme.title, url)), 0, false, key)
                                 } else if (later) {
-                                    // A programme that hasn't started: OK sets it to record, and OK again takes that off.
-                                    if (set) TimedStore.remove(context, plan) else TimedStore.add(context, plan)
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        if (set) "No longer set to record: " + plan.title else "Set to record: " + plan.title + ", " + day(programme.startMs) + " " + time(programme.startMs),
-                                        android.widget.Toast.LENGTH_LONG,
-                                    ).show()
+                                    // A programme that hasn't started: OK sets a reminder, again sets it to record, again sets neither.
+                                    stepLater(context, plan, remind, reminded, set, day(programme.startMs) + " " + time(programme.startMs))
                                 } else {
                                     onPlay(listOf(watch), 0, true, key)
                                 }
@@ -1474,7 +1572,7 @@ private fun Pane.EpisodePage(
                     if (e.title.isBlank() || e.title.equals(plain, ignoreCase = true)) plain else e.number.toString() + ". " + e.title
                 }
                 val playables = remember(episodes, finder) {
-                    episodes.map { Playable(show.name + " · S" + it.season + " E" + it.number, it.url, find = finder("series", show.name, it.season, it.number)) }
+                    episodes.map { Playable(show.name + " · S" + it.season + " E" + it.number, it.url, find = finder("series", show.name, it.season, it.number), poster = show.poster) }
                 }
                 LazyColumn(Modifier.fillMaxSize(), state = state.episodeList) {
                     episodes.forEachIndexed { i, episode ->
@@ -1545,7 +1643,7 @@ private fun Pane.SearchPane(
                     val key = "film:" + film.id
                     FocusRow(
                         film.name,
-                        { onPlay(listOf(Playable(film.name, film.url, find = finder("movie", film.name, null, null))), 0, false, key) },
+                        { onPlay(listOf(Playable(film.name, film.url, find = finder("movie", film.name, null, null), poster = film.poster)), 0, false, key) },
                         if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                     )
                 }
@@ -2120,6 +2218,7 @@ private fun Pane.GuideGrid(
         strip.scrollTo(with(density) { across(opened - start - 20 * 60_000L).roundToPx() })
     }
     val timed = remember(TimedStore.changes) { TimedStore.all(context) }
+    val reminders = remember(Reminders.changes) { Reminders.all(context) }
     val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
     val time: (Long) -> String = { clock.format(java.util.Date(it)) }
     var about by remember { mutableStateOf<Pair<String, Programme>?>(null) }
@@ -2127,7 +2226,7 @@ private fun Pane.GuideGrid(
     val tell: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
 
     Column(fill()) {
-        Heading("OK: watch what is on now · record a later one · catch up on an earlier one")
+        Heading("OK: watch what is on now · on a later one, ◆ reminder, then ● record, then neither · catch up on an earlier one")
         Row {
             Spacer(Modifier.width(nameWidth))
             Box(Modifier.weight(1f).horizontalScroll(strip, enabled = false)) {
@@ -2179,18 +2278,17 @@ private fun Pane.GuideGrid(
                                     val key = "cell:" + channel.id + ":" + programme.startMs
                                     val plan = Timed.make(channel.name, programme.title.ifBlank { "Programme" }, first.url, programme.startMs, programme.stopMs)
                                     val set = timed.any { it.id == plan.id }
+                                    val remind = Reminder.make(first.id, channel.name, programme.title.ifBlank { "Programme" }, programme.startMs, programme.stopMs)
+                                    val reminded = reminders.any { it.id == remind.id }
                                     GridCell(
-                                        (if (set) "● " else "") + programme.title.ifBlank { "No title" }, time(programme.startMs),
+                                        (if (set) "● " else "") + (if (reminded) "◆ " else "") + programme.title.ifBlank { "No title" }, time(programme.startMs),
                                         across(to - from), programme.startMs <= opened && programme.stopMs > opened,
                                         {
                                             val now = System.currentTimeMillis()
                                             val kept = channel.versions.firstOrNull { it.channel.catchupDays > 0 }?.channel
                                             when {
                                                 programme.startMs <= now && programme.stopMs > now -> onPlay(listOf(livePlayable(channel, account, library.serverAheadSec)), 0, true, key)
-                                                programme.startMs > now -> {
-                                                    if (set) TimedStore.remove(context, plan) else TimedStore.add(context, plan)
-                                                    tell(if (set) "No longer set to record: " + plan.title else "Set to record: " + plan.title + ", " + time(programme.startMs))
-                                                }
+                                                programme.startMs > now -> stepLater(context, plan, remind, reminded, set, time(programme.startMs))
                                                 kept == null || programme.startMs < now - kept.catchupDays * DAY_MS -> tell("Your provider keeps no catch-up for this.")
                                                 else -> onPlay(
                                                     listOf(Playable(channel.name + " · " + programme.title, Provider.catchupUrl(account, kept.id, programme, library.serverAheadSec))), 0, false, key,
@@ -2395,6 +2493,7 @@ private fun HomeScreen(
     resume: FocusRequester,
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
     onOpen: (Section) -> Unit,
+    onCarryOn: (Positions.Watching) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -2459,6 +2558,45 @@ private fun HomeScreen(
                         SectionIcon(s, if (focused) Color.Black else Accent, Modifier.size(52.dp))
                         Spacer(Modifier.height(10.dp))
                         Text(s.label, color = if (focused) Color.Black else Color.White, fontSize = 20.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+
+        // Films and episodes left part way through: OK carries on from where it was left.
+        val carry = remember(Positions.changes) { Positions.watching(context) }
+        if (carry.isNotEmpty()) {
+            Heading("Carry on watching")
+            val carryList = remember { LazyListState(carry.indexOfFirst { "carry:" + it.url == state.resumeKey }.coerceAtLeast(0)) }
+            LazyRow(
+                Modifier.fillMaxWidth().focusRestorer(),
+                state = carryList,
+                contentPadding = PaddingValues(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 18.dp),
+            ) {
+                itemsIndexed(carry, key = { _, w -> w.url }) { _, w ->
+                    val key = "carry:" + w.url
+                    Tile(
+                        { onCarryOn(w) },
+                        Modifier.width(if (phone) 110.dp else 150.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                    ) { focused ->
+                        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+                            if (w.poster.isNotBlank()) AsyncImage(model = w.poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            else Text(w.name, color = Soft, fontSize = 14.sp, maxLines = 4, modifier = Modifier.padding(8.dp))
+                        }
+                        // How far through: a bar, and the minutes left.
+                        val through = if (w.lengthMs > 0) (w.positionMs.toFloat() / w.lengthMs).coerceIn(0f, 1f) else 0f
+                        Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).background(Color(0x33FFFFFF), RoundedCornerShape(2.dp))) {
+                            Box(Modifier.fillMaxWidth(through).fillMaxHeight().background(if (focused) Color.Black else Accent, RoundedCornerShape(2.dp)))
+                        }
+                        Text(
+                            w.name, color = if (focused) Color.Black else Color.White, fontSize = if (phone) 13.sp else 15.sp, fontWeight = FontWeight.Bold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        )
+                        Text(
+                            ((w.lengthMs - w.positionMs) / 60_000).coerceAtLeast(1).toString() + " min left",
+                            color = if (focused) Color.Black else Soft, fontSize = if (phone) 12.sp else 13.sp, maxLines = 1, modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
             }

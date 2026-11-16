@@ -119,6 +119,8 @@ data class Playable(
     val find: (suspend () -> Search)? = null,
     /** For a live channel the provider keeps for catch-up: the programme on now, played from its start. */
     val fromStart: ((Programme) -> Playable)? = null,
+    /** For a film or episode: its picture (empty if it has none). Set only on those, which go on Home's "Carry on watching". */
+    val poster: String? = null,
 )
 
 /** One button along the bottom of the live name box. */
@@ -301,7 +303,7 @@ fun PlayerScreen(
     /** Notes how far into a film the player has got, so it can carry on from there next time. */
     val keepPlace: () -> Unit = {
         val item = items.getOrNull(index)
-        if (!live && item != null && started[0] && player.duration > 0) Positions.keep(context, item.url, player.currentPosition, player.duration)
+        if (!live && item != null && started[0] && player.duration > 0) Positions.keep(context, item.url, player.currentPosition, player.duration, item.name, item.poster)
     }
     /** Another channel, film or episode: start it on the version it should start on. */
     val go: (Int) -> Unit = { next ->
