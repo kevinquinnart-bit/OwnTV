@@ -12,6 +12,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Asking the TV which aerial channels it has, for the report. Many TVs refuse this to apps they didn't come with. -->
+    <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
+
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 

@@ -2025,7 +2025,7 @@ private fun ReportScreen(onDone: () -> Unit) {
                 (if (phone) "Phone" else "TV") + ": " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + ", Android " + android.os.Build.VERSION.RELEASE,
                 "Add-ons: " + AddOnStore.all(context).size + " · Google Drive: " + (if (!drive.isSetUp) "no keys in this copy" else if (drive.signedIn) "signed in" else "not signed in") +
                     " · Set to record: " + TimedStore.all(context).size + " · Recordings here: " + Recordings.here(context).size,
-            ),
+            ) + runCatching { TvProbe.lines(context) }.getOrDefault(listOf("TV inputs: couldn't be asked")),
         )
     }
     var address by remember { mutableStateOf<String?>(null) }
