@@ -43,4 +43,26 @@ class CarryOnTest {
         assertEquals("English", Langs.of("xx").name)
         assertEquals("English", Langs.after(Langs.all.last()).name)
     }
+
+    @Test fun theHealthCheckSaysWhatIsDeadAndReadsBackTheSame() {
+        val all = listOf(
+            Check("Your provider", Check.WORKING, "Signed in."),
+            Check("The TV guide", Check.DEAD, "Your provider didn't answer when asked what is on."),
+            Check("Google Drive", Check.DOUBT, "Not signed in. Recordings stay on this device."),
+            Check("Add-on: Subs", Check.DEAD, "It didn't answer in 15 seconds."),
+        )
+        assertEquals("2 of 4 not working: The TV guide, Add-on: Subs", Health.summary(all))
+        assertEquals("Nothing dead. 1 of 2 to look at", Health.summary(listOf(all[0], all[2])))
+        assertEquals("All 1 working", Health.summary(listOf(all[0])))
+        assertEquals("Not checked yet", Health.summary(emptyList()))
+        assertEquals(all, Health.decode(Health.encode(all)))
+    }
+
+    @Test fun aFreeListLinkIsTidiedAndNamed() {
+        assertEquals("https://lists.example/uk.m3u", FreeStore.tidy(" lists.example/uk.m3u "))
+        assertNull(FreeStore.tidy(""))
+        assertNull(FreeStore.tidy("not a link"))
+        assertEquals("lists.example · uk.m3u", FreeStore.label("https://lists.example/tv/uk.m3u?x=1"))
+        assertEquals("lists.example", FreeStore.label("https://lists.example"))
+    }
 }

@@ -192,6 +192,7 @@ private fun App() {
     var reportOpen by remember { mutableStateOf(false) }
     var categoriesOpen by remember { mutableStateOf(false) }
     var aboutOpen by remember { mutableStateOf(false) }
+    var healthOpen by remember { mutableStateOf(false) }
     // A film or episode that can play from an add-on or from the provider's own copy, waiting for the user to pick.
     var choice by remember { mutableStateOf<Playing?>(null) }
     // What the lists show: everything the provider sent, less the categories chosen to be hidden.
@@ -213,6 +214,14 @@ private fun App() {
     }
     // A newer version downloaded last time is no longer needed once the app starts afresh.
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updates.tidy(context); ShiftBuffer.tidy(context) } }
+    // The health check's last results, and once a day a fresh one, quietly, once the lists have loaded.
+    LaunchedEffect(Unit) { Health.restore(context) }
+    LaunchedEffect(library != null) {
+        val lib = library ?: return@LaunchedEffect
+        if (!Health.dueDaily(context) || Health.running) return@LaunchedEffect
+        delay(20_000)
+        withContext(Dispatchers.IO) { runCatching { Health.run(context, account, lib) } }
+    }
     // Each time KueTV comes to the front: is a newer version on the download?
     LaunchedEffect(Resumes.count) { withContext(Dispatchers.IO) { Updates.checkOnOpen() } }
 
@@ -321,6 +330,7 @@ private fun App() {
             addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false })
             reportOpen -> ReportScreen(onDone = { reportOpen = false })
             aboutOpen -> AboutScreen(onDone = { aboutOpen = false })
+            healthOpen -> HealthScreen(account, library, onDone = { healthOpen = false })
             categoriesOpen && whole != null -> CategoriesScreen(whole, onDone = { categoriesOpen = false })
             problem != null -> ProblemScreen(problem.orEmpty(), onRetry = { reload++ }, onEdit = { editing = true })
             lib == null || browse == null -> LoadingScreen()
@@ -346,6 +356,7 @@ private fun App() {
                 onReport = { reportOpen = true },
                 onCategories = { categoriesOpen = true },
                 onAbout = { aboutOpen = true },
+                onHealth = { healthOpen = true },
             )
         }
         if (reminder != null) ReminderPopUp(reminder, onWatch = watchReminded, onClose = { Reminders.showing = null }, Modifier.align(Alignment.TopCenter))
@@ -779,6 +790,7 @@ private fun MainScreen(
     onReport: () -> Unit,
     onCategories: () -> Unit,
     onAbout: () -> Unit,
+    onHealth: () -> Unit,
 ) {
     val context = LocalContext.current
     // The category in each section, kept for the next time the app opens.
@@ -1015,6 +1027,8 @@ private fun MainScreen(
                     FocusRow("Small TV while browsing: " + if (smallTv) "on" else "off", { Choices.smallTv(context, !smallTv) })
                 }
                 FocusRow("Reset text size, subtitles and small TV", { Choices.resetDisplay(context) }, look = Look.OTHER)
+                val notWorking = Health.results.count { it.state == Check.DEAD }
+                FocusRow("Health check" + if (notWorking == 0) "" else " · $notWorking not working", onHealth, look = Look.OTHER)
                 FocusRow("Report for Claude", onReport, look = Look.OTHER)
                 FocusRow("About and updates · version " + BuildConfig.VERSION_NAME, onAbout, look = Look.OTHER)
             }
@@ -2077,7 +2091,14 @@ private fun AddOnsScreen(onDone: () -> Unit) {
                 addOn.streams -> "streams"
                 else -> "subtitles"
             }
-            FocusRow("Remove " + addOn.name + " (" + gives + ")", { AddOnStore.remove(context, addOn); said = "Removed " + addOn.name + "." }, look = Look.OTHER)
+            // How it did in the last health check, if it has been checked.
+            val health = when (Health.stateOf(Health.addOnName(addOn))) {
+                Check.WORKING -> "✓ working · "
+                Check.DOUBT -> "! look at Health check · "
+                Check.DEAD -> "✗ NOT WORKING · "
+                else -> ""
+            }
+            FocusRow(health + "Remove " + addOn.name + " (" + gives + ")", { AddOnStore.remove(context, addOn); said = "Removed " + addOn.name + "." }, look = Look.OTHER)
         }
         FocusRow("Done", onDone, look = Look.OTHER)
     }
@@ -2983,5 +3004,60 @@ private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: M
                 color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp),
             )
         }
+    }
+}
+
+// --------------------------------------------------------------------------------------------- health check
+
+/** Settings › Health check: every outside source the app depends on, tried, with a tick or a cross and why. */
+@Composable
+private fun HealthScreen(account: Account, library: Library?, onDone: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val scope = rememberCoroutineScope()
+    BackHandler { onDone() }
+    val running = Health.running
+    val results = Health.results
+    val check: () -> Unit = {
+        if (!Health.running) scope.launch { withContext(Dispatchers.IO) { runCatching { Health.run(context, account, library) } } }
+    }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        if (!phone) runCatching { first.requestFocus() }
+        // Opened with nothing to show yet: check straight away.
+        if (Health.results.isEmpty()) check()
+    }
+    val at = remember(Health.lastRunMs) {
+        if (Health.lastRunMs == 0L) "" else java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.UK).format(java.util.Date(Health.lastRunMs))
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 140.dp, vertical = if (phone) 12.dp else 30.dp)) {
+        Text("Health check", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 6.dp))
+        Note(if (running) "Checking everything. This takes up to a minute…" else Health.summary(results) + if (at.isEmpty()) "" else " · checked " + at)
+        Spacer(Modifier.height(10.dp))
+        LazyColumn(Modifier.fillMaxWidth().weight(1f).focusRestorer(), verticalArrangement = if (phone) Arrangement.spacedBy(6.dp) else Arrangement.Top) {
+            item(key = "check") { FocusRow(if (running) "Checking…" else "Check now", check, Modifier.focusRequester(first), look = Look.MAIN) }
+            item(key = "done") { FocusRow("Done", onDone, look = Look.OTHER) }
+            itemsIndexed(results, key = { i, c -> i.toString() + c.name }) { _, c ->
+                val mark = when (c.state) { Check.WORKING -> "✓  "; Check.DOUBT -> "!  "; else -> "✗  NOT WORKING · " }
+                HealthRow(mark + c.name, c.detail, c.state)
+            }
+        }
+    }
+}
+
+/** One result: its name with a tick, a mark or a cross, and underneath, in full, what was found. */
+@Composable
+private fun HealthRow(title: String, detail: String, state: Int) {
+    var focused by remember { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .background(if (focused) Color(0x33FFFFFF) else Color.Transparent)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Text(title, color = when (state) { Check.WORKING -> Color.White; Check.DOUBT -> Accent; else -> Color(0xFFFF6B5E) }, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(detail, color = Soft, fontSize = 16.sp)
     }
 }

@@ -290,6 +290,21 @@ object Provider {
         .readTimeout(90, TimeUnit.SECONDS)
         .build()
 
+    /** Signs in (or opens the playlist) to see that the provider answers. Throws a [ProviderProblem] saying why not. */
+    fun reach(account: Account) {
+        if (account.isLogin) checkLogin(account) else open(account.playlist).close()
+    }
+
+    /** The channels in a free channel list, read from its link. Call off the main thread. */
+    fun loadFree(link: String): List<Channel> = try {
+        open(link).use { parsePlaylist(BufferedReader(it.body.charStream())).channels }
+    } catch (e: ProviderProblem) {
+        throw ProviderProblem(
+            e.message.orEmpty().replace("Your provider", "The list's site").replace("your provider", "the list's site")
+                .replace("Your playlist", "The list").replace("the server address and ", ""),
+        )
+    }
+
     /** Fetches everything the provider lists. Call off the main thread. */
     fun load(account: Account): Library = if (account.isLogin) loadLogin(account) else loadPlaylist(account.playlist)
 
