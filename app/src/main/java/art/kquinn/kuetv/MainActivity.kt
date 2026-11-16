@@ -501,6 +501,11 @@ private enum class Section(val label: String) { SEARCH("Search"), LIVE("Live TV"
 
 private const val ALL = "\u0000all"
 private const val FAVOURITES = "\u0000favourites"
+
+// "All" and "Favourites" are known inside the app by marks that can't be written to the device's
+// storage as they are, so they are kept under these plain words instead.
+private fun keptAs(category: String) = when (category) { ALL -> "*all"; FAVOURITES -> "*favourites"; else -> category }
+private fun fromKept(kept: String?) = when (kept) { null, "*all" -> ALL; "*favourites" -> FAVOURITES; else -> kept }
 @Composable
 private fun holdHint() = if (LocalPhone.current) " · press and hold for favourite" else " · hold OK for favourite"
 
@@ -511,8 +516,8 @@ private class BrowseState(startOnFilms: Boolean, saved: Map<String, String> = em
         Section.entries.firstOrNull { it.name == saved["section"] && it != Section.SEARCH && it != Section.SETTINGS && !(startOnFilms && it == Section.LIVE) }
             ?: if (startOnFilms) Section.FILMS else Section.LIVE,
     )
-    var liveCategory by mutableStateOf(saved["live"] ?: ALL)
-    var filmCategory by mutableStateOf(saved["film"] ?: ALL)
+    var liveCategory by mutableStateOf(fromKept(saved["live"]))
+    var filmCategory by mutableStateOf(fromKept(saved["film"]))
     val liveCategoryList = LazyListState()
     val filmCategoryList = LazyListState()
     val channelList = LazyListState()
@@ -524,7 +529,7 @@ private class BrowseState(startOnFilms: Boolean, saved: Map<String, String> = em
     var query by mutableStateOf("")
     val searchList = LazyListState()
 
-    var showCategory by mutableStateOf(saved["show"] ?: ALL)
+    var showCategory by mutableStateOf(fromKept(saved["show"]))
     val showCategoryList = LazyListState()
     val showGrid = LazyGridState()
     var openShow by mutableStateOf<Show?>(null)
@@ -575,7 +580,7 @@ private fun MainScreen(
     val context = LocalContext.current
     // Where the user is, kept for the next time the app opens.
     LaunchedEffect(state.section, state.liveCategory, state.filmCategory, state.showCategory) {
-        Place.keep(context, mapOf("section" to state.section.name, "live" to state.liveCategory, "film" to state.filmCategory, "show" to state.showCategory))
+        Place.keep(context, mapOf("section" to state.section.name, "live" to keptAs(state.liveCategory), "film" to keptAs(state.filmCategory), "show" to keptAs(state.showCategory)))
     }
     // A category that has just been hidden can't stay the one being shown.
     LaunchedEffect(library) {
@@ -736,6 +741,7 @@ private fun MainScreen(
                     val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
                     FocusRow("Small TV while browsing: " + if (smallTv) "on" else "off", { Choices.smallTv(context, !smallTv) })
                 }
+                FocusRow("Reset text size, subtitles and small TV", { Choices.resetDisplay(context) }, look = Look.OTHER)
                 FocusRow("Report for Claude", onReport, look = Look.OTHER)
                 Text(
                     "KueTV 2 · version " + BuildConfig.VERSION_NAME,

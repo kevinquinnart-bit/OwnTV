@@ -100,6 +100,12 @@ object Choices {
         changes++
     }
 
+    /** Text size, subtitles and the small TV back to how the app comes. */
+    fun resetDisplay(context: Context) {
+        prefs(context).edit().remove("textSize").remove("subtitles").remove("smallTv").apply()
+        changes++
+    }
+
     fun smallTv(context: Context): Boolean = prefs(context).getBoolean("smallTv", true)
     fun smallTv(context: Context, on: Boolean) {
         prefs(context).edit().putBoolean("smallTv", on).apply()
