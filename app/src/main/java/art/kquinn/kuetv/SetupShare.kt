@@ -23,6 +23,8 @@ data class SetUp(
     val hidden: Map<String, Set<String>> = emptyMap(),
     /** The free channel lists, by their links. */
     val free: List<String> = emptyList(),
+    /** The secret key that pairs the two devices, so they keep in step afterwards. Empty from an older version. */
+    val pair: String = "",
 ) {
     fun pack(): String = JsonObject().apply {
         add("account", JsonObject().apply {
@@ -33,6 +35,7 @@ data class SetUp(
         addProperty("smallTv", smallTv)
         add("hidden", JsonObject().apply { hidden.forEach { (kind, ids) -> add(kind, JsonArray().apply { ids.sorted().forEach { add(it) } }) } })
         add("free", JsonArray().apply { free.forEach { add(it) } })
+        addProperty("pair", pair)
     }.toString()
 
     companion object {
@@ -47,6 +50,7 @@ data class SetUp(
                 // A set-up sent by an older version has none.
                 o.getAsJsonObject("hidden")?.entrySet()?.associate { (kind, ids) -> kind to ids.asJsonArray.map { it.asString }.toSet() }.orEmpty(),
                 o.getAsJsonArray("free")?.map { it.asString }.orEmpty(),
+                o.get("pair")?.asString.orEmpty(),
             )
         }.getOrNull()
     }
@@ -114,7 +118,7 @@ class SetUpSender(private val code: String, private val setUp: () -> String, pri
 
 /** Finds a device that is sending its set-up, and takes the set-up from it with the code. */
 object SetUpTaker {
-    private fun ask(host: String, port: Int, path: String, timeoutMs: Int): Pair<Int, String>? = runCatching {
+    fun ask(host: String, port: Int, path: String, timeoutMs: Int): Pair<Int, String>? = runCatching {
         Socket().use { socket ->
             socket.connect(InetSocketAddress(host, port), timeoutMs)
             socket.soTimeout = 8_000
@@ -126,14 +130,14 @@ object SetUpTaker {
     }.getOrNull()
 
     /** Every address on this device's part of the home network ("192.168.1.") that is sending a set-up. */
-    fun find(mine: String, port: Int = SetUpSender.PORT): List<String> {
+    fun find(mine: String, port: Int = SetUpSender.PORT, hello: String = SetUpSender.HELLO): List<String> {
         val prefix = mine.substringBeforeLast('.', "") + "."
         if (prefix == ".") return emptyList()
         val pool = Executors.newFixedThreadPool(48)
         try {
             val asks = (1..254).map { n ->
                 val host = prefix + n
-                pool.submit(Callable { if (ask(host, port, "/hello", 700)?.second == SetUpSender.HELLO) host else null })
+                pool.submit(Callable { if (ask(host, port, "/hello", 700)?.second == hello) host else null })
             }
             return asks.mapNotNull { runCatching { it.get(20, TimeUnit.SECONDS) }.getOrNull() }
         } finally {

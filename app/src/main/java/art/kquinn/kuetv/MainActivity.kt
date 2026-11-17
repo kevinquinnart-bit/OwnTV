@@ -221,6 +221,81 @@ private fun App() {
     }
     // A newer version downloaded last time is no longer needed once the app starts afresh.
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updates.tidy(context); ShiftBuffer.tidy(context) } }
+    // Keeping in step with a paired device: while KueTV is on screen, this device answers the other when it
+    // asks, and every minute asks the other what it has, taking each part that was changed more recently there.
+    val pairKey = remember(Sync.changes) { Sync.key(context) }
+    LaunchedEffect(Screen.visible, pairKey) {
+        if (!Screen.visible || pairKey.isEmpty()) return@LaunchedEffect
+        val kinds = listOf("live", "film", "show")
+        val bodies: () -> Map<String, String> = {
+            val a = AccountStore.load(context)
+            mapOf(
+                "account" to listOf(a.server, a.user, a.pass, a.playlist).joinToString("\n"),
+                "favourites" to favourites.keys.sorted().joinToString("\n"),
+                "addOns" to AddOnStore.all(context).joinToString("\n") { it.toJson() },
+                "free" to FreeStore.all(context).joinToString("\n"),
+                "hidden" to kinds.joinToString("\n") { kind -> kind + "=" + Choices.hidden(context, kind).sorted().joinToString("\u0001") },
+                "subtitles" to Choices.subtitles(context).toString() + "\n" + Choices.subtitleLang(context),
+                "places" to Positions.export(context),
+                "reminders" to Reminders.all(context).sortedBy { it.id }.joinToString("\n") { it.toJson() },
+            )
+        }
+        val take: (String, String) -> Unit = { name, body ->
+            val lines = body.split('\n')
+            when (name) {
+                "account" -> if (lines.size == 4) {
+                    val theirs = Account(lines[0], lines[1], lines[2], lines[3])
+                    AccountStore.save(context, theirs)
+                    // The lists load again from the new provider details.
+                    account = theirs
+                }
+                "favourites" -> favourites.replaceAll(lines.filter { it.isNotEmpty() }.toSet())
+                "addOns" -> AddOnStore.replaceAll(context, lines.mapNotNull { AddOn.fromJson(it) })
+                "free" -> FreeStore.replaceAll(context, lines.filter { it.isNotBlank() })
+                "hidden" -> for (line in lines) {
+                    val kind = line.substringBefore('=')
+                    if (kind in kinds) Choices.hidden(context, kind, line.substringAfter('=', "").split('\u0001').filter { it.isNotEmpty() }.toSet())
+                }
+                "subtitles" -> if (lines.size == 2) {
+                    Choices.subtitles(context, lines[0] == "true")
+                    Choices.subtitleLang(context, lines[1])
+                }
+                "places" -> Positions.import(context, body)
+                "reminders" -> Reminders.replaceAll(context, lines.mapNotNull { Reminder.fromJson(it) })
+            }
+        }
+        val server = SyncServer(pairKey)
+        val answering = server.start()
+        Report.note("Keeping in step", if (answering) "on: answering the other device" else "on, but this device couldn't open its door to be asked; it can still ask")
+        try {
+            var round = 0
+            while (true) {
+                var mine = Sync.current(context, bodies())
+                Sync.published = Sync.pack(mine)
+                // The other device is asked straight away, then every minute.
+                if (round % 4 == 0) {
+                    val others = withContext(Dispatchers.IO) { runCatching { Sync.pull(context, pairKey) }.getOrDefault(emptyList()) }
+                    for (theirs in others) {
+                        val wanted = Sync.newer(mine, theirs)
+                        for ((name, part) in wanted) {
+                            runCatching { take(name, part.body) }
+                            // Noted as it now stands here, with the time it was changed there, so it isn't sent back as a change of this device's.
+                            Sync.adopted(context, name, bodies()[name].orEmpty(), part.at)
+                        }
+                        if (wanted.isNotEmpty()) {
+                            Report.note("Keeping in step", "took from the other device: " + wanted.keys.sorted().joinToString(", "))
+                            mine = Sync.current(context, bodies())
+                            Sync.published = Sync.pack(mine)
+                        }
+                    }
+                }
+                round++
+                delay(15_000)
+            }
+        } finally {
+            server.stop()
+        }
+    }
     // Each add-on is read again when the app opens, so the lists of films and series it offers are up to date.
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -355,6 +430,8 @@ private fun App() {
                     AddOnStore.replaceAll(context, taken.addOns)
                     Choices.smallTv(context, taken.smallTv)
                     FreeStore.replaceAll(context, taken.free)
+                    // The sender's key pairs the two devices: from now on they keep in step by themselves.
+                    if (taken.pair.isNotEmpty()) Sync.setKey(context, taken.pair)
                     for (kind in listOf("live", "film", "show")) Choices.hidden(context, kind, taken.hidden[kind].orEmpty())
                     editing = false
                     if (taken.account == account) reload++ else account = taken.account
@@ -1121,6 +1198,20 @@ private fun MainScreen(
                 FocusRow("Subtitle language: " + subtitleLang.name, { Choices.subtitleLang(context, Langs.after(subtitleLang).code) }, look = Look.OTHER)
                 FocusRow("Send this set-up to another device", onSendSetUp, look = Look.OTHER)
                 FocusRow("Copy set-up from another device", onTakeSetUp, look = Look.OTHER)
+                // Paired devices keep in step by themselves. Pressing this stops this device taking part.
+                val paired = remember(Sync.changes) { Sync.key(context).isNotEmpty() }
+                val met = Sync.lastMetMs
+                if (paired) {
+                    FocusRow(
+                        "Keeping in step with your other device: on · " +
+                            if (met == 0L) "not met it yet since opening" else "last met at " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(java.util.Date(met)),
+                        {
+                            Sync.setKey(context, "")
+                            android.widget.Toast.makeText(context, "This device no longer keeps in step. To start again, send the set-up from the other device.", android.widget.Toast.LENGTH_LONG).show()
+                        },
+                        look = Look.OTHER,
+                    )
+                }
                 if (!phone) {
                     val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
                     FocusRow("Small TV while browsing: " + if (smallTv) "on" else "off", { Choices.smallTv(context, !smallTv) })
@@ -2269,7 +2360,7 @@ private fun SendSetUpScreen(account: Account, favourites: Favourites, onDone: ()
         val app = context.applicationContext
         val sender = SetUpSender(
             code,
-            { SetUp(account, favourites.keys, AddOnStore.all(app), Choices.smallTv(app), listOf("live", "film", "show").associateWith { Choices.hidden(app, it) }, FreeStore.all(app)).pack() },
+            { SetUp(account, favourites.keys, AddOnStore.all(app), Choices.smallTv(app), listOf("live", "film", "show").associateWith { Choices.hidden(app, it) }, FreeStore.all(app), Sync.keyOrMake(app)).pack() },
             { main.post { taken = true } },
         )
         ready = PhoneSetup.localAddress() != null && sender.start() != null
@@ -2284,7 +2375,7 @@ private fun SendSetUpScreen(account: Account, favourites: Favourites, onDone: ()
         Text("Send this set-up", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
         when {
             ready == false -> Note("This device isn't on a home network, so it can't send its set-up. Join the Wi-Fi and try again.")
-            taken -> Note("Sent. The other device now has your provider details, favourites and add-ons.")
+            taken -> Note("Sent. The other device now has your provider details, favourites and add-ons. From now on the two keep in step by themselves when KueTV is open on both, on the same Wi-Fi.")
             else -> {
                 Note("On the other device, on the same Wi-Fi, open KueTV and choose \"Copy set-up from another device\". Then type this code there:")
                 Text(code, color = Accent, fontSize = 56.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 10.dp))

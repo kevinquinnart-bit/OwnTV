@@ -139,4 +139,38 @@ class CarryOnTest {
         assertNull(LibraryCache.read(file, account))
         assertNull(LibraryCache.read(java.io.File(file.path + ".missing"), account))
     }
+
+    @Test fun keepingInStepTakesTheNewerOfEachPart() {
+        val tv = mapOf(
+            "favourites" to Sync.Part(500, "live:1\nlive:2"),
+            "addOns" to Sync.Part(900, "torrents"),
+            "free" to Sync.Part(1, ""),
+            "places" to Sync.Part(1, "a"),
+            "subtitles" to Sync.Part(300, "true\nen"),
+        )
+        val phone = mapOf(
+            "favourites" to Sync.Part(800, "live:1\nlive:2\nlive:3"),
+            "addOns" to Sync.Part(400, "nothing"),
+            "free" to Sync.Part(1, "https://lists.example/uk.m3u"),
+            "places" to Sync.Part(1, "b"),
+            "subtitles" to Sync.Part(300, "true\nen"),
+            "somethingNewer" to Sync.Part(999, "from a later version"),
+        )
+        // The TV takes the phone's newer favourites, and its free list (same age, but fuller). Its own newer add-ons stay.
+        assertEquals(setOf("favourites", "free", "places"), Sync.newer(tv, phone).keys)
+        // The phone takes the TV's newer add-ons, and nothing it already matches or leads on.
+        assertEquals(setOf("addOns"), Sync.newer(phone, tv).keys)
+        // After each has taken the other's, neither wants anything more.
+        val tvAfter = tv + Sync.newer(tv, phone)
+        val phoneAfter = phone + Sync.newer(phone, tv)
+        assertEquals(emptySet<String>(), Sync.newer(tvAfter, phoneAfter).keys)
+        assertEquals(emptySet<String>(), Sync.newer(phoneAfter, tvAfter).keys)
+        assertEquals(tv, Sync.unpack(Sync.pack(tv)))
+        assertNull(Sync.unpack("not a state"))
+    }
+
+    @Test fun theSetUpCarriesThePairingKey() {
+        val setUp = SetUp(Account("http://tv.example", "kev", "secret", ""), setOf("live:1"), emptyList(), true, emptyMap(), listOf("https://lists.example/uk.m3u"), "0123abcd")
+        assertEquals(setUp, SetUp.unpack(setUp.pack()))
+    }
 }

@@ -63,6 +63,19 @@ object Positions {
         changes++
     }
 
+    /** Everything under "Carry on watching", written out for another device to take. */
+    fun export(context: Context): String = watching(context, Int.MAX_VALUE).sortedBy { it.url }.joinToString("\n") { encode(it) }
+
+    /** Takes another device's "Carry on watching" in place of this one's. Places of recordings and catch-up are left alone. */
+    fun import(context: Context, text: String) {
+        val p = prefs(context)
+        val edit = p.edit()
+        for (name in p.all.keys.filter { it.startsWith(LISTED) }) edit.remove(name).remove(name.removePrefix(LISTED))
+        for (w in text.split('\n').mapNotNull(::decode)) edit.putLong(key(w.url), w.positionMs).putString(LISTED + key(w.url), encode(w))
+        edit.apply()
+        changes++
+    }
+
     /** Films and episodes left part way through, most recently watched first. */
     fun watching(context: Context, most: Int = 15): List<Watching> =
         prefs(context).all.filterKeys { it.startsWith(LISTED) }.values.mapNotNull { (it as? String)?.let(::decode) }.sortedByDescending { it.atMs }.take(most)

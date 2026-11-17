@@ -68,6 +68,14 @@ object Reminders {
         arm(context, reminder)
     }
 
+    /** Takes another device's reminders in place of this one's, and sets their alarms. */
+    fun replaceAll(context: Context, list: List<Reminder>) {
+        val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        for (old in all(context)) runCatching { alarms.cancel(alarm(context, old.id)) }
+        save(context, list)
+        arm(context)
+    }
+
     fun remove(context: Context, reminder: Reminder) {
         save(context, all(context).filter { it.id != reminder.id })
         runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(alarm(context, reminder.id)) }
