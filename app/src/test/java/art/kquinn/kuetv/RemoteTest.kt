@@ -51,31 +51,37 @@ class RemoteTest {
     private fun remoteOn(text: String) = rule.onAllNodes(isFocused() and (hasText(text, substring = true) or hasAnyDescendant(hasText(text, substring = true))))
         .fetchSemanticsNodes().isNotEmpty()
 
+    /** Where the remote is, for the message when a step fails. */
+    private fun where(): String = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { n ->
+        (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString(" ") ?: "something with no words") +
+            " at x=" + n.boundsInRoot.left.toInt()
+    }.ifEmpty { "nothing" } + " · menu " + (if (menuOpen()) "open" else "folded") + " · categories " + (if (categoriesOpen()) "open" else "folded")
+
     @Test fun theRemoteMovesBetweenTheSideColumnsWithOnlyOneOpen() {
         show()
-        assertTrue("at the start the menu is open", menuOpen())
-        assertFalse("at the start the categories are folded", categoriesOpen())
-        assertTrue("at the start the remote is on Live TV in the menu", remoteOn("Live TV"))
+        assertTrue("at the start the menu is open · remote on " + where(), menuOpen())
+        assertFalse("at the start the categories are folded · remote on " + where(), categoriesOpen())
+        assertTrue("at the start the remote is on Live TV in the menu · remote on " + where(), remoteOn("Live TV"))
 
         press(Key.DirectionRight)
-        assertTrue("▶ from the menu opens the categories", categoriesOpen())
-        assertFalse("▶ from the menu folds the menu", menuOpen())
-        assertTrue("▶ from the menu puts the remote on the category being shown (All)", remoteOn("All"))
+        assertTrue("▶ from the menu opens the categories · remote on " + where(), categoriesOpen())
+        assertFalse("▶ from the menu folds the menu · remote on " + where(), menuOpen())
+        assertTrue("▶ from the menu puts the remote on the category being shown (All) · remote on " + where(), remoteOn("All"))
 
         press(Key.DirectionLeft)
-        assertTrue("◀ from the categories opens the menu", menuOpen())
-        assertFalse("◀ from the categories folds the categories", categoriesOpen())
-        assertTrue("◀ from the categories puts the remote back on Live TV", remoteOn("Live TV"))
+        assertTrue("◀ from the categories opens the menu · remote on " + where(), menuOpen())
+        assertFalse("◀ from the categories folds the categories · remote on " + where(), categoriesOpen())
+        assertTrue("◀ from the categories puts the remote back on Live TV · remote on " + where(), remoteOn("Live TV"))
 
         press(Key.DirectionRight)
         press(Key.DirectionRight)
-        assertFalse("▶ into the channel list folds the categories", categoriesOpen())
-        assertFalse("▶ into the channel list keeps the menu folded", menuOpen())
-        assertTrue("▶ into the channel list puts the remote on a channel", remoteOn("BBC One") || remoteOn("Sky Sports"))
+        assertFalse("▶ into the channel list folds the categories · remote on " + where(), categoriesOpen())
+        assertFalse("▶ into the channel list keeps the menu folded · remote on " + where(), menuOpen())
+        assertTrue("▶ into the channel list puts the remote on a channel · remote on " + where(), remoteOn("BBC One") || remoteOn("Sky Sports"))
 
         press(Key.DirectionLeft)
-        assertTrue("◀ from the channel list opens the categories", categoriesOpen())
-        assertFalse("◀ from the channel list keeps the menu folded", menuOpen())
-        assertTrue("◀ from the channel list puts the remote on the category being shown", remoteOn("All"))
+        assertTrue("◀ from the channel list opens the categories · remote on " + where(), categoriesOpen())
+        assertFalse("◀ from the channel list keeps the menu folded · remote on " + where(), menuOpen())
+        assertTrue("◀ from the channel list puts the remote on the category being shown · remote on " + where(), remoteOn("All"))
     }
 }

@@ -1550,16 +1550,14 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
     }
     // Only one side column open at a time: the categories open only while the remote is in them, or on the way in.
     // The folded edge stays until the remote is in the opened column, so the remote is never left on nothing.
+    // The same edge throughout, so the one the remote landed on is still there while the column opens beside it.
     val folded = panels != null && panels.zone != Zone.CATEGORIES
-    if (folded && !panels!!.catsWanted) {
-        Box(Modifier.fillMaxHeight().onFocusChanged { panels.catsHas = it.hasFocus }) {
-            PanelEdge { panels.catsWanted = true }
-        }
-        return
-    }
     if (folded) {
-        Box(Modifier.fillMaxHeight().onFocusChanged { panels!!.catsHas = it.hasFocus }) { PanelEdge { } }
+        Box(Modifier.fillMaxHeight().onFocusChanged { panels!!.catsHas = it.hasFocus }) {
+            PanelEdge { panels!!.catsWanted = true }
+        }
     }
+    if (folded && !panels!!.catsWanted) return
     val row: @Composable (String, String) -> Unit = { id, name ->
         FocusRow(
             name, { onChoose(id) },
