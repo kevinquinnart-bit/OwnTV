@@ -133,6 +133,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Report.file == null) Report.keepIn(java.io.File(filesDir, "report.txt"))
+        PhoneSetup.app = applicationContext
         Report.note("App", "opened, version " + BuildConfig.VERSION_NAME)
         // A TV is always sideways. A phone turns with the way it is held.
         val tv = isTv(this)
@@ -952,6 +953,9 @@ private class Panels {
     /** Set when the remote lands on a folded edge: once the column has opened, the remote goes onto its chosen row. */
     var menuWanted by mutableStateOf(false)
     var catsWanted by mutableStateOf(false)
+
+    /** Whether the section on screen has a categories column, so ▶ from the menu goes into it. */
+    var catsShown by mutableStateOf(false)
 }
 
 /** The side columns on a TV; null on a phone, where nothing folds. */
@@ -1460,11 +1464,19 @@ private fun MainScreen(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             // The menu: open while the remote is in it, otherwise folded to an edge.
-            Box(Modifier.fillMaxHeight().onFocusChanged { panels.menuHas = it.hasFocus }) {
-                if (panels.zone == Zone.MENU) {
+            Row(Modifier.fillMaxHeight().onFocusChanged { panels.menuHas = it.hasFocus }) {
+                // The folded edge stays until the remote is in the opened menu, so the remote is never left on nothing.
+                if (panels.zone != Zone.MENU) PanelEdge { panels.menuWanted = true }
+                if (panels.zone == Zone.MENU || panels.menuWanted) {
                     // Every entry fits on the screen: the entries share the height, so the menu never scrolls.
                     Column(
                         Modifier.width(190.dp * LocalTextScale.current).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 14.dp, horizontal = 8.dp)
+                            // ▶ from the menu: into the categories, which open as the menu folds away.
+                            .onPreviewKeyEvent { e ->
+                                if (e.key != Key.DirectionRight || !panels.catsShown) return@onPreviewKeyEvent false
+                                if (e.type == KeyEventType.KeyDown) panels.catsWanted = true
+                                true
+                            }
                             .focusRestorer().focusGroup(),
                     ) {
                         KueLogo(30.dp, 20.sp, Modifier.padding(start = 10.dp, bottom = 6.dp))
@@ -1476,8 +1488,6 @@ private fun MainScreen(
                             )
                         }
                     }
-                } else {
-                    PanelEdge { panels.menuWanted = true; panels.zone = Zone.MENU }
                 }
             }
             Pane(this, null).body()
@@ -1527,12 +1537,23 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
         runCatching { chosenFocus.requestFocus() }
         panels.catsWanted = false
     }
-    // Only one side column open at a time: the categories open only while the remote is in them.
-    if (panels != null && panels.zone != Zone.CATEGORIES) {
+    if (panels != null) {
+        DisposableEffect(panels) {
+            panels.catsShown = true
+            onDispose { panels.catsShown = false }
+        }
+    }
+    // Only one side column open at a time: the categories open only while the remote is in them, or on the way in.
+    // The folded edge stays until the remote is in the opened column, so the remote is never left on nothing.
+    val folded = panels != null && panels.zone != Zone.CATEGORIES
+    if (folded && !panels!!.catsWanted) {
         Box(Modifier.fillMaxHeight().onFocusChanged { panels.catsHas = it.hasFocus }) {
-            PanelEdge { panels.catsWanted = true; panels.zone = Zone.CATEGORIES }
+            PanelEdge { panels.catsWanted = true }
         }
         return
+    }
+    if (folded) {
+        Box(Modifier.fillMaxHeight().onFocusChanged { panels!!.catsHas = it.hasFocus }) { PanelEdge { } }
     }
     val row: @Composable (String, String) -> Unit = { id, name ->
         FocusRow(
@@ -1543,6 +1564,12 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
     }
     Column(
         Modifier.width(270.dp * LocalTextScale.current).fillMaxHeight().onFocusChanged { panels?.catsHas = it.hasFocus }
+            // ◀ from the categories: back into the menu, which opens as the categories fold away.
+            .onPreviewKeyEvent { e ->
+                if (panels == null || e.key != Key.DirectionLeft) return@onPreviewKeyEvent false
+                if (e.type == KeyEventType.KeyDown) panels.menuWanted = true
+                true
+            }
             .background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp),
     ) {
         Heading("Categories")

@@ -27,9 +27,16 @@ class PhoneSetup(
 
     /** The address to open on the phone, or null when the TV has no home-network address. */
     fun start(): String? {
-        val ip = localAddress() ?: return null
-        val server = runCatching { ServerSocket(PORT) }.getOrNull() ?: return null
+        val ip = localAddress() ?: run {
+            Report.note("Phone page", "not started: this device has no home-network address")
+            return null
+        }
+        val server = runCatching { ServerSocket(PORT) }.getOrNull() ?: run {
+            Report.note("Phone page", "not started: another screen still holds its door")
+            return null
+        }
         socket = server
+        Report.note("Phone page", "open at http://$ip:$PORT")
         thread(isDaemon = true, name = "phone-setup") {
             while (!server.isClosed) {
                 val client = runCatching { server.accept() }.getOrNull() ?: break
@@ -48,6 +55,8 @@ class PhoneSetup(
         client.soTimeout = 15_000
         val input = BufferedReader(InputStreamReader(client.getInputStream(), Charsets.UTF_8))
         val first = input.readLine() ?: return
+        // So the report shows whether the phone ever reached the TV.
+        Report.note("Phone page", "asked for by " + (client.inetAddress?.hostAddress ?: "?") + ": " + first.substringBefore(" HTTP"))
         var length = 0
         while (true) {
             val header = input.readLine() ?: break
@@ -129,7 +138,19 @@ class PhoneSetup(
             "<label>Add-on link</label><input name=\"link\" autocapitalize=\"none\" autocorrect=\"off\">" +
             "<button type=\"submit\">Send to TV</button></form>"
 
-        fun localAddress(): String? = runCatching {
+        /** Set when the app starts, so the address can be asked of the network the device is using. */
+        @Volatile var app: android.content.Context? = null
+
+        fun localAddress(): String? = activeAddress() ?: anyAddress()
+
+        /** The device's address on the network it is using now: its Wi-Fi, or its cable. */
+        private fun activeAddress(): String? = runCatching {
+            val manager = app?.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return null
+            val links = manager.getLinkProperties(manager.activeNetwork ?: return null) ?: return null
+            links.linkAddresses.map { it.address }.firstOrNull { it is Inet4Address && it.isSiteLocalAddress }?.hostAddress
+        }.getOrNull()
+
+        private fun anyAddress(): String? = runCatching {
             NetworkInterface.getNetworkInterfaces().toList()
                 .filter { it.isUp && !it.isLoopback }
                 .flatMap { it.inetAddresses.toList() }
