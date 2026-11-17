@@ -203,6 +203,7 @@ private fun App() {
     var driveSignIn by remember { mutableStateOf(false) }
     var addOnsOpen by remember { mutableStateOf(false) }
     var stremioOpen by remember { mutableStateOf(false) }
+    var addLinkOpen by remember { mutableStateOf(false) }
     // 1: sending this device's set-up to another. 2: copying another device's set-up to here.
     var setUpShare by remember { mutableIntStateOf(0) }
     var reportOpen by remember { mutableStateOf(false) }
@@ -479,7 +480,8 @@ private fun App() {
             })
             driveSignIn -> DriveSignInScreen(onDone = { driveSignIn = false })
             stremioOpen -> StremioScreen(onDone = { stremioOpen = false })
-            addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false }, onStremio = { stremioOpen = true })
+            addLinkOpen -> AddLinkScreen(onDone = { addLinkOpen = false })
+            addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false })
             reportOpen -> ReportScreen(onDone = { reportOpen = false })
             aboutOpen -> AboutScreen(onDone = { aboutOpen = false })
             freeOpen -> FreeListsScreen(
@@ -528,6 +530,7 @@ private fun App() {
                 onHealth = { healthOpen = true },
                 onFree = { freeOpen = true },
                 onStremio = { stremioOpen = true },
+                onAddLink = { addLinkOpen = true },
             )
         }
         if (reminder != null) ReminderPopUp(reminder, onWatch = watchReminded, onClose = { Reminders.showing = null }, Modifier.align(Alignment.TopCenter))
@@ -1051,6 +1054,7 @@ private fun MainScreen(
     onHealth: () -> Unit,
     onFree: () -> Unit,
     onStremio: () -> Unit,
+    onAddLink: () -> Unit,
 ) {
     val context = LocalContext.current
     // The category in each section, kept for the next time the app opens.
@@ -1402,9 +1406,11 @@ private fun MainScreen(
                             FocusRow("Free channel lists ($freeCount)", onFree, look = Look.OTHER, below = "Free channels, tried when your provider's won't play")
                         }
                         "Films and series" -> {
-                            FocusRow("Add-ons (" + addOns.size + ")", onAddOns, first(), look = Look.OTHER, below = "More streams, subtitles and catalogues")
+                            // Three jobs, three screens.
                             val stremioEmail = remember(Stremio.changes) { if (Stremio.key(context).isEmpty()) "" else Stremio.email(context) }
-                            FocusRow("Stremio account", onStremio, look = Look.OTHER, below = if (stremioEmail.isEmpty()) "Not signed in" else "Signed in as $stremioEmail")
+                            FocusRow("Stremio account", onStremio, first(), look = Look.OTHER, below = if (stremioEmail.isEmpty()) "Not signed in" else "Signed in as $stremioEmail")
+                            FocusRow("My add-ons (" + addOns.size + ")", onAddOns, look = Look.OTHER, below = addOnsSummary(addOns))
+                            FocusRow("Add an add-on or channel list by its link", onAddLink, look = Look.OTHER)
                         }
                         "Watching" -> {
                             sub("Subtitles")
@@ -2539,31 +2545,120 @@ private fun CopyChoiceScreen(name: String, onAddOn: () -> Unit, onProvider: () -
  * On a TV the link can be pasted on a phone instead: the TV shows an address to open on the same Wi-Fi.
  */
 @Composable
-private fun AddOnsScreen(onDone: () -> Unit, onStremio: () -> Unit) {
+private fun AddOnsScreen(onDone: () -> Unit) {
     val context = LocalContext.current
     val phone = LocalPhone.current
     val scope = rememberCoroutineScope()
     val addOns = remember(AddOnStore.changes) { AddOnStore.all(context) }
+    var status by remember { mutableStateOf<Status?>(null) }
+    // The add-on opened, by its link; null for the list.
+    var opened by remember { mutableStateOf<String?>(null) }
+    val backTo = remember { arrayOfNulls<String>(1) }
+    BackHandler { onDone() }
+    val checkAll: () -> Unit = { if (!Health.running) scope.launch(Dispatchers.IO) { runCatching { Health.runAddOns(context) } } }
+    // Checked once when the screen opens.
+    LaunchedEffect(Unit) { checkAll() }
+
+    val one = addOns.firstOrNull { it.base == opened }
+    if (one != null) {
+        AddOnPage(one, onBack = { backTo[0] = one.base; opened = null }, onRemoved = { said -> status = said; opened = null })
+        return
+    }
+    val first = remember { FocusRequester() }
+    val back = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        if (!phone) runCatching { if (backTo[0] != null) back.requestFocus() else first.requestFocus() }
+    }
+    Page("My add-ons", "Each add-on and how it did when last checked. OK on one opens it.", status) {
+        FocusRow(
+            if (Health.running) "Checking each add-on…" else "Check them all again", checkAll, Modifier.focusRequester(first), look = Look.OTHER,
+            below = "✓ working   ! answers, with a gap   ✗ not working",
+        )
+        if (addOns.isEmpty()) Note("No add-ons yet. Sign in to Stremio, or add one by its link, from Settings › Films and series.")
+        addOns.forEach { addOn ->
+            val check = Health.results.firstOrNull { it.name == Health.addOnName(addOn) }
+            FocusRow(
+                markOf(check) + addOn.name, { opened = addOn.base },
+                if (addOn.base == backTo[0]) Modifier.focusRequester(back) else Modifier,
+                look = Look.OTHER, below = gives(addOn) + "  ·  " + verdict(check),
+            )
+        }
+        FocusRow("‹ Back", onDone, look = Look.OTHER)
+    }
+}
+
+/** One add-on on a page of its own: what it gives, each part's state, check it again, remove it. */
+@Composable
+private fun AddOnPage(addOn: AddOn, onBack: () -> Unit, onRemoved: (Status) -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val scope = rememberCoroutineScope()
+    var confirming by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<Status?>(null) }
+    BackHandler { if (confirming) confirming = false else onBack() }
+    val check = Health.results.firstOrNull { it.name == Health.addOnName(addOn) }
+    val inStremio = remember(Stremio.changes) { Stremio.key(context).isNotEmpty() }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(confirming) {
+        withFrameNanos { }
+        if (!phone) runCatching { first.requestFocus() }
+    }
+    Page(addOn.name, "Gives: " + gives(addOn) + ".", status) {
+        if (confirming) {
+            Note("Remove " + addOn.name + "?" + if (inStremio) " It also comes out of your Stremio account, so it won't come back." else "")
+            FocusRow("Yes, remove it", {
+                confirming = false
+                status = Status("Removing…", Status.BUSY)
+                removeAddOn(context, scope, addOn) { said -> onRemoved(Status(said, if (said.startsWith("Couldn't") || said.contains("Couldn't")) Status.FAIL else Status.OK)) }
+            }, Modifier.focusRequester(first), look = Look.MAIN)
+            FocusRow("No, keep it", { confirming = false }, look = Look.OTHER)
+            return@Page
+        }
+        Heading("How each part did when last checked")
+        when {
+            check == null && Health.running -> PartLine(Status.BUSY, "Being checked now…")
+            check == null -> PartLine(Status.BUSY, "Not checked yet. Press Check again.")
+            else -> check.detail.lines().filter { it.isNotBlank() }.forEach { line ->
+                val kind = when { line.startsWith("✗") -> Status.FAIL; line.startsWith("!") -> Status.WARN; else -> Status.OK }
+                PartLine(kind, line.drop(2))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        FocusRow(
+            if (Health.running) "Checking…" else "Check again",
+            { if (!Health.running) scope.launch(Dispatchers.IO) { runCatching { Health.runAddOns(context) } } },
+            Modifier.focusRequester(first), look = Look.OTHER,
+        )
+        FocusRow("Remove " + addOn.name, { confirming = true }, look = Look.OTHER, below = if (inStremio) "From KueTV and from your Stremio account" else "From KueTV")
+        FocusRow("‹ Back to my add-ons", onBack, look = Look.OTHER)
+    }
+}
+
+/** Adding an add-on (its manifest.json link) or a free channel list (.m3u) by its link. */
+@Composable
+private fun AddLinkScreen(onDone: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val scope = rememberCoroutineScope()
     var link by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var said by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf<Status?>(null) }
     var phoneAddress by remember { mutableStateOf<String?>(null) }
     BackHandler { onDone() }
-
     val add: (String) -> Unit = { typed ->
         if (!busy) {
             busy = true
-            said = null
+            status = Status("Reading the link…", Status.BUSY)
             scope.launch {
-                // An add-on or a channel list, whichever the link is.
                 val result = withContext(Dispatchers.IO) { Links.add(context, typed) }
                 if (result.ok) link = ""
-                said = result.said
+                status = Status(result.said, if (result.ok) Status.OK else Status.FAIL)
                 // An add-on added here goes into the Stremio account too, when signed in.
                 val added = result.addOn
                 if (added != null && Stremio.key(context).isNotEmpty()) {
                     val more = withContext(Dispatchers.IO) { try { Stremio.addToAccount(context, added) } catch (e: AddOnProblem) { "Couldn't add it to your Stremio account. " + e.message } }
-                    said = result.said + " " + more
+                    status = Status(result.said + " " + more, if (more.startsWith("Couldn't")) Status.WARN else Status.OK)
                 }
                 busy = false
             }
@@ -2575,42 +2670,111 @@ private fun AddOnsScreen(onDone: () -> Unit, onStremio: () -> Unit) {
         phoneAddress = server?.start()
         onDispose { server?.stop() }
     }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        if (!phone) runCatching { first.requestFocus() }
+    }
+    Page("Add by link", "An add-on's link (it ends in manifest.json) or a channel list's (it ends in .m3u).", status) {
+        phoneAddress?.let { address -> InfoPanel("Easiest: on your phone, on the same Wi-Fi, open " + address + " and paste the link there.") }
+        Field("Link", link, onDone = { add(link) }, modifier = Modifier.focusRequester(first)) { link = it }
+        FocusRow(if (busy) "Adding…" else "Add", { add(link) }, look = Look.MAIN)
+        FocusRow("‹ Back", onDone, look = Look.OTHER)
+    }
+}
 
+// --------------------------------------------------------------------------------------------- page parts
+
+/** A message about what has just happened, shown in one place near the top of a page. */
+private class Status(val text: String, val kind: Int) {
+    companion object {
+        const val OK = 0
+        const val WARN = 1
+        const val FAIL = 2
+        const val BUSY = 3
+        const val INFO = 4
+    }
+}
+
+private fun statusColour(kind: Int) = when (kind) {
+    Status.OK -> Color(0xFF4CAF50)
+    Status.WARN -> Color(0xFFFFB300)
+    Status.FAIL -> Color(0xFFFF6B5E)
+    Status.INFO -> Color(0xFFB9C2D3)
+    else -> Color(0xFF64B5F6)
+}
+
+/** A page: its title, one line saying what it is for, the message box when there is something to say, then its rows. */
+@Composable
+private fun Page(title: String, intro: String, status: Status?, rows: @Composable ColumnScope.() -> Unit) {
+    val phone = LocalPhone.current
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 36.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 200.dp, vertical = if (phone) 12.dp else 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("Add-ons", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
-        Note("Add-ons find other places to play films and series, add subtitles, and bring more to browse.")
-        // The Stremio account: every add-on installed there, brought in at once.
-        val stremioEmail = remember(Stremio.changes) { if (Stremio.key(context).isEmpty()) "" else Stremio.email(context) }
-        FocusRow(
-            "Stremio account", onStremio, look = Look.OTHER,
-            below = if (stremioEmail.isEmpty()) "Sign in to bring in every add-on you have in Stremio" else "Signed in as $stremioEmail",
-        )
-        Box(Modifier.padding(top = 10.dp)) { Heading("Or add one by its link") }
-        phoneAddress?.let { address ->
-            Note("Easiest: on your phone, on the same Wi-Fi, open")
-            Text(address, color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
-            Note("and paste the link there.")
-        }
-        Field("Add-on or channel list link", link, onDone = { add(link) }) { link = it }
-        val first = remember { FocusRequester() }
-        LaunchedEffect(Unit) {
-            withFrameNanos { }
-            if (!phone) runCatching { first.requestFocus() }
-        }
-        FocusRow(if (busy) "Adding…" else "Add", { add(link) }, Modifier.focusRequester(first), look = Look.MAIN)
-        said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
-        if (addOns.isNotEmpty()) {
-            Box(Modifier.padding(top = 14.dp)) { Heading("Added: OK on one for each of its parts, and to remove it") }
-            AddOnChecks()
-        }
-        addOns.forEach { addOn ->
-            AddOnState(addOn) { removeAddOn(context, scope, addOn) { said = it } }
-        }
-        FocusRow("Done", onDone, look = Look.OTHER)
+        Text(title, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp))
+        Text(intro, color = Soft, fontSize = 18.sp, modifier = Modifier.padding(start = 16.dp, bottom = 4.dp))
+        if (status != null) StatusBox(status)
+        rows()
     }
+}
+
+/** The message box: white words on the dark panel, with a coloured dot for how it went. */
+@Composable
+private fun StatusBox(status: Status) {
+    Row(
+        Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Box(Modifier.padding(top = 6.dp).size(12.dp).background(statusColour(status.kind), CircleShape))
+        Spacer(Modifier.width(12.dp))
+        Text(status.text, color = Color.White, fontSize = 18.sp)
+    }
+}
+
+/** A plain panel of information (not a message about something that happened). */
+@Composable
+private fun InfoPanel(text: String) {
+    Text(text, color = Color.White, fontSize = 18.sp, modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp))
+}
+
+/** One part of an add-on, with a coloured dot for how it did. */
+@Composable
+private fun PartLine(kind: Int, text: String) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.Top) {
+        Box(Modifier.padding(top = 7.dp).size(10.dp).background(statusColour(kind), CircleShape))
+        Spacer(Modifier.width(12.dp))
+        Text(text, color = Color.White, fontSize = 18.sp)
+    }
+}
+
+/** "✓ ", "! " or "✗ " for an add-on's last check; nothing when it hasn't been checked. */
+private fun markOf(check: Check?) = when (check?.state) { Check.WORKING -> "✓  "; Check.DOUBT -> "!  "; Check.DEAD -> "✗  "; else -> "" }
+
+/** In a few words, how an add-on did: "All working", "Not working: streams", "Has a gap: subtitles". */
+private fun verdict(check: Check?): String {
+    if (check == null) return if (Health.running) "Being checked…" else "Not checked yet"
+    val lines = check.detail.lines()
+    val part: (String) -> String = { it.drop(2).substringBefore(':').lowercase() }
+    val dead = lines.filter { it.startsWith("✗") }.map(part)
+    val gaps = lines.filter { it.startsWith("!") }.map(part)
+    return when {
+        dead.isNotEmpty() -> "Not working: " + dead.joinToString(", ")
+        gaps.isNotEmpty() -> "Has a gap: " + gaps.joinToString(", ")
+        else -> "All working"
+    }
+}
+
+/** For the Settings row: "4 working, 1 not working". */
+private fun addOnsSummary(addOns: List<AddOn>): String {
+    if (addOns.isEmpty()) return "None yet"
+    val checks = addOns.mapNotNull { a -> Health.results.firstOrNull { it.name == Health.addOnName(a) } }
+    if (checks.isEmpty()) return addOns.size.toString() + " added, not checked yet"
+    return listOfNotNull(
+        checks.count { it.state == Check.WORKING }.takeIf { it > 0 }?.let { "$it working" },
+        checks.count { it.state == Check.DOUBT }.takeIf { it > 0 }?.let { "$it with a gap" },
+        checks.count { it.state == Check.DEAD }.takeIf { it > 0 }?.let { "$it not working" },
+    ).joinToString(", ")
 }
 
 // --------------------------------------------------------------------------------------------- copying a set-up
@@ -2710,7 +2874,8 @@ private fun TakeSetUpScreen(onDone: () -> Unit, onTaken: (SetUp) -> Unit) {
         )
         Spacer(Modifier.height(10.dp))
         FocusRow(if (busy) "Looking…" else "Copy", copy, look = Look.MAIN)
-        said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp, top = 10.dp)) }
+        // What happened, in the message box: white words, never yellow on yellow.
+        said?.let { Box(Modifier.padding(top = 10.dp)) { StatusBox(Status(it, Status.INFO)) } }
         Spacer(Modifier.height(8.dp))
         FocusRow("Cancel", onDone, look = Look.OTHER)
     }
@@ -3748,7 +3913,7 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
             if (!phone) runCatching { first.requestFocus() }
         }
         FocusRow(if (busy) "Reading the list…" else "Add", { add(link) }, Modifier.focusRequester(first), look = Look.MAIN)
-        said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
+        said?.let { StatusBox(Status(it, if (it.startsWith("Added") || it.startsWith("Removed")) Status.OK else Status.INFO)) }
         if (lists.isNotEmpty()) Box(Modifier.padding(top = 14.dp)) { Heading("Added") }
         lists.forEach { list ->
             val health = when (Health.stateOf("Free list: " + FreeStore.label(list))) {
@@ -3766,8 +3931,8 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
 // --------------------------------------------------------------------------------------------- Stremio
 
 /**
- * The Stremio account, in one place. Signed out: sign in, with the email and password typed here or on the
- * phone. Signed in: bring the add-ons in again, or sign out.
+ * The Stremio account, on its own page. Signed out: sign in, typing here or on the phone. Signed in: who, bring
+ * the add-ons in now, sign out, and how it works. Which add-ons work is on the My add-ons page.
  */
 @Composable
 private fun StremioScreen(onDone: () -> Unit) {
@@ -3778,45 +3943,34 @@ private fun StremioScreen(onDone: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var said by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf<Status?>(null) }
     var phoneAddress by remember { mutableStateOf<String?>(null) }
     BackHandler { onDone() }
-    val bring: () -> Unit = {
+    val run: (String, suspend () -> String) -> Unit = { doing, work ->
         if (!busy) {
             busy = true
-            said = "Asking Stremio…"
+            status = Status(doing, Status.BUSY)
             scope.launch {
-                said = try {
-                    Stremio.say(withContext(Dispatchers.IO) { Stremio.bringIn(context) }).also {
-                        // Then each add-on is checked, part by part, and shown below.
-                        scope.launch(Dispatchers.IO) { Health.runAddOns(context) }
-                    }
+                status = try {
+                    Status(work(), Status.OK)
                 } catch (x: CancellationException) {
                     throw x
                 } catch (x: AddOnProblem) {
-                    x.message
+                    Status(x.message.orEmpty(), Status.FAIL)
                 }
                 busy = false
+                // Then each add-on is checked, for the My add-ons page.
+                scope.launch(Dispatchers.IO) { runCatching { Health.runAddOns(context) } }
             }
         }
     }
+    val bring: () -> Unit = { run("Asking Stremio…") { withContext(Dispatchers.IO) { Stremio.say(Stremio.bringIn(context)) } } }
     val signIn: (String, String) -> Unit = { e, p ->
-        if (!busy) {
-            busy = true
-            said = "Signing in…"
-            scope.launch {
-                said = try {
-                    withContext(Dispatchers.IO) {
-                        Stremio.signIn(context, e, p)
-                        ("Signed in. " + Stremio.say(Stremio.bringIn(context))).also { scope.launch(Dispatchers.IO) { Health.runAddOns(context) } }
-                    }.also { password = "" }
-                } catch (x: CancellationException) {
-                    throw x
-                } catch (x: AddOnProblem) {
-                    x.message
-                }
-                busy = false
-            }
+        run("Signing in…") {
+            withContext(Dispatchers.IO) {
+                Stremio.signIn(context, e, p)
+                "Signed in. " + Stremio.say(Stremio.bringIn(context))
+            }.also { password = "" }
         }
     }
     // While signed out, a TV also answers the phone, so the email and password can be typed there.
@@ -3832,33 +3986,31 @@ private fun StremioScreen(onDone: () -> Unit) {
         withFrameNanos { }
         if (!phone) runCatching { first.requestFocus() }
     }
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 36.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text("Stremio account", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
-        if (key.isNotEmpty()) {
-            Note("Signed in as " + Stremio.email(context) + ".")
-            Note("How it works: your Stremio account holds the list of add-ons. Removing or adding one in KueTV does the same in Stremio. Changes made in Stremio come into KueTV each time KueTV opens. Your TV and phone share the list, and this sign-in, when they keep in step.")
-            FocusRow(if (busy) "Asking Stremio…" else "Bring in my Stremio add-ons", bring, Modifier.focusRequester(first), look = Look.MAIN)
-            said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
-            FocusRow("Sign out of Stremio", { Stremio.signOut(context); said = "Signed out. The add-ons stay." }, look = Look.OTHER, below = "The add-ons already brought in stay")
-            // Which add-ons work, and which parts of each.
-            val addOns = remember(AddOnStore.changes) { AddOnStore.all(context) }
-            Box(Modifier.padding(top = 14.dp)) { Heading("Your add-ons: OK on one for each of its parts") }
-            AddOnChecks()
-            addOns.forEach { addOn -> AddOnState(addOn) { removeAddOn(context, scope, addOn) { said = it } } }
-        } else {
-            Note("Sign in once, and KueTV brings in every add-on you have installed in Stremio. Your password goes only to Stremio and isn't kept.")
-            phoneAddress?.let { address ->
-                Note("Easiest: on your phone, on the same Wi-Fi, open " + address + " and type them there.")
-            }
+    if (key.isNotEmpty()) {
+        Page("Stremio account", "Signed in as " + Stremio.email(context) + ".", status) {
+            FocusRow(if (busy) "Asking Stremio…" else "Bring in my Stremio add-ons now", bring, Modifier.focusRequester(first), look = Look.MAIN)
+            FocusRow("Sign out of Stremio", {
+                Stremio.signOut(context)
+                status = Status("Signed out. The add-ons already here stay.", Status.OK)
+            }, look = Look.OTHER)
+            Heading("How it works")
+            InfoPanel(
+                "Your Stremio account holds the list of add-ons.\n" +
+                    "Adding or removing one in KueTV does the same in Stremio.\n" +
+                    "Changes made in Stremio come into KueTV each time KueTV opens.\n" +
+                    "Your TV and phone share the list and this sign-in when they keep in step.",
+            )
+            Note("Which add-ons work: Settings › Films and series › My add-ons.")
+            FocusRow("‹ Back", onDone, look = Look.OTHER)
+        }
+    } else {
+        Page("Stremio account", "Sign in once, and KueTV brings in every add-on you have in Stremio. Your password goes only to Stremio and isn't kept.", status) {
+            phoneAddress?.let { address -> InfoPanel("Easiest: on your phone, on the same Wi-Fi, open " + address + " and type them there.") }
             Field("Email", email, modifier = Modifier.focusRequester(first)) { email = it }
             Field("Password", password, secret = true) { password = it }
-            FocusRow(if (busy) "Signing in…" else "Sign in", { signIn(email, password) }, if (phone) Modifier.focusRequester(first) else Modifier, look = Look.MAIN)
-            said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
+            FocusRow(if (busy) "Signing in…" else "Sign in", { signIn(email, password) }, look = Look.MAIN)
+            FocusRow("‹ Back", onDone, look = Look.OTHER)
         }
-        FocusRow("‹ Back", onDone, look = Look.OTHER)
     }
 }
 
@@ -3877,7 +4029,7 @@ private fun <T> keyedState(key: Any?, initial: () -> T, producer: suspend androi
 @Composable
 internal fun LiveTvForChecks(library: Library, favourites: Favourites) {
     val state = remember { BrowseState().apply { section = Section.LIVE } }
-    MainScreen(library, state, favourites, { _, _, _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+    MainScreen(library, state, favourites, { _, _, _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
 }
 
 /** What an add-on gives, in a few words. */
@@ -3890,44 +4042,6 @@ private fun gives(addOn: AddOn): String {
     ).joinToString(", ").ifEmpty { "nothing KueTV uses" }
 }
 
-/** "Check my add-ons now": tries each add-on, part by part. Runs once by itself when the screen opens. */
-@Composable
-private fun AddOnChecks() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val run: () -> Unit = { if (!Health.running) scope.launch(Dispatchers.IO) { runCatching { Health.runAddOns(context) } } }
-    LaunchedEffect(Unit) { run() }
-    FocusRow(
-        if (Health.running) "Checking each add-on…" else "Check my add-ons now", run, look = Look.OTHER,
-        below = "✓ working   ! answers but has a gap   ✗ not working",
-    )
-}
-
-/**
- * One add-on, with a mark for how it did when last checked and its parts underneath. OK opens it to show
- * each part on a line of its own, and a row to remove it.
- */
-@Composable
-private fun AddOnState(addOn: AddOn, onRemove: () -> Unit) {
-    var open by remember(addOn.base) { mutableStateOf(false) }
-    val check = Health.results.firstOrNull { it.name == Health.addOnName(addOn) }
-    val mark = when (check?.state) { Check.WORKING -> "✓ "; Check.DOUBT -> "! "; Check.DEAD -> "✗ NOT WORKING · "; else -> "" }
-    val summary = when {
-        check == null && Health.running -> "Being checked…"
-        check == null -> "Not checked yet"
-        else -> check.detail.lines().joinToString("  ·  ")
-    }
-    FocusRow(mark + addOn.name + " · " + gives(addOn), { open = !open }, look = Look.OTHER, below = summary)
-    if (open) {
-        check?.detail?.lines()?.forEach { line ->
-            Text(
-                line, fontSize = 17.sp, modifier = Modifier.padding(start = 32.dp, top = 2.dp),
-                color = when { line.startsWith("✗") -> Color(0xFFFF6B5E); line.startsWith("!") -> Accent; else -> Soft },
-            )
-        }
-        FocusRow("Remove " + addOn.name, onRemove, look = Look.OTHER)
-    }
-}
 
 /**
  * Removes an add-on from KueTV and, when signed in to Stremio, from the Stremio account too, so it doesn't come
@@ -3950,4 +4064,10 @@ private fun removeAddOn(context: android.content.Context, scope: kotlinx.corouti
         }
         say("Removed " + addOn.name + " from KueTV. " + more)
     }
+}
+
+/** For the automatic checks only: the My add-ons page as a TV shows it. */
+@Composable
+internal fun AddOnsForChecks() {
+    AddOnsScreen(onDone = {})
 }
