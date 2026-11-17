@@ -657,6 +657,8 @@ fun PlayerScreen(
         player.prepare()
     }
     // What is on each channel watched so far, asked for once the channel has been stayed on for a moment.
+    // Whether the name box is up. Back, or the box's own timer, puts it away.
+    var nameVisible by remember { mutableStateOf(false) }
     val guides = remember { androidx.compose.runtime.mutableStateMapOf<Int, List<Programme>>() }
     LaunchedEffect(index) {
         val ask = items.getOrNull(index)?.guide ?: return@LaunchedEffect
@@ -670,10 +672,10 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
         guides[index] = listing
-        // If the name box is still up, keep it up long enough to read what has just arrived.
-        if (listing.isNotEmpty()) showName += 1
+        // If the name box is still up, keep it up long enough to read what has just arrived. If it has been
+        // put away (Back), it stays away: the guide arriving must not bring it back up.
+        if (listing.isNotEmpty() && nameVisible) showName += 1
     }
-    var nameVisible by remember { mutableStateOf(false) }
     LaunchedEffect(showName, paused) {
         if (showName == 0 && !paused) return@LaunchedEffect
         nameVisible = true
