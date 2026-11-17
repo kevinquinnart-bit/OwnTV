@@ -116,4 +116,27 @@ class CarryOnTest {
         // With no free channels, nothing changes.
         assertEquals(provider, provider.withFree(emptyList()))
     }
+
+    @Test fun theListsKeptOnTheDeviceReadBackTheSame() {
+        val account = Account("http://tv.example:8080", "kev", "secret", "")
+        val library = Library(
+            listOf(Category("1", "UK")), listOf(Channel("10", "BBC One HD", "http://img/bbc.png", "1", "http://tv.example/live/kev/secret/10.ts", 7)),
+            listOf(Category("5", "Horror")), listOf(Film("55", "The Thing (2011)", "http://img/thing.jpg", "5", "http://tv.example/movie/kev/secret/55.mkv")),
+            listOf(Category("9", "Comedy")), listOf(Show("90", "Taskmaster", "", "9", About(plot = "Five comedians.", year = "2015"))),
+            account, 3600,
+        )
+        val file = java.io.File.createTempFile("kuetv-library", ".gz").also { it.deleteOnExit() }
+        LibraryCache.write(file, account, library, at = 1234)
+        val read = LibraryCache.read(file, account)!!
+        assertEquals(1234L, read.at)
+        assertEquals(true, LibraryCache.same(library, read.library))
+        assertEquals(account, read.library.account)
+        assertEquals(3600, read.library.serverAheadSec)
+        assertEquals("Five comedians.", read.library.shows[0].about.plot)
+        // Another account's lists are never shown, and a missing or broken file is no lists.
+        assertNull(LibraryCache.read(file, account.copy(user = "someone-else")))
+        file.writeText("not a kept list")
+        assertNull(LibraryCache.read(file, account))
+        assertNull(LibraryCache.read(java.io.File(file.path + ".missing"), account))
+    }
 }

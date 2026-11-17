@@ -257,8 +257,29 @@ private fun App() {
         }
         loaded = null
         problem = null
+        // Opening the app: the lists kept here from last time are shown at once. A reload always fetches them afresh.
+        val file = LibraryCache.file(context)
+        val kept = if (reload == 0) withContext(Dispatchers.IO) { LibraryCache.read(file, account) } else null
+        if (kept != null) {
+            loaded = kept.library
+            val age = System.currentTimeMillis() - kept.at
+            Report.note("Provider", "opened on the lists kept here, fetched " + age / 60_000 + " minutes ago: " + kept.library.channels.size + " channels, " + kept.library.films.size + " films, " + kept.library.shows.size + " series")
+            if (age in 0 until LibraryCache.FRESH_MS) return@LaunchedEffect
+            // They are getting old: fetched again behind the scenes. If the provider can't be reached, the kept ones stay.
+            try {
+                val fresh = withContext(Dispatchers.IO) { Provider.load(account).also { LibraryCache.write(file, account, it) } }
+                val changed = withContext(Dispatchers.Default) { !LibraryCache.same(fresh, kept.library) }
+                Report.note("Provider", "fetched afresh in the background: " + if (changed) "changed, now " + fresh.channels.size + " channels, " + fresh.films.size + " films, " + fresh.shows.size + " series" else "no changes")
+                if (changed) loaded = fresh
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Report.note("Provider", "fetching afresh in the background failed, keeping the lists from last time: " + e.message)
+            }
+            return@LaunchedEffect
+        }
         try {
-            loaded = withContext(Dispatchers.IO) { Provider.load(account) }
+            loaded = withContext(Dispatchers.IO) { Provider.load(account).also { fresh -> runCatching { LibraryCache.write(file, account, fresh) } } }
         } catch (e: CancellationException) {
             throw e
         } catch (e: ProviderProblem) {
