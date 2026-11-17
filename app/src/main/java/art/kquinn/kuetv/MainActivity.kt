@@ -390,7 +390,7 @@ private fun App() {
         val group = r?.let { library?.groupOf?.get(it.channelId) }
         if (group != null) {
             browse.resumeKey = null
-            if (AddOns.plain(group.lightest.url)) LastLive.item = Playable(group.name, group.lightest.url)
+            if (AddOns.showable(group.lightest.url)) LastLive.item = Playable(group.name, group.lightest.url)
             playing = Playing(listOf(livePlayable(group, library?.account, library?.serverAheadSec ?: 0)), 0, true)
         }
     }
@@ -498,7 +498,7 @@ private fun App() {
                     if (live) items.getOrNull(index)?.let {
                         val url = (it.streams.lastOrNull { s -> !s.label.startsWith("Free ") } ?: it.streams.lastOrNull())?.url ?: it.url
                         // An add-on's TV channel has no address of its own to show in the small picture.
-                        if (AddOns.plain(url)) LastLive.item = Playable(it.name, url)
+                        if (AddOns.showable(url)) LastLive.item = Playable(it.name, url)
                     }
                     val item = items.getOrNull(index)
                     // Both an add-on's stream and the provider's own copy: the user picks. Only one of them: it plays.
@@ -3452,7 +3452,7 @@ private fun LivePreview(on: ChannelGroup?, account: Account?, modifier: Modifier
         showing = on
     }
     val group = showing
-    val item = remember(group?.id) { group?.takeIf { AddOns.plain(it.lightest.url) }?.let { Playable(it.name, it.lightest.url) } } ?: LastLive.item
+    val item = remember(group?.id) { group?.takeIf { AddOns.showable(it.lightest.url) }?.let { Playable(it.name, it.lightest.url) } } ?: LastLive.item
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (item != null) {
             MiniTv(item, Modifier.fillMaxWidth())

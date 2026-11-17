@@ -220,8 +220,8 @@ class CarryOnTest {
         // The add-on's BBC One doesn't join the provider's BBC One: it plays only through the add-ons.
         assertEquals(2, library.groups.size)
         assertEquals(listOf("HD"), library.groups.first { !it.versions[0].channel.url.startsWith(AddOns.TV) }.versions.map { it.label })
-        assertEquals(false, AddOns.plain(AddOns.TV + "https://tv.example|bbc1"))
-        assertEquals(true, AddOns.plain("http://tv.example/live/10.ts"))
+        assertEquals(false, AddOns.showable(AddOns.TV + "https://tv.example|bbc1"))
+        assertEquals(true, AddOns.showable("http://tv.example/live/10.ts"))
         // An add-on's TV catalogue is kept, alongside its films and series.
         val manifest = com.google.gson.JsonParser.parseString("""{"catalogs":[{"type":"tv","id":"uk","name":"UK TV"},{"type":"movie","id":"top","name":"Top"}]}""").asJsonObject
         assertEquals(listOf("tv|uk|UK TV", "movie|top|Top"), AddOns.readCatalogues(manifest))

@@ -196,7 +196,7 @@ object AddOns {
     @Volatile var lang: Lang = Langs.all[0]
 
     /** Whether [url] is one the small pictures can play straight off: not empty, and not an add-on's TV channel. */
-    fun plain(url: String): Boolean = url.isNotEmpty() && !url.startsWith(TV)
+    fun showable(url: String): Boolean = url.isNotEmpty() && !url.startsWith(TV)
 
     /**
      * Every TV channel the add-ons list in their TV catalogues, as channels for Live TV. Each catalogue is a
