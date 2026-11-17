@@ -53,7 +53,7 @@ class RemoteTest {
 
     /** Where the remote is, for the message when a step fails. */
     private fun where(): String = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { n ->
-        (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString(" ") ?: "something with no words") +
+        (n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString(" ") ?: "something with no words") +
             " at x=" + n.boundsInRoot.left.toInt()
     }.ifEmpty { "nothing" } + " · menu " + (if (menuOpen()) "open" else "folded") + " · categories " + (if (categoriesOpen()) "open" else "folded")
 
