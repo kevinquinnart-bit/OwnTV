@@ -227,4 +227,39 @@ class CarryOnTest {
         val manifest = com.google.gson.JsonParser.parseString("""{"catalogs":[{"type":"tv","id":"uk","name":"UK TV"},{"type":"movie","id":"top","name":"Top"}]}""").asJsonObject
         assertEquals(listOf("tv|uk|UK TV", "movie|top|Top"), AddOns.readCatalogues(manifest))
     }
+
+    @Test fun removingFromStremioSendsBackEveryOtherAddOnUntouched() {
+        val list = com.google.gson.JsonParser.parseString(
+            """[
+              {"transportUrl":"https://v3-cinemeta.strem.io/manifest.json","transportName":"http","manifest":{"id":"cinemeta","name":"Cinemeta"},"flags":{"official":true,"protected":true}},
+              {"transportUrl":"https://torrentio.example/sort=qualitysize/manifest.json","transportName":"http","manifest":{"id":"torrentio","name":"Torrentio","x":[1,2]},"flags":{}},
+              {"transportUrl":"https://subs.example/manifest.json?lang=en","transportName":"http","manifest":{"id":"subs","name":"Subs"},"flags":{"official":false}}
+            ]""",
+        ).asJsonArray
+        // Taking out Torrentio, known in KueTV by its link without "manifest.json".
+        val r = Stremio.removal(list, "https://torrentio.example/sort=qualitysize")
+        assertEquals(1, r.removed.size)
+        assertEquals(0, r.refused.size)
+        assertEquals(2, r.kept.size())
+        // The other two go back exactly as Stremio sent them.
+        assertEquals(list[0], r.kept[0])
+        assertEquals(list[2], r.kept[1])
+        // Stremio's own built-in add-ons are never taken out.
+        val builtIn = Stremio.removal(list, "https://v3-cinemeta.strem.io")
+        assertEquals(0, builtIn.removed.size)
+        assertEquals(1, builtIn.refused.size)
+        assertEquals(list, builtIn.kept)
+        // One that isn't in the account changes nothing.
+        assertEquals(list, Stremio.removal(list, "https://nothing.example").kept)
+        // What is sent: Stremio's own save request, with the sign-in key and the list.
+        val sent = Stremio.saveRequest("KEY", r.kept)
+        assertEquals("AddonCollectionSet", sent.get("type").asString)
+        assertEquals("KEY", sent.get("authKey").asString)
+        assertEquals(r.kept, sent.get("addons"))
+        // An add-on added in KueTV goes in the way Stremio keeps one.
+        val d = Stremio.descriptor("https://new.example", com.google.gson.JsonParser.parseString("""{"id":"new","name":"New"}""").asJsonObject)
+        assertEquals("https://new.example/manifest.json", d.get("transportUrl").asString)
+        assertEquals("http", d.get("transportName").asString)
+        assertEquals("New", d.getAsJsonObject("manifest").get("name").asString)
+    }
 }

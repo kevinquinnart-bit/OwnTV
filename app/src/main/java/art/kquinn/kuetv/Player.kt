@@ -800,7 +800,8 @@ fun PlayerScreen(
 
     // Back hides the buttons first; with them gone, Back closes the player.
     BackHandler {
-        if (controls && nameVisible) {
+        // With the box up (the buttons or not), Back only puts it away. With it gone, Back closes the player.
+        if (nameVisible) {
             controls = false
             nameVisible = false
         } else {

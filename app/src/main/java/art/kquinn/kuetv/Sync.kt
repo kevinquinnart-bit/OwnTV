@@ -37,6 +37,21 @@ object Sync {
     var changes by mutableIntStateOf(0)
         private set
 
+    /** What was last taken from the other device, in plain words, with the time. */
+    var lastTook by androidx.compose.runtime.mutableStateOf("")
+        private set
+
+    private val partNames = mapOf(
+        "account" to "provider details", "favourites" to "favourites", "favouriteOrder" to "favourites order", "addOns" to "add-ons",
+        "free" to "free channel lists", "hidden" to "hidden categories", "subtitles" to "subtitles", "places" to "Carry on watching",
+        "reminders" to "reminders", "stremio" to "Stremio sign-in",
+    )
+
+    fun tookNote(parts: Set<String>) {
+        lastTook = "Last taken from the other device at " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(java.util.Date()) + ": " +
+            parts.map { partNames[it] ?: it }.sorted().joinToString(", ")
+    }
+
     /** When this device last got an answer from another one. */
     var lastMetMs by mutableLongStateOf(0L)
         private set

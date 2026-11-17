@@ -242,6 +242,7 @@ private fun App() {
                 "account" to listOf(a.server, a.user, a.pass, a.playlist).joinToString("\n"),
                 "favourites" to favourites.keys.sorted().joinToString("\n"),
                 "favouriteOrder" to favourites.order.joinToString("\n"),
+                "stremio" to Stremio.export(context),
                 "addOns" to AddOnStore.all(context).joinToString("\n") { it.toJson() },
                 "free" to FreeStore.all(context).joinToString("\n"),
                 "hidden" to kinds.joinToString("\n") { kind -> kind + "=" + Choices.hidden(context, kind).sorted().joinToString("\u0001") },
@@ -261,6 +262,7 @@ private fun App() {
                 }
                 "favourites" -> favourites.replaceAll(lines.filter { it.isNotEmpty() }.toSet())
                 "favouriteOrder" -> favourites.putInOrder(lines.filter { it.isNotEmpty() })
+                "stremio" -> Stremio.import(context, body)
                 "addOns" -> AddOnStore.replaceAll(context, lines.mapNotNull { AddOn.fromJson(it) })
                 "free" -> FreeStore.replaceAll(context, lines.filter { it.isNotBlank() })
                 "hidden" -> for (line in lines) {
@@ -295,6 +297,7 @@ private fun App() {
                         }
                         if (wanted.isNotEmpty()) {
                             Report.note("Keeping in step", "took from the other device: " + wanted.keys.sorted().joinToString(", "))
+                            Sync.tookNote(wanted.keys)
                             mine = Sync.current(context, bodies())
                             Sync.published = Sync.pack(mine)
                         }
@@ -306,6 +309,11 @@ private fun App() {
         } finally {
             server.stop()
         }
+    }
+    // On opening, when signed in to Stremio: its add-ons brought in, and ones taken out of Stremio taken out here.
+    LaunchedEffect(Unit) {
+        if (Stremio.key(context).isEmpty()) return@LaunchedEffect
+        withContext(Dispatchers.IO) { runCatching { Stremio.bringIn(context) }.onFailure { Report.note("Stremio", "bringing in on opening failed: " + it.message) } }
     }
     // Each add-on is read again when the app opens, so the lists of films and series it offers are up to date.
     LaunchedEffect(Unit) {
@@ -1442,6 +1450,9 @@ private fun MainScreen(
                                     look = Look.OTHER,
                                     below = if (met == 0L) "Not met the other device since opening" else "Last met the other device at " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(java.util.Date(met)),
                                 )
+                                // What was last taken from the other device, so it can be seen working.
+                                Note(Sync.lastTook.ifEmpty { "Nothing taken from the other device since opening: they already matched, or haven't met." })
+                                Note("What keeps in step: provider details, favourites and their order, add-ons, free channel lists, hidden categories, subtitles, the Stremio sign-in, Carry on watching, and reminders. Both devices need KueTV open on the same Wi-Fi.")
                             } else {
                                 Note("Off. Send the set-up from one device to the other to turn it on.")
                             }
@@ -2548,6 +2559,12 @@ private fun AddOnsScreen(onDone: () -> Unit, onStremio: () -> Unit) {
                 val result = withContext(Dispatchers.IO) { Links.add(context, typed) }
                 if (result.ok) link = ""
                 said = result.said
+                // An add-on added here goes into the Stremio account too, when signed in.
+                val added = result.addOn
+                if (added != null && Stremio.key(context).isNotEmpty()) {
+                    val more = withContext(Dispatchers.IO) { try { Stremio.addToAccount(context, added) } catch (e: AddOnProblem) { "Couldn't add it to your Stremio account. " + e.message } }
+                    said = result.said + " " + more
+                }
                 busy = false
             }
         }
@@ -2590,7 +2607,7 @@ private fun AddOnsScreen(onDone: () -> Unit, onStremio: () -> Unit) {
             AddOnChecks()
         }
         addOns.forEach { addOn ->
-            AddOnState(addOn) { AddOnStore.remove(context, addOn); said = "Removed " + addOn.name + "." }
+            AddOnState(addOn) { removeAddOn(context, scope, addOn) { said = it } }
         }
         FocusRow("Done", onDone, look = Look.OTHER)
     }
@@ -3683,6 +3700,12 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
                 val result = withContext(Dispatchers.IO) { Links.add(context, typed) }
                 if (result.ok) link = ""
                 said = result.said
+                // An add-on added here goes into the Stremio account too, when signed in.
+                val added = result.addOn
+                if (added != null && Stremio.key(context).isNotEmpty()) {
+                    val more = withContext(Dispatchers.IO) { try { Stremio.addToAccount(context, added) } catch (e: AddOnProblem) { "Couldn't add it to your Stremio account. " + e.message } }
+                    said = result.said + " " + more
+                }
                 busy = false
             }
         }
@@ -3816,6 +3839,7 @@ private fun StremioScreen(onDone: () -> Unit) {
         Text("Stremio account", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         if (key.isNotEmpty()) {
             Note("Signed in as " + Stremio.email(context) + ".")
+            Note("How it works: your Stremio account holds the list of add-ons. Removing or adding one in KueTV does the same in Stremio. Changes made in Stremio come into KueTV each time KueTV opens. Your TV and phone share the list, and this sign-in, when they keep in step.")
             FocusRow(if (busy) "Asking Stremio…" else "Bring in my Stremio add-ons", bring, Modifier.focusRequester(first), look = Look.MAIN)
             said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
             FocusRow("Sign out of Stremio", { Stremio.signOut(context); said = "Signed out. The add-ons stay." }, look = Look.OTHER, below = "The add-ons already brought in stay")
@@ -3823,7 +3847,7 @@ private fun StremioScreen(onDone: () -> Unit) {
             val addOns = remember(AddOnStore.changes) { AddOnStore.all(context) }
             Box(Modifier.padding(top = 14.dp)) { Heading("Your add-ons: OK on one for each of its parts") }
             AddOnChecks()
-            addOns.forEach { addOn -> AddOnState(addOn) { AddOnStore.remove(context, addOn) } }
+            addOns.forEach { addOn -> AddOnState(addOn) { removeAddOn(context, scope, addOn) { said = it } } }
         } else {
             Note("Sign in once, and KueTV brings in every add-on you have installed in Stremio. Your password goes only to Stremio and isn't kept.")
             phoneAddress?.let { address ->
@@ -3902,5 +3926,28 @@ private fun AddOnState(addOn: AddOn, onRemove: () -> Unit) {
             )
         }
         FocusRow("Remove " + addOn.name, onRemove, look = Look.OTHER)
+    }
+}
+
+/**
+ * Removes an add-on from KueTV and, when signed in to Stremio, from the Stremio account too, so it doesn't come
+ * back next time. [say] is told what happened, then told again once Stremio has answered.
+ */
+private fun removeAddOn(context: android.content.Context, scope: kotlinx.coroutines.CoroutineScope, addOn: AddOn, say: (String) -> Unit) {
+    AddOnStore.remove(context, addOn)
+    if (Stremio.key(context).isEmpty()) {
+        say("Removed " + addOn.name + ".")
+        return
+    }
+    say("Removed " + addOn.name + " from KueTV. Removing it from your Stremio account…")
+    scope.launch {
+        val more = withContext(Dispatchers.IO) {
+            try {
+                Stremio.removeFromAccount(context, addOn.base, addOn.name)
+            } catch (e: AddOnProblem) {
+                "Couldn't remove it from your Stremio account, so it will come back. " + e.message
+            }
+        }
+        say("Removed " + addOn.name + " from KueTV. " + more)
     }
 }
