@@ -20,7 +20,7 @@ class PlayerBackTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     private fun back() = rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
-    private fun wait(ms: Long) = rule.mainClock.advanceTimeBy(ms)
+    private fun pass(ms: Long) = rule.mainClock.advanceTimeBy(ms)
 
     @Test fun backTwiceGetsBackToTheList() {
         var closed = 0
@@ -31,17 +31,17 @@ class PlayerBackTest {
         )
         rule.mainClock.autoAdvance = false
         rule.setContent { PlayerScreen(listOf(channel), 0, live = true, onClose = { closed++ }) }
-        wait(300)
+        pass(300)
 
         back()
-        wait(100)
+        pass(100)
         assertEquals("the first Back only puts the programme box away", 0, closed)
 
         // The programme details arrive (the player asks for them after 0.7 seconds).
-        wait(2_000)
+        pass(2_000)
 
         back()
-        wait(100)
+        pass(100)
         assertEquals("the second Back goes back to the list", 1, closed)
     }
 }
