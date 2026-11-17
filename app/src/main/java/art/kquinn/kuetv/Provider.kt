@@ -73,7 +73,12 @@ class Library(
     val serverAheadSec: Int = 0,
 ) {
     /** The channels with the versions of the same channel (4K, FHD, HD, SD) kept together as one. */
-    val groups: List<ChannelGroup> by lazy { Versions.group(channels) }
+    val groups: List<ChannelGroup> by lazy {
+        // A TV channel from an add-on is always a row of its own: it plays only through the add-ons, so it can't be
+        // a backup version in another channel's row.
+        val (fromAddOns, rest) = channels.partition { it.url.startsWith(AddOns.TV) }
+        Versions.group(rest) + fromAddOns.map { ChannelGroup(it.name, listOf(Version(it, "", 0))) }
+    }
 
     /**
      * The same lists with the categories the user has chosen to hide taken out, and everything filed
@@ -338,7 +343,8 @@ object Provider {
         .readTimeout(90, TimeUnit.SECONDS)
         .build()
 
-    private val freeNote = Regex("\\s*\\[[^\\]]*]")
+    // Notes in square brackets, and the circled letters some lists put after a name (Ⓖ for geo-blocked, Ⓢ, Ⓨ).
+    private val freeNote = Regex("\\s*\\[[^\\]]*]|\\s*[\\u24B6-\\u24E9]")
 
     /** Signs in (or opens the playlist) to see that the provider answers. Throws a [ProviderProblem] saying why not. */
     fun reach(account: Account) {
@@ -347,7 +353,11 @@ object Provider {
 
     /** The channels in a free channel list, read from its link. Call off the main thread. */
     fun loadFree(link: String): List<Channel> = try {
-        open(link).use { parsePlaylist(BufferedReader(it.body.charStream())).channels }.map { c ->
+        // A link can end "#groups=UK,Ireland" to take only those groups from a long list.
+        val wanted = link.substringAfter("#groups=", "").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        open(link.substringBefore('#')).use { parsePlaylist(BufferedReader(it.body.charStream())).channels }
+            .filter { wanted.isEmpty() || it.categoryId in wanted }
+            .map { c ->
             // Known by its address, so a favourite survives the list being reordered. Notes in square brackets
             // ("[Geo-blocked]") are dropped from the name so it can match the provider's channel of the same name.
             Channel(Library.FREE + Integer.toHexString(c.url.hashCode()), c.name.replace(freeNote, "").trim().ifEmpty { c.name }, c.logo, Library.FREE + c.categoryId, c.url, 0)

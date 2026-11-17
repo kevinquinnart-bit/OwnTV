@@ -138,6 +138,25 @@ object Health {
         return Check(name, parts.maxOf { it.first }, parts.joinToString("\n") { mark(it.first) + it.second })
     }
 
+    /**
+     * Checks only the add-ons (and the Stremio account), each result put in as soon as it is known, in place of
+     * that add-on's last one. Call off the main thread.
+     */
+    fun runAddOns(context: Context) {
+        if (running) return
+        running = true
+        try {
+            val lang = Langs.of(Choices.subtitleLang(context))
+            val put: (Check) -> Unit = { c -> results = results.filter { it.name != c.name } + c }
+            stremio(context)?.let(put)
+            for (a in AddOnStore.all(context)) put(addOn(a, lang))
+            prefs(context).edit().putString("results", encode(results)).apply()
+            Report.note("Health check", "add-ons: " + summary(results.filter { it.name.startsWith("Add-on: ") || it.name == "Stremio account" }))
+        } finally {
+            running = false
+        }
+    }
+
     /** The Stremio account, if signed in: does the sign-in still work, and is every usable add-on in KueTV? */
     private fun stremio(context: Context): Check? {
         val key = Stremio.key(context)

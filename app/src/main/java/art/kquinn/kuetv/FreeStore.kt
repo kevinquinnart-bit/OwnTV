@@ -33,8 +33,9 @@ object FreeStore {
 
     /** Lists that can be added with one press. Free channels from iptv-org, gathered by country. */
     val ready = listOf(
-        "UK free channels" to "https://iptv-org.github.io/iptv/countries/uk.m3u",
-        "Ireland free channels" to "https://iptv-org.github.io/iptv/countries/ie.m3u",
+        "UK and Ireland free channels (Free-TV)" to "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8#groups=UK,Ireland",
+        "UK free channels (iptv-org)" to "https://iptv-org.github.io/iptv/countries/uk.m3u",
+        "Ireland free channels (iptv-org)" to "https://iptv-org.github.io/iptv/countries/ie.m3u",
     )
 
     /** A short name for a list, for rows and the health check: where it comes from and its file's name. */

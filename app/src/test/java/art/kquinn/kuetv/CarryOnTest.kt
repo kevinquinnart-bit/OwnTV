@@ -210,4 +210,20 @@ class CarryOnTest {
         val c = listOf(Check("Add-on: Torrents", Check.DOUBT, "✓ Its description: answers\n! Streams: answers, but none"))
         assertEquals(c, Health.decode(Health.encode(c)))
     }
+
+    @Test fun anAddOnsTvChannelsAreRowsOfTheirOwn() {
+        val library = Library(
+            listOf(Category("1", "UK")),
+            listOf(Channel("10", "BBC One HD", "", "1", "http://tv.example/live/10.ts", 0)),
+            emptyList(), emptyList(),
+        ).withFree(listOf(Channel(Library.FREE + "tv:1", "BBC One", "", Library.FREE + "Live (TV add-on)", AddOns.TV + "https://tv.example|bbc1", 0)))
+        // The add-on's BBC One doesn't join the provider's BBC One: it plays only through the add-ons.
+        assertEquals(2, library.groups.size)
+        assertEquals(listOf("HD"), library.groups.first { !it.versions[0].channel.url.startsWith(AddOns.TV) }.versions.map { it.label })
+        assertEquals(false, AddOns.plain(AddOns.TV + "https://tv.example|bbc1"))
+        assertEquals(true, AddOns.plain("http://tv.example/live/10.ts"))
+        // An add-on's TV catalogue is kept, alongside its films and series.
+        val manifest = com.google.gson.JsonParser.parseString("""{"catalogs":[{"type":"tv","id":"uk","name":"UK TV"},{"type":"movie","id":"top","name":"Top"}]}""").asJsonObject
+        assertEquals(listOf("tv|uk|UK TV", "movie|top|Top"), AddOns.readCatalogues(manifest))
+    }
 }

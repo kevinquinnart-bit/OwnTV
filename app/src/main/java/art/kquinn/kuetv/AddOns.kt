@@ -119,7 +119,8 @@ object AddOns {
         val id = c.text("id")
         val needed = c.list("extraRequired").map { runCatching { it.asString }.getOrDefault("") } +
             c.list("extra").mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.filter { it.get("isRequired")?.let { r -> runCatching { r.asBoolean }.getOrDefault(false) } == true }.map { it.text("name") }
-        if ((type != "movie" && type != "series") || id.isBlank() || needed.isNotEmpty()) null
+        // Films, series, and TV channels ("tv"), which go into Live TV.
+        if ((type != "movie" && type != "series" && type != "tv") || id.isBlank() || needed.isNotEmpty()) null
         else type + "|" + id + "|" + c.text("name").ifBlank { id }.replace("|", " ")
     }.distinct()
 
@@ -183,6 +184,52 @@ object AddOns {
             // Season 0 is extras and specials, which stream add-ons rarely have.
             if (season < 1) null else Episode(v.text("id").ifBlank { "$id:$season:$number" }, season, number, v.text("name").ifEmpty { v.text("title") }, "")
         }.sortedWith(compareBy({ it.season }, { it.number })).distinctBy { it.season to it.number }
+    }
+
+    /** How a TV channel from an add-on is addressed: "addon-tv:" then the add-on's link, "|", and the channel's own number. */
+    const val TV = "addon-tv:"
+
+    /** The add-ons in use now, for playing their TV channels. Set by the app as they load or change. */
+    @Volatile var inUse: List<AddOn> = emptyList()
+
+    /** The subtitle language chosen, for the add-ons' TV channels. Set by the app. */
+    @Volatile var lang: Lang = Langs.all[0]
+
+    /** Whether [url] is one the small pictures can play straight off: not empty, and not an add-on's TV channel. */
+    fun plain(url: String): Boolean = url.isNotEmpty() && !url.startsWith(TV)
+
+    /**
+     * Every TV channel the add-ons list in their TV catalogues, as channels for Live TV. Each catalogue is a
+     * category, "Free: " and its name. Call off the main thread. At most [perCatalogue] from each.
+     */
+    fun tvChannels(addOns: List<AddOn>, perCatalogue: Int = 500): List<Channel> {
+        val out = ArrayList<Channel>()
+        for (a in addOns) {
+            for (written in a.catalogues) {
+                val c = catalogueOf(a, written)?.takeIf { it.type == "tv" } ?: continue
+                val seen = HashSet<String>()
+                var skip = 0
+                while (seen.size < perCatalogue) {
+                    val page = page(c, skip) ?: break
+                    val fresh = page.filter { seen.add(it.id) }
+                    if (fresh.isEmpty()) break
+                    for (item in fresh) {
+                        out += Channel(
+                            Library.FREE + "tv:" + Integer.toHexString((a.base + "|" + item.id).hashCode()), item.name, item.poster,
+                            Library.FREE + c.name + " (" + a.name + ")", TV + a.base + "|" + item.id, 0,
+                        )
+                    }
+                    skip += page.size
+                }
+            }
+        }
+        return out.distinctBy { it.id }
+    }
+
+    /** A TV channel from an add-on, ready for the player: its streams are asked of the add-ons when it is played. */
+    fun tvPlayable(name: String, address: String, lang: Lang): Playable {
+        val id = address.removePrefix(TV).substringAfter('|')
+        return Playable(name, "", find = { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { streamsFor(inUse, "tv", name, lang = lang, knownId = id) } })
     }
 
     /** A film's name as plain words, for telling whether the provider lists the same film. */

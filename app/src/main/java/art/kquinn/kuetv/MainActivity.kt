@@ -185,6 +185,11 @@ private fun App() {
     var loaded by remember { mutableStateOf<Library?>(null) }
     val noProvider = remember(Choices.changes) { Choices.noProvider(context) }
     val freeLinks = remember(FreeStore.changes) { FreeStore.all(context) }
+    val addOns = remember(AddOnStore.changes) { AddOnStore.all(context) }
+    // The player asks these for the add-ons' TV channels, in the subtitle language chosen.
+    LaunchedEffect(addOns) { AddOns.inUse = addOns }
+    val chosenLang = remember(Choices.changes) { Choices.subtitleLang(context) }
+    LaunchedEffect(chosenLang) { AddOns.lang = Langs.of(chosenLang) }
     var free by remember { mutableStateOf<List<Channel>>(emptyList()) }
     var freeOpen by remember { mutableStateOf(false) }
     val library = remember(loaded, free) { loaded?.withFree(free) }
@@ -320,15 +325,19 @@ private fun App() {
     LaunchedEffect(Resumes.count) { withContext(Dispatchers.IO) { Updates.checkOnOpen() } }
 
     // The free channel lists: read when the app opens, when one is added or removed, and on a reload.
-    LaunchedEffect(freeLinks, reload) {
+    LaunchedEffect(freeLinks, reload, addOns) {
         free = withContext(Dispatchers.IO) {
-            freeLinks.flatMap { link ->
+            val lists = freeLinks.flatMap { link ->
                 runCatching { Provider.loadFree(link) }
                     .onFailure { Report.note("Free channels", FreeStore.label(link) + " couldn't be read: " + it.message) }
                     .getOrDefault(emptyList())
             }
+            // The TV channels the add-ons list (Stremio's live TV add-ons, say).
+            val fromAddOns = runCatching { AddOns.tvChannels(addOns) }.getOrDefault(emptyList())
+            if (fromAddOns.isNotEmpty()) Report.note("Free channels", fromAddOns.size.toString() + " TV channels from add-ons")
+            lists + fromAddOns
         }
-        if (freeLinks.isNotEmpty()) Report.note("Free channels", free.size.toString() + " channels from " + freeLinks.size + " lists")
+        Report.note("Free channels", free.size.toString() + " channels in all, from " + freeLinks.size + " lists and the add-ons")
     }
     LaunchedEffect(account, reload, noProvider) {
         if (!account.isSet) {
@@ -381,7 +390,7 @@ private fun App() {
         val group = r?.let { library?.groupOf?.get(it.channelId) }
         if (group != null) {
             browse.resumeKey = null
-            LastLive.item = Playable(group.name, group.lightest.url)
+            if (AddOns.plain(group.lightest.url)) LastLive.item = Playable(group.name, group.lightest.url)
             playing = Playing(listOf(livePlayable(group, library?.account, library?.serverAheadSec ?: 0)), 0, true)
         }
     }
@@ -486,7 +495,11 @@ private fun App() {
                 onPlay = { items, index, live, key ->
                     browse.resumeKey = key
                     // The small TV shown while browsing carries on with this channel, in its lightest version.
-                    if (live) items.getOrNull(index)?.let { LastLive.item = Playable(it.name, (it.streams.lastOrNull { s -> !s.label.startsWith("Free ") } ?: it.streams.lastOrNull())?.url ?: it.url) }
+                    if (live) items.getOrNull(index)?.let {
+                        val url = (it.streams.lastOrNull { s -> !s.label.startsWith("Free ") } ?: it.streams.lastOrNull())?.url ?: it.url
+                        // An add-on's TV channel has no address of its own to show in the small picture.
+                        if (AddOns.plain(url)) LastLive.item = Playable(it.name, url)
+                    }
                     val item = items.getOrNull(index)
                     // Both an add-on's stream and the provider's own copy: the user picks. Only one of them: it plays.
                     if (!live && item != null && item.url.isEmpty() && item.find == null) {
@@ -2572,21 +2585,12 @@ private fun AddOnsScreen(onDone: () -> Unit, onStremio: () -> Unit) {
         }
         FocusRow(if (busy) "Adding…" else "Add", { add(link) }, Modifier.focusRequester(first), look = Look.MAIN)
         said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
-        if (addOns.isNotEmpty()) Box(Modifier.padding(top = 14.dp)) { Heading("Added") }
+        if (addOns.isNotEmpty()) {
+            Box(Modifier.padding(top = 14.dp)) { Heading("Added: OK on one for each of its parts, and to remove it") }
+            AddOnChecks()
+        }
         addOns.forEach { addOn ->
-            val gives = when {
-                addOn.streams && addOn.subtitles -> "streams and subtitles"
-                addOn.streams -> "streams"
-                else -> "subtitles"
-            }
-            // How it did in the last health check, if it has been checked.
-            val health = when (Health.stateOf(Health.addOnName(addOn))) {
-                Check.WORKING -> "✓ working · "
-                Check.DOUBT -> "! look at Health check · "
-                Check.DEAD -> "✗ NOT WORKING · "
-                else -> ""
-            }
-            FocusRow(health + "Remove " + addOn.name + " (" + gives + ")", { AddOnStore.remove(context, addOn); said = "Removed " + addOn.name + "." }, look = Look.OTHER)
+            AddOnState(addOn) { AddOnStore.remove(context, addOn); said = "Removed " + addOn.name + "." }
         }
         FocusRow("Done", onDone, look = Look.OTHER)
     }
@@ -2701,6 +2705,8 @@ private fun TakeSetUpScreen(onDone: () -> Unit, onTaken: (SetUp) -> Unit) {
  */
 private fun livePlayable(group: ChannelGroup, account: Account?, serverAheadSec: Int = 0): Playable {
     val first = group.versions[group.start].channel
+    // An add-on's TV channel: played through the add-ons.
+    if (first.url.startsWith(AddOns.TV)) return AddOns.tvPlayable(group.name, first.url, AddOns.lang)
     val kept = group.versions.firstOrNull { it.channel.catchupDays > 0 }?.channel
     return Playable(
         group.name, first.url, group.versions.map { Stream(it.label, it.channel.url) }, group.start,
@@ -3446,7 +3452,7 @@ private fun LivePreview(on: ChannelGroup?, account: Account?, modifier: Modifier
         showing = on
     }
     val group = showing
-    val item = remember(group?.id) { group?.let { Playable(it.name, it.lightest.url) } } ?: LastLive.item
+    val item = remember(group?.id) { group?.takeIf { AddOns.plain(it.lightest.url) }?.let { Playable(it.name, it.lightest.url) } } ?: LastLive.item
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (item != null) {
             MiniTv(item, Modifier.fillMaxWidth())
@@ -3541,8 +3547,8 @@ private fun HealthScreen(account: Account, library: Library?, onDone: () -> Unit
     LaunchedEffect(Unit) {
         withFrameNanos { }
         if (!phone) runCatching { first.requestFocus() }
-        // Opened with nothing to show yet: check straight away.
-        if (Health.results.isEmpty()) check()
+        // Always checked afresh on opening, so what it shows is how things are now (the last results show meanwhile).
+        check()
     }
     val at = remember(Health.lastRunMs) {
         if (Health.lastRunMs == 0L) "" else java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.UK).format(java.util.Date(Health.lastRunMs))
@@ -3758,7 +3764,10 @@ private fun StremioScreen(onDone: () -> Unit) {
             said = "Asking Stremio…"
             scope.launch {
                 said = try {
-                    Stremio.say(withContext(Dispatchers.IO) { Stremio.bringIn(context) })
+                    Stremio.say(withContext(Dispatchers.IO) { Stremio.bringIn(context) }).also {
+                        // Then each add-on is checked, part by part, and shown below.
+                        scope.launch(Dispatchers.IO) { Health.runAddOns(context) }
+                    }
                 } catch (x: CancellationException) {
                     throw x
                 } catch (x: AddOnProblem) {
@@ -3776,7 +3785,7 @@ private fun StremioScreen(onDone: () -> Unit) {
                 said = try {
                     withContext(Dispatchers.IO) {
                         Stremio.signIn(context, e, p)
-                        "Signed in. " + Stremio.say(Stremio.bringIn(context))
+                        ("Signed in. " + Stremio.say(Stremio.bringIn(context))).also { scope.launch(Dispatchers.IO) { Health.runAddOns(context) } }
                     }.also { password = "" }
                 } catch (x: CancellationException) {
                     throw x
@@ -3810,6 +3819,11 @@ private fun StremioScreen(onDone: () -> Unit) {
             FocusRow(if (busy) "Asking Stremio…" else "Bring in my Stremio add-ons", bring, Modifier.focusRequester(first), look = Look.MAIN)
             said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
             FocusRow("Sign out of Stremio", { Stremio.signOut(context); said = "Signed out. The add-ons stay." }, look = Look.OTHER, below = "The add-ons already brought in stay")
+            // Which add-ons work, and which parts of each.
+            val addOns = remember(AddOnStore.changes) { AddOnStore.all(context) }
+            Box(Modifier.padding(top = 14.dp)) { Heading("Your add-ons: OK on one for each of its parts") }
+            AddOnChecks()
+            addOns.forEach { addOn -> AddOnState(addOn) { AddOnStore.remove(context, addOn) } }
         } else {
             Note("Sign in once, and KueTV brings in every add-on you have installed in Stremio. Your password goes only to Stremio and isn't kept.")
             phoneAddress?.let { address ->
@@ -3840,4 +3854,53 @@ private fun <T> keyedState(key: Any?, initial: () -> T, producer: suspend androi
 internal fun LiveTvForChecks(library: Library, favourites: Favourites) {
     val state = remember { BrowseState().apply { section = Section.LIVE } }
     MainScreen(library, state, favourites, { _, _, _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+}
+
+/** What an add-on gives, in a few words. */
+private fun gives(addOn: AddOn): String {
+    val films = addOn.catalogues.any { !it.startsWith("tv|") }
+    val tv = addOn.catalogues.any { it.startsWith("tv|") }
+    return listOfNotNull(
+        "streams".takeIf { addOn.streams }, "subtitles".takeIf { addOn.subtitles },
+        "films and series to browse".takeIf { films }, "TV channels".takeIf { tv },
+    ).joinToString(", ").ifEmpty { "nothing KueTV uses" }
+}
+
+/** "Check my add-ons now": tries each add-on, part by part. Runs once by itself when the screen opens. */
+@Composable
+private fun AddOnChecks() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val run: () -> Unit = { if (!Health.running) scope.launch(Dispatchers.IO) { runCatching { Health.runAddOns(context) } } }
+    LaunchedEffect(Unit) { run() }
+    FocusRow(
+        if (Health.running) "Checking each add-on…" else "Check my add-ons now", run, look = Look.OTHER,
+        below = "✓ working   ! answers but has a gap   ✗ not working",
+    )
+}
+
+/**
+ * One add-on, with a mark for how it did when last checked and its parts underneath. OK opens it to show
+ * each part on a line of its own, and a row to remove it.
+ */
+@Composable
+private fun AddOnState(addOn: AddOn, onRemove: () -> Unit) {
+    var open by remember(addOn.base) { mutableStateOf(false) }
+    val check = Health.results.firstOrNull { it.name == Health.addOnName(addOn) }
+    val mark = when (check?.state) { Check.WORKING -> "✓ "; Check.DOUBT -> "! "; Check.DEAD -> "✗ NOT WORKING · "; else -> "" }
+    val summary = when {
+        check == null && Health.running -> "Being checked…"
+        check == null -> "Not checked yet"
+        else -> check.detail.lines().joinToString("  ·  ")
+    }
+    FocusRow(mark + addOn.name + " · " + gives(addOn), { open = !open }, look = Look.OTHER, below = summary)
+    if (open) {
+        check?.detail?.lines()?.forEach { line ->
+            Text(
+                line, fontSize = 17.sp, modifier = Modifier.padding(start = 32.dp, top = 2.dp),
+                color = when { line.startsWith("✗") -> Color(0xFFFF6B5E); line.startsWith("!") -> Accent; else -> Soft },
+            )
+        }
+        FocusRow("Remove " + addOn.name, onRemove, look = Look.OTHER)
+    }
 }
