@@ -11,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
@@ -693,12 +694,12 @@ fun PlayerScreen(
         if (shifting) add(Control("◀◀ 30 s") { jump(-30_000) })
         add(Control(if (paused) "Play" else "Pause", togglePause))
         if (shifting && isBehind) add(Control("30 s ▶▶") { jump(30_000) })
-        // After a pause or a rewind, this jumps to what is on now.
-        if (isBehind) add(Control("Back to live") { reload += 1 })
         if (fromStart != null) add(Control("From the start", fromStart))
         add(Control(if (recording) "■ Stop recording" else "● Record", toggleRecording))
         if (versions.size > 1 && stream in versions.indices) add(Control("Picture: " + versions[stream].label) { change((stream + 1) % versions.size, null) })
         add(Control(if (subsOn) "Subtitles: on" else "Subtitles: off", toggleSubtitles))
+        // Always last: LIVE, drawn on the right of the box. Behind live, it jumps to what is on now.
+        add(Control(if (isBehind || paused) "GO LIVE" else "● LIVE") { if (isBehind || paused) { player.play(); reload += 1 } })
     }
 
     // Back hides the buttons first; with them gone, Back closes the player.
@@ -873,7 +874,7 @@ fun PlayerScreen(
                 Modifier
                     .align(Alignment.BottomStart)
                     .padding(if (phone) 16.dp else 36.dp)
-                    .widthIn(max = 980.dp)
+                    .fillMaxWidth()
                     .background(Color(0xE60E1626), RoundedCornerShape(14.dp))
                     .padding(horizontal = 22.dp, vertical = 16.dp),
             ) {
@@ -899,58 +900,85 @@ fun PlayerScreen(
                         color = soft, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp),
                     )
                 }
-                // How it is playing, as separate labels spread along one line.
-                if (live) {
-                    Row(Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (versions.size > 1 && stream in versions.indices) Label(versions[stream].label + " · version " + (stream + 1) + " of " + versions.size)
-                        if (subtitles != 0 || !subsOn) {
-                            Label(
-                                when {
-                                    !subsOn -> "Subtitles off"
-                                    subtitles == 1 -> "Subtitles on"
-                                    subtitles == 3 -> "No " + lang.name + " subtitles"
-                                    else -> "No subtitles on this channel"
-                                },
-                            )
-                        }
-                        if (paused) Label("Paused", Color(0xFFFFD23F), Color.Black)
-                        if (shifting && isBehind) {
-                            Label(if (behindMs < 60_000) (behindMs / 1000).toString() + " s behind live" else (behindMs / 60_000).toString() + " min behind live")
-                        } else if (!shifting && behind && !paused) {
-                            Label("Behind live")
-                        }
-                        val copy = shiftHolder[0]
-                        if (shifting && copy != null) {
-                            tick
-                            Label("Can go back " + ((System.currentTimeMillis() - copy.oldestTime()) / 60_000) + " min")
-                        }
-                        if (recording) Label("● Recording", Color(0xFFB3261E), Color.White)
-                    }
-                }
                 moved?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
                 note?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
-                // The buttons along the bottom. On a TV they come up with OK; on a phone they are always here to tap.
-                if (live && (controls || phone)) {
-                    Row(Modifier.padding(top = 14.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        buttons.forEachIndexed { i, b ->
-                            val on = !phone && i == pick.coerceIn(0, buttons.size - 1)
-                            Text(
-                                b.label,
-                                color = if (on || phone) Color.Black else Color.White,
-                                fontSize = 18.sp, fontWeight = if (on || phone) FontWeight.Bold else FontWeight.Normal, maxLines = 1,
-                                modifier = Modifier
-                                    .background(if (on || phone) Color(0xFFFFD23F) else Color(0xFF16213A), RoundedCornerShape(22.dp))
-                                    .then(if (phone) Modifier.clickable { b.act(); showName += 1 } else Modifier)
-                                    .padding(horizontal = 16.dp, vertical = 9.dp),
-                            )
+                // The bottom of the box, across its whole width: how it is playing and the buttons (or the keys)
+                // on the left, the LIVE button on the right.
+                if (live) {
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.Bottom) {
+                        Column(Modifier.weight(1f)) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                if (versions.size > 1 && stream in versions.indices) Label(versions[stream].label + " · version " + (stream + 1) + " of " + versions.size)
+                                if (subtitles != 0 || !subsOn) {
+                                    Label(
+                                        when {
+                                            !subsOn -> "Subtitles off"
+                                            subtitles == 1 -> "Subtitles on"
+                                            subtitles == 3 -> "No " + lang.name + " subtitles"
+                                            else -> "No subtitles on this channel"
+                                        },
+                                    )
+                                }
+                                if (paused) Label("Paused", Color(0xFFFFD23F), Color.Black)
+                                if (shifting && isBehind) {
+                                    Label(if (behindMs < 60_000) (behindMs / 1000).toString() + " s behind live" else (behindMs / 60_000).toString() + " min behind live")
+                                } else if (!shifting && behind && !paused) {
+                                    Label("Behind live")
+                                }
+                                val copy = shiftHolder[0]
+                                if (shifting && copy != null) {
+                                    tick
+                                    Label("Can go back " + ((System.currentTimeMillis() - copy.oldestTime()) / 60_000) + " min")
+                                }
+                                if (recording) Label("● Recording", Color(0xFFB3261E), Color.White)
+                            }
+                            val shown = buttons.dropLast(1)
+                            if (controls || phone) {
+                                // The buttons. On a TV they come up with OK and share the width; on a phone they are always here to tap.
+                                Row(
+                                    Modifier.fillMaxWidth().padding(top = 12.dp).then(if (phone) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
+                                    horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 8.dp),
+                                ) {
+                                    shown.forEachIndexed { i, b ->
+                                        val on = !phone && i == pick.coerceIn(0, buttons.size - 1)
+                                        Text(
+                                            b.label,
+                                            color = if (on || phone) Color.Black else Color.White,
+                                            fontSize = if (phone) 18.sp else 17.sp, fontWeight = if (on || phone) FontWeight.Bold else FontWeight.Normal,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            modifier = (if (phone) Modifier else Modifier.weight(1f))
+                                                .background(if (on || phone) Color(0xFFFFD23F) else Color(0xFF16213A), RoundedCornerShape(22.dp))
+                                                .then(if (phone) Modifier.clickable { b.act(); showName += 1 } else Modifier)
+                                                .padding(horizontal = if (phone) 16.dp else 8.dp, vertical = 9.dp),
+                                        )
+                                    }
+                                }
+                            } else if (!phone) {
+                                // The keys, spread across the width.
+                                Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    val keys = listOf("OK  buttons", "▲ ▼  channel") + (if (versions.size > 1) listOf("◀ ▶  picture") else emptyList()) + listOf("≡  record", "BACK  close")
+                                    keys.forEach { Text(it, color = soft, fontSize = 16.sp, maxLines = 1) }
+                                }
+                            }
                         }
+                        Spacer(Modifier.width(16.dp))
+                        // LIVE: red while at live; behind live it says GO LIVE, and choosing it jumps to what is on now.
+                        val atLive = !(isBehind || paused)
+                        val liveOn = !phone && controls && pick.coerceIn(0, buttons.size - 1) == buttons.lastIndex
+                        val liveControl = buttons.last()
+                        Text(
+                            liveControl.label,
+                            color = when { liveOn -> Color.Black; atLive -> Color.White; else -> Color.White },
+                            fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                            modifier = Modifier
+                                .background(
+                                    when { liveOn -> Color(0xFFFFD23F); atLive -> Color(0xFFD32F2F); else -> Color(0xFF3A4660) },
+                                    RoundedCornerShape(10.dp),
+                                )
+                                .then(if (phone) Modifier.clickable { liveControl.act(); showName += 1 } else Modifier)
+                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                        )
                     }
-                }
-                if (live && !phone && !controls) {
-                    Text(
-                        "OK for the buttons  ·  ▲ ▼ channel" + (if (versions.size > 1) "  ·  ◀ ▶ picture" else "") + "  ·  ≡ record",
-                        color = soft, fontSize = 15.sp, maxLines = 1, modifier = Modifier.padding(top = 12.dp),
-                    )
                 }
                 if (phone && live && items.size > 1) Text("Swipe up or down to change channel", color = soft, fontSize = 15.sp, modifier = Modifier.padding(top = 10.dp))
             }

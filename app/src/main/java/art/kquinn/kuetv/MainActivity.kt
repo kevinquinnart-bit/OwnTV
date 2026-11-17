@@ -458,7 +458,16 @@ private fun App() {
             addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false })
             reportOpen -> ReportScreen(onDone = { reportOpen = false })
             aboutOpen -> AboutScreen(onDone = { aboutOpen = false })
-            freeOpen -> FreeListsScreen(onDone = { freeOpen = false })
+            freeOpen -> FreeListsScreen(
+                free.size,
+                onDone = { freeOpen = false },
+                // Straight to Live TV, on the category holding every free channel.
+                onWatch = {
+                    freeOpen = false
+                    browse.section = Section.LIVE
+                    browse.liveCategory = Library.FREE_ALL
+                },
+            )
             healthOpen -> HealthScreen(account, library, onDone = { healthOpen = false })
             categoriesOpen && whole != null -> CategoriesScreen(whole, onDone = { categoriesOpen = false })
             problem != null -> ProblemScreen(problem.orEmpty(), onRetry = { reload++ }, onEdit = { editing = true })
@@ -838,6 +847,9 @@ private class BrowseState(saved: Map<String, String> = emptyMap()) {
     val catGrids = HashMap<String, LazyGridState>()
     val catDone = HashSet<String>()
 
+    /** The part of Settings open: null for the list of parts. */
+    var settingsPage by mutableStateOf<String?>(null)
+
     /** The channel the remote is on in Live TV, for the picture and programme details beside the list. */
     var liveOn by mutableStateOf<ChannelGroup?>(null)
 }
@@ -1069,6 +1081,7 @@ private fun MainScreen(
                     when (liveCategory) {
                         ALL -> library.groups
                         FAVOURITES -> library.groups.filter { g -> g.versions.any { Favourites.key(it.channel, login) in favs } }
+                        Library.FREE_ALL -> library.groups.filter { g -> g.versions.any { it.free } }
                         else -> library.groups.filter { g -> g.versions.any { it.channel.categoryId == liveCategory } }
                     }
                 }
@@ -1166,61 +1179,124 @@ private fun MainScreen(
             }
             Section.RECORDINGS -> RecordingsPane(state, resume, onPlay)
             Section.APPS -> TvAppsPane()
-            Section.SETTINGS -> Column(
-                // The rows run past the bottom of a TV screen, so the list scrolls as the remote moves down it.
-                (if (phone) fill() else Modifier.width(560.dp * LocalTextScale.current).fillMaxHeight()).verticalScroll(rememberScrollState()),
-                verticalArrangement = if (phone) Arrangement.spacedBy(8.dp) else Arrangement.Top,
-            ) {
-                Heading("Settings")
-                FocusRow("Change provider details", onEdit, look = Look.OTHER)
-                FocusRow("Reload channels and films", onReload, look = Look.OTHER)
+            Section.SETTINGS -> {
+                // Settings is split into parts. The first page lists the parts; OK opens one; Back returns to the list.
+                val page = state.settingsPage
+                val pageFirst = remember { FocusRequester() }
+                val backTo = remember { FocusRequester() }
+                val leftFrom = remember { arrayOfNulls<String>(1) }
+                LaunchedEffect(page) {
+                    if (phone) return@LaunchedEffect
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    if (page != null) runCatching { pageFirst.requestFocus() } else if (leftFrom[0] != null) runCatching { backTo.requestFocus() }
+                }
+                val close: () -> Unit = {
+                    leftFrom[0] = state.settingsPage
+                    state.settingsPage = null
+                }
+                BackHandler(enabled = page != null) { close() }
                 val drive = remember(Recordings.changes) { Recordings.drive(context) }
-                when {
-                    !drive.isSetUp -> Note("Google Drive isn't set up in this copy of the app.")
-                    drive.signedIn -> FocusRow(
-                        "Sign out of Google Drive" + if (drive.email.isBlank()) "" else " (" + drive.email + ")",
-                        { drive.signOut(); Recordings.changed() },
-                        look = Look.OTHER,
-                    )
-                    else -> FocusRow("Sign in to Google Drive, for recordings", onDriveSignIn, look = Look.OTHER)
-                }
-                FocusRow("Add-ons for films and series (" + addOns.size + ")", onAddOns, look = Look.OTHER)
-                val freeCount = remember(FreeStore.changes) { FreeStore.all(context).size }
-                FocusRow("Free channel lists ($freeCount)", onFree, look = Look.OTHER)
-                val hiddenCount = remember(Choices.changes) { listOf("live", "film", "show").sumOf { Choices.hidden(context, it).size } }
-                FocusRow("Categories to show" + if (hiddenCount == 0) "" else " ($hiddenCount hidden)", onCategories, look = Look.OTHER)
-                val textSize = remember(Choices.changes) { Choices.textSize(context) }
-                FocusRow("Text size: " + Choices.textSizeNames[textSize], { Choices.textSize(context, (textSize + 1) % 3) }, look = Look.OTHER)
-                val shiftOn = remember(Choices.changes) { Choices.timeShift(context) }
-                FocusRow("Pause and rewind live TV: " + if (shiftOn) "on" else "off", { Choices.timeShift(context, !shiftOn) }, look = Look.OTHER)
-                val subtitlesOn = remember(Choices.changes) { Choices.subtitles(context) }
-                FocusRow("Subtitles: " + if (subtitlesOn) "on" else "off", { Choices.subtitles(context, !subtitlesOn) }, look = Look.OTHER)
-                FocusRow("Subtitle language: " + subtitleLang.name, { Choices.subtitleLang(context, Langs.after(subtitleLang).code) }, look = Look.OTHER)
-                FocusRow("Send this set-up to another device", onSendSetUp, look = Look.OTHER)
-                FocusRow("Copy set-up from another device", onTakeSetUp, look = Look.OTHER)
-                // Paired devices keep in step by themselves. Pressing this stops this device taking part.
-                val paired = remember(Sync.changes) { Sync.key(context).isNotEmpty() }
-                val met = Sync.lastMetMs
-                if (paired) {
-                    FocusRow(
-                        "Keeping in step with your other device: on · " +
-                            if (met == 0L) "not met it yet since opening" else "last met at " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(java.util.Date(met)),
-                        {
-                            Sync.setKey(context, "")
-                            android.widget.Toast.makeText(context, "This device no longer keeps in step. To start again, send the set-up from the other device.", android.widget.Toast.LENGTH_LONG).show()
-                        },
-                        look = Look.OTHER,
-                    )
-                }
-                if (!phone) {
-                    val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
-                    FocusRow("Small TV while browsing: " + if (smallTv) "on" else "off", { Choices.smallTv(context, !smallTv) })
-                }
-                FocusRow("Reset text size, subtitles and small TV", { Choices.resetDisplay(context) }, look = Look.OTHER)
                 val notWorking = Health.results.count { it.state == Check.DEAD }
-                FocusRow("Health check" + if (notWorking == 0) "" else " · $notWorking not working", onHealth, look = Look.OTHER)
-                FocusRow("Report for Claude", onReport, look = Look.OTHER)
-                FocusRow("About and updates · version " + BuildConfig.VERSION_NAME, onAbout, look = Look.OTHER)
+                val freeCount = remember(FreeStore.changes) { FreeStore.all(context).size }
+                val paired = remember(Sync.changes) { Sync.key(context).isNotEmpty() }
+                val parts = listOf(
+                    "Your provider" to "Provider details, reload, categories, free channel lists ($freeCount)",
+                    "Films and series" to "Add-ons (" + addOns.size + ")",
+                    "Watching" to "Subtitles, pause and rewind, text size",
+                    "Recordings" to "Google Drive: " + when { !drive.isSetUp -> "not set up"; drive.signedIn -> "signed in"; else -> "not signed in" },
+                    "TV and phone" to "Copy the set-up, keep in step: " + if (paired) "on" else "off",
+                    "Help" to "Health check" + (if (notWorking == 0) "" else ": $notWorking not working") + ", report, updates · version " + BuildConfig.VERSION_NAME,
+                )
+                Column(
+                    // The rows can run past the bottom of a TV screen, so the list scrolls as the remote moves down it.
+                    (if (phone) fill() else Modifier.width(600.dp * LocalTextScale.current).fillMaxHeight()).verticalScroll(rememberScrollState()),
+                    verticalArrangement = if (phone) Arrangement.spacedBy(8.dp) else Arrangement.Top,
+                ) {
+                    if (page == null) {
+                        Heading("Settings")
+                        parts.forEach { (name, summary) ->
+                            FocusRow(
+                                name, { leftFrom[0] = null; state.settingsPage = name },
+                                if (name == leftFrom[0]) Modifier.focusRequester(backTo) else Modifier,
+                                look = Look.OTHER, below = summary,
+                            )
+                        }
+                    } else {
+                    Heading("Settings › $page")
+                    // The remote lands on the page's first row.
+                    var given = false
+                    val first: () -> Modifier = { if (given) Modifier else { given = true; Modifier.focusRequester(pageFirst) } }
+                    val sub: @Composable (String) -> Unit = { Box(Modifier.padding(top = 14.dp)) { Heading(it) } }
+                    when (page) {
+                        "Your provider" -> {
+                            FocusRow("Change provider details", onEdit, first(), look = Look.OTHER)
+                            FocusRow("Reload channels and films", onReload, look = Look.OTHER, below = "Fetches everything afresh from your provider")
+                            val hiddenCount = remember(Choices.changes) { listOf("live", "film", "show").sumOf { Choices.hidden(context, it).size } }
+                            FocusRow("Categories to show" + if (hiddenCount == 0) "" else " ($hiddenCount hidden)", onCategories, look = Look.OTHER)
+                            sub("Backup")
+                            FocusRow("Free channel lists ($freeCount)", onFree, look = Look.OTHER, below = "Free channels, tried when your provider's won't play")
+                        }
+                        "Films and series" -> {
+                            FocusRow("Add-ons (" + addOns.size + ")", onAddOns, first(), look = Look.OTHER, below = "More streams, subtitles and catalogues")
+                        }
+                        "Watching" -> {
+                            sub("Subtitles")
+                            val subtitlesOn = remember(Choices.changes) { Choices.subtitles(context) }
+                            FocusRow("Subtitles: " + if (subtitlesOn) "on" else "off", { Choices.subtitles(context, !subtitlesOn) }, first(), look = Look.OTHER)
+                            FocusRow("Subtitle language: " + subtitleLang.name, { Choices.subtitleLang(context, Langs.after(subtitleLang).code) }, look = Look.OTHER)
+                            sub("Live TV")
+                            val shiftOn = remember(Choices.changes) { Choices.timeShift(context) }
+                            FocusRow("Pause and rewind live TV: " + if (shiftOn) "on" else "off", { Choices.timeShift(context, !shiftOn) }, look = Look.OTHER)
+                            if (!phone) {
+                                val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
+                                FocusRow("Small TV while browsing: " + if (smallTv) "on" else "off", { Choices.smallTv(context, !smallTv) }, look = Look.OTHER)
+                            }
+                            sub("Screen")
+                            val textSize = remember(Choices.changes) { Choices.textSize(context) }
+                            FocusRow("Text size: " + Choices.textSizeNames[textSize], { Choices.textSize(context, (textSize + 1) % 3) }, look = Look.OTHER)
+                            FocusRow("Reset text size, subtitles and small TV", { Choices.resetDisplay(context) }, look = Look.OTHER)
+                        }
+                        "Recordings" -> {
+                            sub("Google Drive")
+                            when {
+                                !drive.isSetUp -> Note("Google Drive isn't set up in this copy of the app.")
+                                drive.signedIn -> FocusRow(
+                                    "Sign out of Google Drive", { drive.signOut(); Recordings.changed() }, first(), look = Look.OTHER,
+                                    below = drive.email.ifBlank { null },
+                                )
+                                else -> FocusRow("Sign in to Google Drive", onDriveSignIn, first(), look = Look.OTHER, below = "Recordings are copied there")
+                            }
+                        }
+                        "TV and phone" -> {
+                            sub("Copy")
+                            FocusRow("Send this set-up to another device", onSendSetUp, first(), look = Look.OTHER, below = "Also pairs the two, so they keep in step")
+                            FocusRow("Copy set-up from another device", onTakeSetUp, look = Look.OTHER)
+                            sub("Keep in step")
+                            val met = Sync.lastMetMs
+                            if (paired) {
+                                FocusRow(
+                                    "Keeping in step: on · press to stop",
+                                    {
+                                        Sync.setKey(context, "")
+                                        android.widget.Toast.makeText(context, "This device no longer keeps in step. To start again, send the set-up from the other device.", android.widget.Toast.LENGTH_LONG).show()
+                                    },
+                                    look = Look.OTHER,
+                                    below = if (met == 0L) "Not met the other device since opening" else "Last met the other device at " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(java.util.Date(met)),
+                                )
+                            } else {
+                                Note("Off. Send the set-up from one device to the other to turn it on.")
+                            }
+                        }
+                        "Help" -> {
+                            FocusRow("Health check" + if (notWorking == 0) "" else " · $notWorking not working", onHealth, first(), look = Look.OTHER, below = "Tries every source the app uses")
+                            FocusRow("Report for Claude", onReport, look = Look.OTHER)
+                            FocusRow("About and updates · version " + BuildConfig.VERSION_NAME, onAbout, look = Look.OTHER)
+                        }
+                    }
+                    FocusRow("‹ Back to Settings", close, if (given) Modifier else Modifier.focusRequester(pageFirst), look = Look.OTHER)
+                    }
+                }
             }
         }
     }
@@ -3378,7 +3454,7 @@ private fun CatalogueGrid(catalogue: Catalogue, state: BrowseState, resume: Focu
  * in Live TV under categories that start "Free:". KueTV comes with none.
  */
 @Composable
-private fun FreeListsScreen(onDone: () -> Unit) {
+private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -> Unit) {
     val context = LocalContext.current
     val phone = LocalPhone.current
     val scope = rememberCoroutineScope()
@@ -3429,7 +3505,20 @@ private fun FreeListsScreen(onDone: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("Free channel lists", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
-        Note("A backup for your provider. If a channel from your provider won't play, a free channel of the same name is tried next. KueTV comes with no lists: you add your own by its link.")
+        Note("A backup for your provider. If a channel from your provider won't play, a free channel of the same name is tried next.")
+        // What has been added can be watched straight away.
+        if (lists.isNotEmpty()) {
+            FocusRow(
+                if (channelCount > 0) "Watch the free channels ($channelCount)" else "Watch the free channels (still loading)",
+                onWatch, look = Look.MAIN,
+                below = "Also in Live TV, at the top of the categories, under \"Free:\"",
+            )
+        }
+        // One press adds a ready-made list.
+        val ready = FreeStore.ready.filter { it.second !in lists }
+        if (ready.isNotEmpty()) Box(Modifier.padding(top = 10.dp)) { Heading("Add with one press") }
+        ready.forEach { (name, address) -> FocusRow("Add " + name, { add(address) }, look = Look.OTHER) }
+        Box(Modifier.padding(top = 10.dp)) { Heading("Or add any list by its link") }
         phoneAddress?.let { address ->
             Note("Easiest: on your phone, on the same Wi-Fi, open")
             Text(address, color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
@@ -3451,7 +3540,7 @@ private fun FreeListsScreen(onDone: () -> Unit) {
                 Check.DEAD -> "✗ NOT WORKING · "
                 else -> ""
             }
-            FocusRow(health + "Remove " + FreeStore.label(list), { FreeStore.remove(context, list); said = "Removed." }, look = Look.OTHER)
+            FocusRow(health + "Remove " + FreeStore.label(list), { FreeStore.remove(context, list); said = "Removed." }, look = Look.OTHER, below = list)
         }
         FocusRow("Done", onDone, look = Look.OTHER)
     }

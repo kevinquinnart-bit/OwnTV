@@ -31,8 +31,16 @@ object FreeStore {
         return link
     }
 
+    /** Lists that can be added with one press. Free channels from iptv-org, gathered by country. */
+    val ready = listOf(
+        "UK free channels" to "https://iptv-org.github.io/iptv/countries/uk.m3u",
+        "Ireland free channels" to "https://iptv-org.github.io/iptv/countries/ie.m3u",
+    )
+
     /** A short name for a list, for rows and the health check: where it comes from and its file's name. */
     fun label(link: String): String {
+        ready.firstOrNull { it.second == link }?.let { return it.first }
+        if (link.endsWith("iptv-org.github.io/iptv/index.country.m3u")) return "Every country's free channels (very large)"
         val rest = link.substringAfter("://").substringBefore('?')
         val host = rest.substringBefore('/')
         val file = rest.substringAfterLast('/', "").takeIf { it.isNotBlank() && it != host }

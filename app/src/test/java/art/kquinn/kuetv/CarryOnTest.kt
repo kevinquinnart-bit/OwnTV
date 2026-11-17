@@ -102,7 +102,8 @@ class CarryOnTest {
             Channel(Library.FREE + "b2", "Sky News", "", Library.FREE + "News", "http://free.example/sky.m3u8", 0),
         )
         val both = provider.withFree(free)
-        assertEquals(listOf("UK", "Free: News"), both.liveCategories.map { it.name })
+        // The free categories come first, with one holding every free channel.
+        assertEquals(listOf("Free: all free channels", "Free: News", "UK"), both.liveCategories.map { it.name })
         assertEquals(2, both.groups.size)
         val bbc = both.groups[0]
         // The provider's versions first, best picture first; the free one last, though its picture is better than HD.
@@ -172,5 +173,11 @@ class CarryOnTest {
     @Test fun theSetUpCarriesThePairingKey() {
         val setUp = SetUp(Account("http://tv.example", "kev", "secret", ""), setOf("live:1"), emptyList(), true, emptyMap(), listOf("https://lists.example/uk.m3u"), "0123abcd")
         assertEquals(setUp, SetUp.unpack(setUp.pack()))
+    }
+
+    @Test fun readyMadeListsHavePlainNames() {
+        assertEquals("UK free channels", FreeStore.label("https://iptv-org.github.io/iptv/countries/uk.m3u"))
+        assertEquals("Ireland free channels", FreeStore.label("https://iptv-org.github.io/iptv/countries/ie.m3u"))
+        assertEquals("Every country's free channels (very large)", FreeStore.label("https://iptv-org.github.io/iptv/index.country.m3u"))
     }
 }

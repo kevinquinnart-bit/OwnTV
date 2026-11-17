@@ -98,13 +98,19 @@ class Library(
         if (free.isEmpty()) return this
         val have = channels.mapTo(HashSet()) { it.id }
         val added = free.filter { have.add(it.id) }
-        val categories = added.map { it.categoryId }.distinct().map { Category(it, "Free: " + it.removePrefix(FREE)) }
-        return Library(liveCategories + categories, channels + added, filmCategories, films, showCategories, shows, account, serverAheadSec)
+        // The free ones go first, straight after All and Favourites, so they are easy to find: one with every
+        // free channel, then one for each group in the lists.
+        val categories = listOf(Category(FREE_ALL, "Free: all free channels")) +
+            added.map { it.categoryId }.distinct().map { Category(it, "Free: " + it.removePrefix(FREE)) }
+        return Library(categories + liveCategories, channels + added, filmCategories, films, showCategories, shows, account, serverAheadSec)
     }
 
     companion object {
         /** How a free channel's number and category begin, to tell them from the provider's. */
         const val FREE = "free:"
+
+        /** The category holding every free channel. */
+        const val FREE_ALL = "free:\u0000all"
     }
 
     /** For each channel as the provider lists it, the one row it sits behind. */
