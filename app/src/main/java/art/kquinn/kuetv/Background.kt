@@ -79,6 +79,13 @@ object Choices {
         private set
 
     /** The categories the user has chosen not to see, for "live", "film" or "show". */
+    /** The user's own order for a kind's categories ("live", "film", "show"), by id; empty for the order as sent. */
+    fun order(context: Context, kind: String): List<String> = prefs(context).getString("order.$kind", "").orEmpty().split('\n').filter { it.isNotEmpty() }
+    fun order(context: Context, kind: String, ids: List<String>) {
+        prefs(context).edit().putString("order.$kind", ids.joinToString("\n")).apply()
+        changes++
+    }
+
     fun hidden(context: Context, kind: String): Set<String> = prefs(context).getStringSet("hide.$kind", emptySet()).orEmpty().toSet()
     fun hidden(context: Context, kind: String, ids: Set<String>) {
         prefs(context).edit().putStringSet("hide.$kind", ids).apply()

@@ -94,6 +94,15 @@ class Library(
         )
     }
 
+    /** The same lists with each kind's categories in the user's own order (one not in it goes after, as sent). */
+    fun inOrder(liveOrder: List<String>, filmOrder: List<String>, showOrder: List<String>): Library {
+        if (liveOrder.isEmpty() && filmOrder.isEmpty() && showOrder.isEmpty()) return this
+        return Library(
+            ordered(liveCategories, liveOrder), channels, ordered(filmCategories, filmOrder), films,
+            ordered(showCategories, showOrder), shows, account, serverAheadSec,
+        )
+    }
+
     /**
      * The same lists with channels from free channel lists added. A free channel with the same name as
      * one of the provider's joins that channel's row as a backup version; the rest get rows of their own.
@@ -103,16 +112,23 @@ class Library(
         if (free.isEmpty()) return this
         val have = channels.mapTo(HashSet()) { it.id }
         val added = free.filter { have.add(it.id) }
-        // The free ones go first, straight after All and Favourites, so they are easy to find: one with every
-        // free channel, then one for each group in the lists.
+        // The free ones go at the end, after the provider's: one with every free channel, then one for each
+        // group in the lists and each add-on's TV list. The user can put them anywhere in Categories.
         val categories = listOf(Category(FREE_ALL, "Free: all free channels")) +
             added.map { it.categoryId }.distinct().map { Category(it, "Free: " + it.removePrefix(FREE)) }
-        return Library(categories + liveCategories, channels + added, filmCategories, films, showCategories, shows, account, serverAheadSec)
+        return Library(liveCategories + categories, channels + added, filmCategories, films, showCategories, shows, account, serverAheadSec)
     }
 
     companion object {
         /** How a free channel's number and category begin, to tell them from the provider's. */
         const val FREE = "free:"
+
+        /** [categories] in the order of [order], by id. Ones not in it come after, in the order they were in. */
+        fun ordered(categories: List<Category>, order: List<String>): List<Category> {
+            if (order.isEmpty()) return categories
+            val at = order.withIndex().associate { it.value to it.index }
+            return categories.sortedBy { at[it.id] ?: Int.MAX_VALUE }
+        }
 
         /** The category holding every free channel. */
         const val FREE_ALL = "free:\u0000all"

@@ -102,8 +102,8 @@ class CarryOnTest {
             Channel(Library.FREE + "b2", "Sky News", "", Library.FREE + "News", "http://free.example/sky.m3u8", 0),
         )
         val both = provider.withFree(free)
-        // The free categories come first, with one holding every free channel.
-        assertEquals(listOf("Free: all free channels", "Free: News", "UK"), both.liveCategories.map { it.name })
+        // The free categories come after the provider's, starting with one holding every free channel.
+        assertEquals(listOf("UK", "Free: all free channels", "Free: News"), both.liveCategories.map { it.name })
         assertEquals(2, both.groups.size)
         val bbc = both.groups[0]
         // The provider's versions first, best picture first; the free one last, though its picture is better than HD.
@@ -261,5 +261,14 @@ class CarryOnTest {
         assertEquals("https://new.example/manifest.json", d.get("transportUrl").asString)
         assertEquals("http", d.get("transportName").asString)
         assertEquals("New", d.getAsJsonObject("manifest").get("name").asString)
+    }
+
+    @Test fun categoriesComeInTheUsersOwnOrder() {
+        val cats = listOf(Category("1", "UK"), Category("2", "Sport"), Category("3", "News"), Category("4", "Kids"))
+        assertEquals(cats, Library.ordered(cats, emptyList()))
+        // Ones in the order first, as ordered; the rest after, as sent (a category new since sorting goes last).
+        assertEquals(listOf("News", "UK", "Sport", "Kids"), Library.ordered(cats, listOf("3", "1")).map { it.name })
+        // An id no longer sent is just ignored.
+        assertEquals(listOf("Kids", "UK", "Sport", "News"), Library.ordered(cats, listOf("gone", "4")).map { it.name })
     }
 }

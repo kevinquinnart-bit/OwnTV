@@ -216,6 +216,8 @@ private fun App() {
     // What the lists show: everything the provider sent, less the categories chosen to be hidden.
     val shownLibrary = remember(library, Choices.changes) {
         library?.without(Choices.hidden(context, "live"), Choices.hidden(context, "film"), Choices.hidden(context, "show"))
+            // ...and each kind's categories in the user's own order.
+            ?.inOrder(Choices.order(context, "live"), Choices.order(context, "film"), Choices.order(context, "show"))
     }
     // Each time KueTV comes to the front: carry on copying any recordings that are waiting for Google Drive.
     LaunchedEffect(Resumes.count) { Recordings.wake(context) }
@@ -244,6 +246,7 @@ private fun App() {
                 "account" to listOf(a.server, a.user, a.pass, a.playlist).joinToString("\n"),
                 "favourites" to favourites.keys.sorted().joinToString("\n"),
                 "favouriteOrder" to favourites.order.joinToString("\n"),
+                "categoryOrder" to kinds.joinToString("\n") { kind -> kind + "=" + Choices.order(context, kind).joinToString("\u0001") },
                 "stremio" to Stremio.export(context),
                 "addOns" to AddOnStore.all(context).joinToString("\n") { it.toJson() },
                 "free" to FreeStore.all(context).joinToString("\n"),
@@ -264,6 +267,10 @@ private fun App() {
                 }
                 "favourites" -> favourites.replaceAll(lines.filter { it.isNotEmpty() }.toSet())
                 "favouriteOrder" -> favourites.putInOrder(lines.filter { it.isNotEmpty() })
+                "categoryOrder" -> for (line in lines) {
+                    val kind = line.substringBefore('=')
+                    if (kind in kinds) Choices.order(context, kind, line.substringAfter('=', "").split('\u0001').filter { it.isNotEmpty() })
+                }
                 "stremio" -> Stremio.import(context, body)
                 "addOns" -> AddOnStore.replaceAll(context, lines.mapNotNull { AddOn.fromJson(it) })
                 "free" -> FreeStore.replaceAll(context, lines.filter { it.isNotBlank() })
@@ -1402,7 +1409,7 @@ private fun MainScreen(
                             FocusRow("Change provider details", onEdit, first(), look = Look.OTHER)
                             FocusRow("Reload channels and films", onReload, look = Look.OTHER, below = "Fetches everything afresh from your provider")
                             val hiddenCount = remember(Choices.changes) { listOf("live", "film", "show").sumOf { Choices.hidden(context, it).size } }
-                            FocusRow("Categories to show" + if (hiddenCount == 0) "" else " ($hiddenCount hidden)", onCategories, look = Look.OTHER)
+                            FocusRow("Categories: show, hide and order" + if (hiddenCount == 0) "" else " ($hiddenCount hidden)", onCategories, look = Look.OTHER)
                             sub("Backup")
                             FocusRow("Free channel lists ($freeCount)", onFree, look = Look.OTHER, below = "Free channels, tried when your provider's won't play")
                         }
@@ -3172,52 +3179,134 @@ private fun AboutStrip(name: String?, about: About?) {
 private class Kind(val key: String, val title: String, val categories: List<Category>, val counts: Map<String, Int>)
 
 /**
- * Choosing which of the provider's categories show. One list: Live TV's categories, then Films', then
- * Series'. OK on a category hides it or shows it again. A hidden category, and everything filed only
- * under it, leaves every list and the search. Nothing is deleted: showing it again brings it all back.
+ * The categories, in one place: which show, and the order they come in. One list: Live TV's categories, then
+ * Films', then Series'. OK on a category hides it or shows it again. "Put in order" turns that kind's list into
+ * one where OK picks a category up, ▲ ▼ moves it, and OK puts it down; Live TV, the guide, Films and Series
+ * then list them in that order. Nothing is deleted: a hidden category shown again brings it all back.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CategoriesScreen(library: Library, onDone: () -> Unit) {
     val context = LocalContext.current
     val phone = LocalPhone.current
-    BackHandler { onDone() }
+    val scope = rememberCoroutineScope()
     val changes = Choices.changes
-    val kinds = remember(library) {
+    // The kind being put in order, and the category picked up to move (null when none is).
+    var sorting by remember { mutableStateOf<String?>(null) }
+    var picked by remember { mutableStateOf<String?>(null) }
+    BackHandler {
+        when {
+            picked != null -> picked = null
+            sorting != null -> sorting = null
+            else -> onDone()
+        }
+    }
+    val kinds = remember(library, changes) {
         listOf(
-            Kind("live", "Live TV", library.liveCategories, library.channels.groupingBy { it.categoryId }.eachCount()),
-            Kind("film", "Films", library.filmCategories, library.films.groupingBy { it.categoryId }.eachCount()),
-            Kind("show", "Series", library.showCategories, library.shows.groupingBy { it.categoryId }.eachCount()),
+            Kind("live", "Live TV", Library.ordered(library.liveCategories, Choices.order(context, "live")), library.channels.groupingBy { it.categoryId }.eachCount()),
+            Kind("film", "Films", Library.ordered(library.filmCategories, Choices.order(context, "film")), library.films.groupingBy { it.categoryId }.eachCount()),
+            Kind("show", "Series", Library.ordered(library.showCategories, Choices.order(context, "show")), library.shows.groupingBy { it.categoryId }.eachCount()),
         ).filter { it.categories.isNotEmpty() }
     }
     val hidden = remember(changes) { kinds.associate { it.key to Choices.hidden(context, it.key) } }
+    val list = remember { LazyListState() }
+    /** Moves the picked category to [to] within its kind, and keeps that order. */
+    val moveTo: (Kind, Int) -> Unit = { kind, to ->
+        val from = kind.categories.indexOfFirst { it.id == picked }
+        if (from >= 0 && to in kind.categories.indices && to != from) {
+            val ids = kind.categories.map { it.id }.toMutableList()
+            ids.add(to, ids.removeAt(from))
+            Choices.order(context, kind.key, ids)
+        }
+    }
     val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
+    val firstOfSort = remember { FocusRequester() }
+    LaunchedEffect(sorting) {
         withFrameNanos { }
-        if (!phone) runCatching { first.requestFocus() }
+        withFrameNanos { }
+        if (!phone) runCatching { if (sorting != null) firstOfSort.requestFocus() else first.requestFocus() }
+    }
+    val status = when {
+        sorting != null && picked != null -> Status("Moving. " + if (phone) "Tap where it should go." else "▲ ▼ to move it, OK to put it down.", Status.INFO)
+        sorting != null -> Status((if (phone) "Tap" else "OK on") + " a category to pick it up. Back when done.", Status.INFO)
+        else -> null
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 160.dp, vertical = if (phone) 12.dp else 30.dp)) {
-        Text("Categories to show", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 6.dp))
-        Note((if (phone) "Tap" else "OK on") + " a category to hide it or show it again. Hidden ones leave every list and the search. Nothing is deleted.")
-        Spacer(Modifier.height(10.dp))
-        LazyColumn(Modifier.fillMaxWidth().weight(1f).focusRestorer(), verticalArrangement = if (phone) Arrangement.spacedBy(6.dp) else Arrangement.Top) {
-            item(key = "done") { FocusRow("Done", onDone, Modifier.focusRequester(first), look = Look.MAIN) }
+        Text("Categories", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text(
+            "Which show, and their order. " + (if (phone) "Tap" else "OK on") + " a category to hide it or show it again.",
+            color = Soft, fontSize = 18.sp, modifier = Modifier.padding(start = 16.dp, bottom = 6.dp),
+        )
+        if (status != null) StatusBox(status)
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(
+            Modifier.fillMaxWidth().weight(1f).focusRestorer().onPreviewKeyEvent { e ->
+                // A picked-up category moves with ▲ ▼, and the remote stays on it.
+                val kind = kinds.firstOrNull { it.key == sorting }
+                if (kind == null || picked == null || (e.key != Key.DirectionUp && e.key != Key.DirectionDown)) return@onPreviewKeyEvent false
+                if (e.type == KeyEventType.KeyDown) {
+                    val from = kind.categories.indexOfFirst { it.id == picked }
+                    moveTo(kind, from + if (e.key == Key.DirectionUp) -1 else 1)
+                }
+                true
+            },
+            state = list,
+            verticalArrangement = if (phone) Arrangement.spacedBy(6.dp) else Arrangement.Top,
+        ) {
+            item(key = "done") {
+                FocusRow(if (sorting != null) "Done putting in order" else "Done", { if (sorting != null) { sorting = null; picked = null } else onDone() }, Modifier.focusRequester(first), look = Look.MAIN)
+            }
             kinds.forEach { kind ->
+                // While one kind is being put in order, the others are out of the way.
+                if (sorting != null && sorting != kind.key) return@forEach
                 val off = hidden[kind.key].orEmpty()
                 item(key = "h:" + kind.key) {
                     Box(Modifier.padding(top = 16.dp)) { Heading(kind.title + " · " + (kind.categories.size - kind.categories.count { it.id in off }) + " of " + kind.categories.size + " showing") }
                 }
-                item(key = "all:" + kind.key) { FocusRow("Show all of " + kind.title, { Choices.hidden(context, kind.key, emptySet()) }, look = Look.OTHER) }
-                item(key = "none:" + kind.key) { FocusRow("Hide all of " + kind.title, { Choices.hidden(context, kind.key, kind.categories.mapTo(HashSet()) { it.id }) }, look = Look.OTHER) }
-                itemsIndexed(kind.categories, key = { _, c -> kind.key + ":" + c.id }) { _, category ->
+                if (sorting == null) {
+                    item(key = "sort:" + kind.key) {
+                        FocusRow("Put " + kind.title + "'s categories in order", { sorting = kind.key; picked = null }, look = Look.OTHER, below = if (Choices.order(context, kind.key).isEmpty()) "In the order your provider sends them" else "In your own order")
+                    }
+                    item(key = "all:" + kind.key) { FocusRow("Show all of " + kind.title, { Choices.hidden(context, kind.key, emptySet()) }, look = Look.OTHER) }
+                    item(key = "none:" + kind.key) { FocusRow("Hide all of " + kind.title, { Choices.hidden(context, kind.key, kind.categories.mapTo(HashSet()) { it.id }) }, look = Look.OTHER) }
+                } else {
+                    item(key = "reset:" + kind.key) {
+                        FocusRow("Back to the order your provider sends", { Choices.order(context, kind.key, emptyList()); picked = null }, look = Look.OTHER)
+                    }
+                }
+                itemsIndexed(kind.categories, key = { _, c -> kind.key + ":" + c.id }) { i, category ->
                     val isOff = category.id in off
-                    FocusRow(
-                        (if (isOff) "✗  " else "✓  ") + category.name + " · " + (kind.counts[category.id] ?: 0) + if (isOff) " · hidden" else "",
-                        { Choices.hidden(context, kind.key, if (isOff) off - category.id else off + category.id) },
-                    )
+                    if (sorting == kind.key) {
+                        val isPicked = picked == category.id
+                        FocusRow(
+                            (if (isPicked) "↕  " else "") + category.name,
+                            {
+                                when {
+                                    picked == null -> picked = category.id
+                                    picked == category.id -> picked = null
+                                    // Phone: tapping another category puts the picked one there.
+                                    else -> { moveTo(kind, i); picked = null }
+                                }
+                            },
+                            if (i == 0) Modifier.focusRequester(firstOfSort) else Modifier,
+                            chosen = isPicked,
+                        )
+                    } else {
+                        FocusRow(
+                            (if (isOff) "✗  " else "✓  ") + category.name + " · " + (kind.counts[category.id] ?: 0) + if (isOff) " · hidden" else "",
+                            { Choices.hidden(context, kind.key, if (isOff) off - category.id else off + category.id) },
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+/** For the automatic checks only: the Categories screen as a TV shows it. */
+@Composable
+internal fun CategoriesForChecks(library: Library) {
+    CategoriesScreen(library, onDone = {})
 }
 
 // --------------------------------------------------------------------------------------------- home
