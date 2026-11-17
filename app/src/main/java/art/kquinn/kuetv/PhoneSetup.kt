@@ -19,6 +19,8 @@ class PhoneSetup(
     private val onAddOn: ((link: String) -> Unit)? = null,
     /** With [onAddOn]: the link asked for is a free channel list's, and the page says so. */
     private val freeList: Boolean = false,
+    /** Given: the page asks for a Stremio email and password instead, and they arrive here. */
+    private val onStremio: ((email: String, password: String) -> Unit)? = null,
     private val onDetails: (server: String, user: String, pass: String, playlist: String) -> Unit,
 ) {
     @Volatile private var socket: ServerSocket? = null
@@ -64,7 +66,10 @@ class PhoneSetup(
                 val at = pair.indexOf('=')
                 if (at < 0) null else URLDecoder.decode(pair.substring(0, at), "UTF-8") to URLDecoder.decode(pair.substring(at + 1), "UTF-8")
             }.toMap()
-            if (onAddOn != null) {
+            if (onStremio != null) {
+                onStremio.invoke(fields["email"].orEmpty(), fields["password"].orEmpty())
+                send(client, page("<h1>Sent to your TV</h1><p>The TV says whether Stremio accepted it. You can close this page.</p>"))
+            } else if (onAddOn != null) {
                 onAddOn.invoke(fields["link"].orEmpty())
                 send(client, page("<h1>Sent to your TV</h1><p>The TV says whether it was added. To add another, go back and paste the next link.</p>"))
             } else {
@@ -72,7 +77,7 @@ class PhoneSetup(
                 send(client, page("<h1>Sent to your TV</h1><p>You can close this page.</p>"))
             }
         } else {
-            send(client, page(if (onAddOn == null) FORM else if (freeList) FREE_FORM else ADDON_FORM))
+            send(client, page(if (onStremio != null) STREMIO_FORM else if (onAddOn == null) FORM else if (freeList) FREE_FORM else ADDON_FORM))
         }
     }
 
@@ -105,14 +110,21 @@ class PhoneSetup(
             "<label>Playlist link</label><input name=\"playlist\" autocapitalize=\"none\" autocorrect=\"off\">" +
             "<button type=\"submit\">Send to TV</button></form>"
 
+        private const val STREMIO_FORM = "<h1>KueTV: sign in to Stremio</h1>" +
+            "<p>KueTV brings in the add-ons installed in your Stremio account. Your password goes only to Stremio, and isn't kept.</p>" +
+            "<form method=\"post\" action=\"/\">" +
+            "<label>Stremio email</label><input name=\"email\" type=\"email\" autocapitalize=\"none\" autocorrect=\"off\">" +
+            "<label>Stremio password</label><input name=\"password\" type=\"password\">" +
+            "<button type=\"submit\">Send to TV</button></form>"
+
         private const val FREE_FORM = "<h1>KueTV: add a free channel list</h1>" +
-            "<p>Paste the list's link here. It usually ends in .m3u or .m3u8.</p>" +
+            "<p>Paste the list's link here. It usually ends in .m3u or .m3u8. An add-on's link works here too.</p>" +
             "<form method=\"post\" action=\"/\">" +
             "<label>List link</label><input name=\"link\" autocapitalize=\"none\" autocorrect=\"off\">" +
             "<button type=\"submit\">Send to TV</button></form>"
 
         private const val ADDON_FORM = "<h1>KueTV: add an add-on</h1>" +
-            "<p>Paste the add-on's link here. It is the one its page gives you to copy, and usually ends in manifest.json.</p>" +
+            "<p>Paste the add-on's link here (it usually ends in manifest.json), or a channel list's link (it usually ends in .m3u).</p>" +
             "<form method=\"post\" action=\"/\">" +
             "<label>Add-on link</label><input name=\"link\" autocapitalize=\"none\" autocorrect=\"off\">" +
             "<button type=\"submit\">Send to TV</button></form>"

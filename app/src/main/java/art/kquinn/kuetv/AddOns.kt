@@ -94,6 +94,11 @@ object AddOns {
         if (typed.isBlank()) throw AddOnProblem("Paste the add-on's link first.")
         val link = tidyLink(typed)
         val o = fetch(link) ?: throw AddOnProblem("That link didn't answer like an add-on. Check it and try again.")
+        return fromManifest(link, o)
+    }
+
+    /** An add-on from its description, already fetched (from its link, or from a Stremio account). */
+    fun fromManifest(link: String, o: JsonObject): AddOn {
         val offers = o.list("resources").map { r -> if (r.isJsonObject) r.asJsonObject.text("name") else runCatching { r.asString }.getOrDefault("") }
         val streams = "stream" in offers
         val subtitles = "subtitles" in offers
@@ -119,6 +124,9 @@ object AddOns {
     }.distinct()
 
     @Volatile private var indexCatalogues: List<Catalogue>? = null
+
+    /** One of an add-on's catalogues, as it is kept ("type|id|name"), ready to ask for. */
+    fun catalogueOf(addOn: AddOn, written: String): Catalogue? = toCatalogue(addOn.base, written, addOn.name)
 
     private fun toCatalogue(base: String, written: String, from: String): Catalogue? {
         val p = written.split("|", limit = 3)

@@ -10,6 +10,17 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
@@ -138,7 +149,33 @@ data class Playable(
 }
 
 /** One button along the bottom of the live name box. */
-private class Control(val label: String, val act: () -> Unit)
+private class Control(
+    /** Said under the button. */
+    val label: String,
+    val icon: Icon,
+    /** -1 or 1 for the buttons that wind back or on; holding one down winds faster. */
+    val seek: Int = 0,
+    /** Written inside the button, for the picture's quality. */
+    val badge: String = "",
+    val act: () -> Unit,
+)
+
+/** The pictures drawn on the player's buttons. */
+private enum class Icon { BACK, PLAY, PAUSE, ON, FROM_START, RECORD, STOP, PICTURE, SUBS_ON, SUBS_OFF, LIVE }
+
+/** How much one key-repeat of a held wind button adds: faster the longer it is held. Public for the tests. */
+fun windSpeed(repeats: Int): Int = when {
+    repeats < 15 -> 1
+    repeats < 35 -> 2
+    repeats < 70 -> 4
+    else -> 8
+}
+
+/** "2 min 30 s", "45 s". */
+fun windWords(ms: Long): String {
+    val sec = kotlin.math.abs(ms) / 1000
+    return if (sec < 60) "$sec s" else (sec / 60).toString() + " min" + if (sec % 60 == 0L) "" else " " + sec % 60 + " s"
+}
 
 /** Recording needs this much room to start. */
 private const val ROOM_TO_RECORD = 500L * 1024 * 1024
@@ -259,6 +296,11 @@ fun PlayerScreen(
     var controls by remember { mutableStateOf(false) }
     var pick by remember { mutableIntStateOf(0) }
     var paused by remember { mutableStateOf(false) }
+    // A wind button held down: how far it has wound so far (back is negative), and how fast.
+    var held by remember { mutableLongStateOf(0L) }
+    var heldSpeed by remember { mutableIntStateOf(1) }
+    val heldKey = remember { arrayOfNulls<Key>(1) }
+    val windScope = rememberCoroutineScope()
     // Paused at some point since this channel started, so the picture is behind live.
     var behind by remember { mutableStateOf(false) }
     // Pause and rewind: the copy of this channel being kept on the device, if it is playing through one.
@@ -627,7 +669,7 @@ fun PlayerScreen(
         if (showName == 0 && !paused) return@LaunchedEffect
         nameVisible = true
         // While paused the box stays up, saying so.
-        if (paused && live) return@LaunchedEffect
+        if (paused) return@LaunchedEffect
         // Longer when there is something to read: why the stream changed, what the programme is about, or the buttons.
         delay(if (controls || moved != null || (live && index in guides)) 9_000 else 4_000)
         nameVisible = false
@@ -640,7 +682,7 @@ fun PlayerScreen(
     val listing = if (live) guides[index].orEmpty() else emptyList()
     val onNow = listing.firstOrNull { it.startMs <= clockNow && it.stopMs > clockNow }
     val nextUp = listing.firstOrNull { it.startMs >= (onNow?.stopMs ?: clockNow) }
-    val versions = items.getOrNull(index)?.streams.orEmpty()
+    val versions = streamsAt(index)
     val fromStart: (() -> Unit)? = items.getOrNull(index)?.fromStart?.let { make ->
         if (onNow == null || onFromStart == null) null else ({
             Report.note("Player", items.getOrNull(index)?.name.orEmpty() + ": from the start, through catch-up")
@@ -649,7 +691,8 @@ fun PlayerScreen(
     }
     // How far behind live the picture is, when playing from the copy. Refreshed each second while the box is up.
     LaunchedEffect(nameVisible, shifting) {
-        while (nameVisible && shifting) {
+        // Also for a film, whose place along its bar moves on.
+        while (nameVisible && (shifting || !live)) {
             delay(1_000)
             tick += 1
         }
@@ -689,22 +732,49 @@ fun PlayerScreen(
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !subsOn).build()
     }
-    // The buttons along the bottom of the live name box, left to right.
-    val buttons = if (!live) emptyList() else buildList {
-        if (shifting) add(Control("◀◀ 30 s") { jump(-30_000) })
-        add(Control(if (paused) "Play" else "Pause", togglePause))
-        if (shifting && isBehind) add(Control("30 s ▶▶") { jump(30_000) })
-        if (fromStart != null) add(Control("From the start", fromStart))
-        add(Control(if (recording) "■ Stop recording" else "● Record", toggleRecording))
-        if (versions.size > 1 && stream in versions.indices) add(Control("Picture: " + versions[stream].label) { change((stream + 1) % versions.size, null) })
-        add(Control(if (subsOn) "Subtitles: on" else "Subtitles: off", toggleSubtitles))
-        // Always last: LIVE, drawn on the right of the box. Behind live, it jumps to what is on now.
-        add(Control(if (isBehind || paused) "GO LIVE" else "● LIVE") { if (isBehind || paused) { player.play(); reload += 1 } })
+    // Winding: a live channel through the copy kept on the device, 30 seconds a press; anything else through itself, 10.
+    val windStep = if (live) 30_000L else 10_000L
+    val canWind = if (live) shifting else true
+    val windBy: (Long) -> Unit = { ms ->
+        if (live) {
+            jump(ms)
+        } else {
+            val length = player.duration
+            val target = (player.currentPosition + ms).coerceAtLeast(0L).let { if (length > 0) it.coerceAtMost(length - 1_000) else it }
+            player.seekTo(target)
+            showName += 1
+        }
     }
+    val subsButton = Control(if (subsOn) "Subtitles on" else "Subtitles off", if (subsOn) Icon.SUBS_ON else Icon.SUBS_OFF, act = toggleSubtitles)
+    val pictureButton = if (versions.size > 1 && stream in versions.indices) {
+        Control(if (live) "Picture" else "Stream " + (stream + 1) + " of " + versions.size, Icon.PICTURE, badge = versions[stream].label) { change((stream + 1) % versions.size, null) }
+    } else null
+    // The buttons along the bottom of the box, left to right.
+    val buttons = buildList {
+        if (live) {
+            if (shifting) add(Control("Back 30 s", Icon.BACK, seek = -1) { windBy(-windStep) })
+            add(Control(if (paused) "Play" else "Pause", if (paused) Icon.PLAY else Icon.PAUSE, act = togglePause))
+            if (shifting && isBehind) add(Control("On 30 s", Icon.ON, seek = 1) { windBy(windStep) })
+            if (fromStart != null) add(Control("From the start", Icon.FROM_START, act = fromStart))
+            add(Control(if (recording) "Stop recording" else "Record", if (recording) Icon.STOP else Icon.RECORD, act = toggleRecording))
+            pictureButton?.let { add(it) }
+            add(subsButton)
+            // Always last: LIVE, drawn on the right of the box. Behind live, it jumps to what is on now.
+            add(Control(if (isBehind || paused) "GO LIVE" else "● LIVE", Icon.LIVE) { if (isBehind || paused) { player.play(); reload += 1 } })
+        } else {
+            add(Control("Start again", Icon.FROM_START) { player.seekTo(0); showName += 1 })
+            add(Control("Back 10 s", Icon.BACK, seek = -1) { windBy(-windStep) })
+            add(Control(if (paused) "Play" else "Pause", if (paused) Icon.PLAY else Icon.PAUSE, act = togglePause))
+            add(Control("On 10 s", Icon.ON, seek = 1) { windBy(windStep) })
+            pictureButton?.let { add(it) }
+            add(subsButton)
+        }
+    }
+    val pickPlay: () -> Int = { buttons.indexOfFirst { it.icon == Icon.PLAY || it.icon == Icon.PAUSE }.coerceAtLeast(0) }
 
     // Back hides the buttons first; with them gone, Back closes the player.
     BackHandler {
-        if (live && controls && nameVisible) {
+        if (controls && nameVisible) {
             controls = false
             nameVisible = false
         } else {
@@ -761,22 +831,61 @@ fun PlayerScreen(
     }
 
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { if (live) runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
             .then(
-                if (!live) Modifier else Modifier
+                Modifier
                     .focusRequester(focus)
                     .focusable()
                     .onPreviewKeyEvent { e ->
-                        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         val buttonsUp = controls && nameVisible && buttons.isNotEmpty()
+                        // Winding: the rewind and fast-forward keys, OK on a wind button, and for a film left and right.
+                        // A press winds one step when it is let go; held down, it winds faster and faster until let go.
+                        val windDir = when {
+                            !canWind -> 0
+                            e.key == Key.MediaRewind -> -1
+                            e.key == Key.MediaFastForward -> 1
+                            buttonsUp && e.key in listOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter) -> buttons[pick.coerceIn(0, buttons.size - 1)].seek
+                            !live && !buttonsUp && e.key == Key.DirectionLeft -> -1
+                            !live && !buttonsUp && e.key == Key.DirectionRight -> 1
+                            else -> 0
+                        }
+                        if (windDir != 0 || (e.type == KeyEventType.KeyUp && heldKey[0] == e.key)) {
+                            if (e.type == KeyEventType.KeyDown) {
+                                val repeats = e.nativeKeyEvent.repeatCount
+                                if (repeats == 0) {
+                                    heldKey[0] = e.key
+                                    held = 0L
+                                    heldSpeed = 1
+                                } else if (heldKey[0] == e.key) {
+                                    heldSpeed = windSpeed(repeats)
+                                    held += windDir * (windStep / 4) * heldSpeed
+                                    showName += 1
+                                }
+                            } else if (e.type == KeyEventType.KeyUp && heldKey[0] == e.key) {
+                                val dir = if (windDir != 0) windDir else if (held < 0) -1 else 1
+                                windBy(if (held == 0L) dir * windStep else held)
+                                heldKey[0] = null
+                                held = 0L
+                            }
+                            return@onPreviewKeyEvent true
+                        }
+                        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (e.key) {
-                            Key.DirectionUp, Key.ChannelUp -> { if (items.size > 1) go((index + 1) % items.size); true }
-                            Key.DirectionDown, Key.ChannelDown -> { if (items.size > 1) go((index - 1 + items.size) % items.size); true }
+                            // Live: up and down change channel. Anything else: they bring up the buttons.
+                            Key.DirectionUp, Key.ChannelUp, Key.DirectionDown, Key.ChannelDown -> {
+                                if (live) {
+                                    if (items.size > 1) go(if (e.key == Key.DirectionUp || e.key == Key.ChannelUp) (index + 1) % items.size else (index - 1 + items.size) % items.size)
+                                } else {
+                                    if (!buttonsUp) { controls = true; pick = pickPlay() }
+                                    showName += 1
+                                }
+                                true
+                            }
                             // OK brings up the buttons; with them up, OK presses the one the remote is on.
                             Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                                 if (buttonsUp) {
@@ -784,23 +893,24 @@ fun PlayerScreen(
                                 } else {
                                     controls = true
                                     // Start on Pause, whichever buttons come before it.
-                                    pick = buttons.indexOfFirst { it.label == "Pause" || it.label == "Play" }.coerceAtLeast(0)
+                                    pick = pickPlay()
                                 }
                                 showName += 1
                                 true
                             }
-                            Key.Menu, Key.MediaRecord -> { toggleRecording(); true }
+                            Key.Menu, Key.MediaRecord -> { if (live) toggleRecording(); live }
                             Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> { togglePause(); showName += 1; true }
-                            Key.MediaRewind -> { if (shifting) jump(-30_000) else fromStart?.invoke(); true }
-                            Key.MediaFastForward -> { jump(30_000); true }
-                            Key.MediaPrevious -> { fromStart?.invoke(); true }
+                            // Rewind on a live channel with no copy kept: the programme from its start, through catch-up.
+                            Key.MediaRewind -> { fromStart?.invoke(); true }
+                            Key.MediaFastForward -> true
+                            Key.MediaPrevious -> { if (live) fromStart?.invoke() else { player.seekTo(0); showName += 1 }; true }
                             // With the buttons up, left and right move along them.
                             Key.DirectionLeft, Key.DirectionRight -> if (buttonsUp) {
                                 pick = (pick.coerceIn(0, buttons.size - 1) + if (e.key == Key.DirectionLeft) -1 else 1).coerceIn(0, buttons.size - 1)
                                 showName += 1
                                 true
                             } else {
-                                val count = items.getOrNull(index)?.streams?.size ?: 0
+                                val count = versions.size
                                 val next = if (e.key == Key.DirectionLeft) stream - 1 else stream + 1
                                 if (count > 1) { if (next in 0 until count) change(next, null) else showName += 1 }
                                 true
@@ -815,7 +925,9 @@ fun PlayerScreen(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     this.player = player
-                    useController = !live
+                    // KueTV's own box and buttons, for everything it plays.
+                    useController = false
+                    isFocusable = false
                     keepScreenOn = true
                     // A film's bar has a subtitles button, to pick a language or turn them off.
                     setShowSubtitleButton(true)
@@ -832,14 +944,13 @@ fun PlayerScreen(
                         setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 1.4f)
                     }
                     setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
-                    if (!live) {
-                        isFocusable = true
-                        isFocusableInTouchMode = true
-                        requestFocus()
-                    }
                 }
             },
         )
+        if (phone && !live) {
+            // A tap on the picture brings up the box and its buttons.
+            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { controls = true; showName += 1 }) })
+        }
         if (phone && live) {
             // A clear sheet over the picture that takes the touches: swipe to change channel, tap for the name.
             Box(
@@ -869,7 +980,7 @@ fun PlayerScreen(
             )
         }
         val title = items.getOrNull(index)?.name.orEmpty()
-        if ((nameVisible && (live || moved != null)) || note != null) {
+        if (nameVisible || note != null) {
             Column(
                 Modifier
                     .align(Alignment.BottomStart)
@@ -880,10 +991,10 @@ fun PlayerScreen(
             ) {
                 val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
                 val soft = Color(0xFFB9C2D3)
-                // The channel, with the time on the right.
+                // The name, with the time on the right.
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                    if (live) Text("   " + clock.format(java.util.Date(clockNow)), color = soft, fontSize = 22.sp, maxLines = 1)
+                    Text("   " + clock.format(java.util.Date(clockNow)), color = soft, fontSize = 22.sp, maxLines = 1)
                 }
                 if (onNow != null) {
                     Text(
@@ -897,78 +1008,141 @@ fun PlayerScreen(
                 if (nextUp != null) {
                     Text(
                         "Next · " + clock.format(java.util.Date(nextUp.startMs)) + " · " + nextUp.title.ifBlank { "No title" },
-                        color = soft, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp),
+                        color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp),
                     )
+                    // A line or two about what is on next.
+                    if (nextUp.description.isNotBlank()) Text(nextUp.description, color = soft, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                // A film, a recording or catch-up: how far through, along a bar. On a phone the bar can be tapped or dragged.
+                if (!live) {
+                    tick
+                    val length = player.duration.takeIf { it > 0 }
+                    val at = (player.currentPosition + held).coerceAtLeast(0L).let { if (length != null) it.coerceAtMost(length) else it }
+                    val clockOf: (Long) -> String = { ms ->
+                        val sec = ms / 1000
+                        if (sec >= 3600) "%d:%02d:%02d".format(sec / 3600, sec / 60 % 60, sec % 60) else "%d:%02d".format(sec / 60, sec % 60)
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(clockOf(at), color = Color.White, fontSize = 16.sp)
+                        Box(
+                            Modifier.weight(1f).padding(horizontal = 12.dp).height(if (phone) 22.dp else 8.dp)
+                                .then(
+                                    if (phone && length != null) Modifier.pointerInput(length) {
+                                        detectTapGestures { p -> player.seekTo((length * (p.x / size.width)).toLong()); showName += 1 }
+                                    } else Modifier,
+                                ),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Box(Modifier.fillMaxWidth().height(8.dp).background(Color(0x44FFFFFF), RoundedCornerShape(4.dp)))
+                            if (length != null) Box(Modifier.fillMaxWidth((at.toFloat() / length).coerceIn(0f, 1f)).height(8.dp).background(Color(0xFFFFD23F), RoundedCornerShape(4.dp)))
+                        }
+                        Text(if (length != null) "-" + clockOf((length - at).coerceAtLeast(0)) else "", color = soft, fontSize = 16.sp)
+                    }
                 }
                 moved?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
                 note?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
                 // The bottom of the box, across its whole width: how it is playing and the buttons (or the keys)
                 // on the left, the LIVE button on the right.
-                if (live) {
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.Bottom) {
-                        Column(Modifier.weight(1f)) {
-                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                if (versions.size > 1 && stream in versions.indices) Label(versions[stream].label + " · version " + (stream + 1) + " of " + versions.size)
-                                if (subtitles != 0 || !subsOn) {
-                                    Label(
-                                        when {
-                                            !subsOn -> "Subtitles off"
-                                            subtitles == 1 -> "Subtitles on"
-                                            subtitles == 3 -> "No " + lang.name + " subtitles"
-                                            else -> "No subtitles on this channel"
-                                        },
-                                    )
-                                }
-                                if (paused) Label("Paused", Color(0xFFFFD23F), Color.Black)
-                                if (shifting && isBehind) {
-                                    Label(if (behindMs < 60_000) (behindMs / 1000).toString() + " s behind live" else (behindMs / 60_000).toString() + " min behind live")
-                                } else if (!shifting && behind && !paused) {
-                                    Label("Behind live")
-                                }
-                                val copy = shiftHolder[0]
-                                if (shifting && copy != null) {
-                                    tick
-                                    Label("Can go back " + ((System.currentTimeMillis() - copy.oldestTime()) / 60_000) + " min")
-                                }
-                                if (recording) Label("● Recording", Color(0xFFB3261E), Color.White)
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.Bottom) {
+                    Column(Modifier.weight(1f)) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            // Winding with a button held down: how far, and how fast.
+                            if (held != 0L) Label((if (held < 0) "◀◀ back " else "▶▶ on ") + windWords(held) + if (heldSpeed > 1) "  ·  ×$heldSpeed" else "", Color(0xFFFFD23F), Color.Black)
+                            if (live && versions.size > 1 && stream in versions.indices) Label(versions[stream].label + " · version " + (stream + 1) + " of " + versions.size)
+                            if (subtitles != 0 || !subsOn) {
+                                Label(
+                                    when {
+                                        !subsOn -> "Subtitles off"
+                                        subtitles == 1 -> "Subtitles on"
+                                        subtitles == 3 -> "No " + lang.name + " subtitles"
+                                        else -> if (live) "No subtitles on this channel" else "No subtitles"
+                                    },
+                                )
                             }
-                            val shown = buttons.dropLast(1)
-                            if (controls || phone) {
-                                // The buttons. On a TV they come up with OK and share the width; on a phone they are always here to tap.
-                                Row(
-                                    Modifier.fillMaxWidth().padding(top = 12.dp).then(if (phone) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
-                                    horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 8.dp),
-                                ) {
-                                    shown.forEachIndexed { i, b ->
-                                        val on = !phone && i == pick.coerceIn(0, buttons.size - 1)
+                            if (paused) Label("Paused", Color(0xFFFFD23F), Color.Black)
+                            if (shifting && isBehind) {
+                                Label(if (behindMs < 60_000) (behindMs / 1000).toString() + " s behind live" else (behindMs / 60_000).toString() + " min behind live")
+                            } else if (live && !shifting && behind && !paused) {
+                                Label("Behind live")
+                            }
+                            val copy = shiftHolder[0]
+                            if (shifting && copy != null) {
+                                tick
+                                Label("Can go back " + ((System.currentTimeMillis() - copy.oldestTime()) / 60_000) + " min")
+                            }
+                            if (recording) Label("● Recording", Color(0xFFB3261E), Color.White)
+                        }
+                        if (controls || phone) {
+                            // The buttons: pictures with a word under each. On a TV they come up with OK and share the
+                            // width; on a phone they are always there to tap. The wind buttons can be held down.
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 12.dp).then(if (phone) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
+                                horizontalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 6.dp),
+                            ) {
+                                buttons.forEachIndexed { i, b ->
+                                    if (b.icon == Icon.LIVE) return@forEachIndexed
+                                    val on = !phone && i == pick.coerceIn(0, buttons.size - 1)
+                                    val touch = if (!phone) Modifier else Modifier.pointerInput(b.label) {
+                                        if (b.seek == 0) {
+                                            detectTapGestures(onTap = { b.act(); showName += 1 })
+                                        } else {
+                                            detectTapGestures(onPress = {
+                                                // Held: wind faster and faster until let go. A quick tap winds one step.
+                                                held = 0L
+                                                val winding = windScope.launch {
+                                                    delay(400)
+                                                    var n = 0
+                                                    while (true) {
+                                                        heldSpeed = windSpeed(n)
+                                                        held += b.seek * (windStep / 4) * heldSpeed
+                                                        showName += 1
+                                                        n++
+                                                        delay(50)
+                                                    }
+                                                }
+                                                tryAwaitRelease()
+                                                winding.cancel()
+                                                if (held == 0L) b.act() else windBy(held)
+                                                held = 0L
+                                            })
+                                        }
+                                    }
+                                    Column(
+                                        (if (phone) Modifier.width(76.dp) else Modifier.weight(1f)).then(touch),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Box(
+                                            Modifier.size(if (phone) 52.dp else 56.dp).background(if (on) Color(0xFFFFD23F) else Color(0xFF16213A), CircleShape),
+                                            contentAlignment = Alignment.Center,
+                                        ) { ButtonIcon(b, if (on) Color.Black else Color.White) }
                                         Text(
-                                            b.label,
-                                            color = if (on || phone) Color.Black else Color.White,
-                                            fontSize = if (phone) 18.sp else 17.sp, fontWeight = if (on || phone) FontWeight.Bold else FontWeight.Normal,
-                                            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                            modifier = (if (phone) Modifier else Modifier.weight(1f))
-                                                .background(if (on || phone) Color(0xFFFFD23F) else Color(0xFF16213A), RoundedCornerShape(22.dp))
-                                                .then(if (phone) Modifier.clickable { b.act(); showName += 1 } else Modifier)
-                                                .padding(horizontal = if (phone) 16.dp else 8.dp, vertical = 9.dp),
+                                            b.label, color = if (on) Color(0xFFFFD23F) else soft, fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp),
                                         )
                                     }
                                 }
-                            } else if (!phone) {
-                                // The keys, spread across the width.
-                                Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    val keys = listOf("OK  buttons", "▲ ▼  channel") + (if (versions.size > 1) listOf("◀ ▶  picture") else emptyList()) + listOf("≡  record", "BACK  close")
-                                    keys.forEach { Text(it, color = soft, fontSize = 16.sp, maxLines = 1) }
+                            }
+                        } else {
+                            // The keys, spread across the width.
+                            Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                val keys = if (live) {
+                                    listOf("OK  buttons", "▲ ▼  channel") + (if (versions.size > 1) listOf("◀ ▶  picture") else emptyList()) + listOf("≡  record", "BACK  close")
+                                } else {
+                                    listOf("OK  buttons", "◀ ▶  wind (hold to go faster)", "BACK  close")
                                 }
+                                keys.forEach { Text(it, color = soft, fontSize = 16.sp, maxLines = 1) }
                             }
                         }
+                    }
+                    // LIVE: red while at live; behind live it says GO LIVE, and choosing it jumps to what is on now.
+                    val liveControl = buttons.lastOrNull { it.icon == Icon.LIVE }
+                    if (liveControl != null) {
                         Spacer(Modifier.width(16.dp))
-                        // LIVE: red while at live; behind live it says GO LIVE, and choosing it jumps to what is on now.
                         val atLive = !(isBehind || paused)
-                        val liveOn = !phone && controls && pick.coerceIn(0, buttons.size - 1) == buttons.lastIndex
-                        val liveControl = buttons.last()
+                        val liveOn = !phone && controls && pick.coerceIn(0, buttons.size - 1) == buttons.indexOf(liveControl)
                         Text(
                             liveControl.label,
-                            color = when { liveOn -> Color.Black; atLive -> Color.White; else -> Color.White },
+                            color = if (liveOn) Color.Black else Color.White,
                             fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1,
                             modifier = Modifier
                                 .background(
@@ -1056,4 +1230,54 @@ private fun Label(text: String, background: Color = Color(0xFF16213A), color: Co
         text, color = color, fontSize = 15.sp, maxLines = 1,
         modifier = Modifier.background(background, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
     )
+}
+
+/** The picture on one of the player's buttons, drawn plainly so it reads from across the room. */
+@Composable
+private fun ButtonIcon(b: Control, color: Color) {
+    when (b.icon) {
+        Icon.PICTURE, Icon.SUBS_ON, Icon.SUBS_OFF -> {
+            // A word in a box: the picture's quality, or CC for subtitles (crossed through when off).
+            val word = if (b.icon == Icon.PICTURE) b.badge.take(4).ifBlank { "HD" } else "CC"
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    word, color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                    modifier = Modifier.border(2.dp, color, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp),
+                )
+                if (b.icon == Icon.SUBS_OFF) {
+                    Canvas(Modifier.size(34.dp, 22.dp)) {
+                        drawLine(color, Offset(0f, size.height), Offset(size.width, 0f), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                    }
+                }
+            }
+        }
+        else -> Canvas(Modifier.size(26.dp)) {
+            val w = size.width
+            val h = size.height
+            fun triangle(left: Float, right: Float, pointRight: Boolean) {
+                val path = Path().apply {
+                    if (pointRight) { moveTo(left, h * 0.18f); lineTo(right, h * 0.5f); lineTo(left, h * 0.82f) }
+                    else { moveTo(right, h * 0.18f); lineTo(left, h * 0.5f); lineTo(right, h * 0.82f) }
+                    close()
+                }
+                drawPath(path, color)
+            }
+            when (b.icon) {
+                Icon.PLAY -> triangle(w * 0.24f, w * 0.86f, true)
+                Icon.PAUSE -> {
+                    drawRect(color, Offset(w * 0.22f, h * 0.18f), Size(w * 0.2f, h * 0.64f))
+                    drawRect(color, Offset(w * 0.58f, h * 0.18f), Size(w * 0.2f, h * 0.64f))
+                }
+                Icon.BACK -> { triangle(w * 0.02f, w * 0.5f, false); triangle(w * 0.48f, w * 0.96f, false) }
+                Icon.ON -> { triangle(w * 0.04f, w * 0.52f, true); triangle(w * 0.5f, w * 0.98f, true) }
+                Icon.FROM_START -> {
+                    drawRect(color, Offset(w * 0.14f, h * 0.18f), Size(w * 0.13f, h * 0.64f))
+                    triangle(w * 0.3f, w * 0.86f, false)
+                }
+                Icon.RECORD -> drawCircle(Color(0xFFE53935), radius = w * 0.34f)
+                Icon.STOP -> drawRect(Color(0xFFE53935), Offset(w * 0.2f, h * 0.2f), Size(w * 0.6f, h * 0.6f))
+                else -> {}
+            }
+        }
+    }
 }

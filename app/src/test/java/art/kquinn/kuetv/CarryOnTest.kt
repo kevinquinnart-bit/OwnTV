@@ -180,4 +180,34 @@ class CarryOnTest {
         assertEquals("Ireland free channels", FreeStore.label("https://iptv-org.github.io/iptv/countries/ie.m3u"))
         assertEquals("Every country's free channels (very large)", FreeStore.label("https://iptv-org.github.io/iptv/index.country.m3u"))
     }
+
+    @Test fun holdingAWindButtonGoesFasterTheLongerItIsHeld() {
+        assertEquals(1, windSpeed(0))
+        assertEquals(2, windSpeed(20))
+        assertEquals(4, windSpeed(50))
+        assertEquals(8, windSpeed(200))
+        assertEquals("45 s", windWords(-45_000))
+        assertEquals("2 min 30 s", windWords(150_000))
+        assertEquals("3 min", windWords(180_000))
+    }
+
+    @Test fun aStremioAccountsAddOnsAreSortedIntoUsableAndNot() {
+        val parse = { t: String -> com.google.gson.JsonParser.parseString(t).asJsonObject }
+        val streams = Stremio.entry(parse("""{"transportUrl":"https://torrents.example/manifest.json","manifest":{"name":"Torrents","resources":["stream"],"types":["movie"]}}"""))
+        assertEquals("Torrents", streams.name)
+        assertEquals("https://torrents.example", streams.addOn?.base)
+        assertEquals(true, streams.addOn?.streams)
+        // One that only runs on the computer with Stremio on it, and one with nothing KueTV uses, are left out with a reason.
+        val local = Stremio.entry(parse("""{"transportUrl":"http://127.0.0.1:11470/local-addon/manifest.json","manifest":{"name":"Local Files","resources":["stream"]}}"""))
+        assertNull(local.addOn)
+        assertEquals("only works on the computer running Stremio", local.why)
+        val useless = Stremio.entry(parse("""{"transportUrl":"https://meta.example/manifest.json","manifest":{"name":"Meta only","resources":["meta"]}}"""))
+        assertNull(useless.addOn)
+        assertEquals("Added 1: A. Already here: B. Left out: C (why).", Stremio.say(Stremio.Brought(listOf("A"), listOf("B"), listOf("C (why)"))))
+    }
+
+    @Test fun aHealthDetailKeepsItsLines() {
+        val c = listOf(Check("Add-on: Torrents", Check.DOUBT, "✓ Its description: answers\n! Streams: answers, but none"))
+        assertEquals(c, Health.decode(Health.encode(c)))
+    }
 }

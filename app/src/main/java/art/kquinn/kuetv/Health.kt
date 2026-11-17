@@ -41,13 +41,18 @@ object Health {
 
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("health", Context.MODE_PRIVATE)
 
-    fun encode(checks: List<Check>): String = checks.joinToString("\n") { listOf(it.state, it.name.replace(SEP, " "), it.detail.replace(SEP, " ").replace("\n", " ")).joinToString(SEP) }
+    private const val BREAK = "\u0002"
+
+    fun encode(checks: List<Check>): String = checks.joinToString("\n") { listOf(it.state, it.name.replace(SEP, " ").replace("\n", " "), it.detail.replace(SEP, " ").replace("\n", BREAK)).joinToString(SEP) }
 
     fun decode(text: String): List<Check> = text.split('\n').mapNotNull { line ->
         val p = line.split(SEP, limit = 3)
         val state = p.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
-        if (p.size < 3) null else Check(p[1], state, p[2])
+        if (p.size < 3) null else Check(p[1], state, p[2].replace(BREAK, "\n"))
     }
+
+    /** "✓ ", "! " or "✗ " for one part of a check. */
+    private fun mark(state: Int) = when (state) { Check.WORKING -> "✓ "; Check.DOUBT -> "! "; else -> "✗ " }
 
     /** "All 7 working", or "2 of 7 not working: the TV guide, Add-on: Subs". */
     fun summary(checks: List<Check>): String {
@@ -91,34 +96,67 @@ object Health {
 
     private fun JsonObject.count(name: String): Int = get(name)?.takeIf { it.isJsonArray }?.asJsonArray?.size() ?: 0
 
+    /** Tries one add-on, part by part: its description, then each thing it gives. One line for each part. */
     private fun addOn(addOn: AddOn, lang: Lang): Check {
         val name = addOnName(addOn)
         val (manifest, why) = ask(addOn.base + "/manifest.json")
-        if (manifest == null) return Check(name, Check.DEAD, "$why.")
-        val said = ArrayList<String>()
-        var state = Check.WORKING
+        if (manifest == null) return Check(name, Check.DEAD, mark(Check.DEAD) + "Its description: " + why.replaceFirstChar { it.lowercase() } + ". Nothing else in it can work.")
+        val parts = ArrayList<Pair<Int, String>>()
+        parts += Check.WORKING to "Its description: answers"
         if (addOn.streams) {
             val (film, filmWhy) = ask(addOn.base + "/stream/movie/" + TEST_FILM + ".json")
             val (episode, _) = ask(addOn.base + "/stream/series/" + TEST_EPISODE + ".json")
             val films = film?.count("streams") ?: 0
             val episodes = episode?.count("streams") ?: 0
-            when {
-                film == null && episode == null -> { state = Check.DEAD; said += "Asked for streams: " + filmWhy.replaceFirstChar { it.lowercase() } }
-                films + episodes == 0 -> { state = Check.DOUBT; said += "Answers, but gave no streams for a well-known film or episode" }
-                else -> said += "$films streams for a test film, $episodes for a test episode"
+            parts += when {
+                film == null && episode == null -> Check.DEAD to "Streams: " + filmWhy.replaceFirstChar { it.lowercase() }
+                films + episodes == 0 -> Check.DOUBT to "Streams: answers, but none for a well-known film or episode"
+                else -> Check.WORKING to "Streams: $films for a test film, $episodes for a test episode"
             }
         }
         if (addOn.subtitles) {
             val (subs, subsWhy) = ask(addOn.base + "/subtitles/movie/" + TEST_FILM + ".json")
             val all = subs?.get("subtitles")?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { runCatching { it.asJsonObject }.getOrNull() }.orEmpty()
             val mine = all.count { Langs.matches(lang, it.get("lang")?.takeIf { l -> l.isJsonPrimitive }?.asString.orEmpty()) }
-            when {
-                subs == null -> { state = Check.DEAD; said += "Asked for subtitles: " + subsWhy.replaceFirstChar { it.lowercase() } }
-                mine == 0 -> { state = maxOf(state, Check.DOUBT); said += "Answers, but no " + lang.name + " subtitles for a test film (" + all.size + " in other languages)" }
-                else -> said += mine.toString() + " " + lang.name + " subtitles for a test film"
+            parts += when {
+                subs == null -> Check.DEAD to "Subtitles: " + subsWhy.replaceFirstChar { it.lowercase() }
+                mine == 0 -> Check.DOUBT to "Subtitles: answers, but no " + lang.name + " ones for a test film (" + all.size + " in other languages)"
+                else -> Check.WORKING to "Subtitles: $mine in " + lang.name + " for a test film"
             }
         }
-        return Check(name, state, said.joinToString(". ") + ".")
+        for (written in addOn.catalogues.take(3)) {
+            val c = AddOns.catalogueOf(addOn, written) ?: continue
+            val page = runCatching { AddOns.page(c, 0) }.getOrNull()
+            parts += when {
+                page == null -> Check.DEAD to "Catalogue \"" + c.name + "\": doesn't answer"
+                page.isEmpty() -> Check.DOUBT to "Catalogue \"" + c.name + "\": empty"
+                else -> Check.WORKING to "Catalogue \"" + c.name + "\": " + page.size + " titles"
+            }
+        }
+        if (addOn.catalogues.size > 3) parts += Check.WORKING to (addOn.catalogues.size - 3).toString() + " more catalogues not tried"
+        // The add-on as a whole is as bad as its worst part.
+        return Check(name, parts.maxOf { it.first }, parts.joinToString("\n") { mark(it.first) + it.second })
+    }
+
+    /** The Stremio account, if signed in: does the sign-in still work, and is every usable add-on in KueTV? */
+    private fun stremio(context: Context): Check? {
+        val key = Stremio.key(context)
+        if (key.isEmpty()) return null
+        val name = "Stremio account"
+        val entries = try {
+            Stremio.collection(key)
+        } catch (e: AddOnProblem) {
+            return Check(name, Check.DEAD, mark(Check.DEAD) + e.message + " Sign in again in Settings › Films and series › Add-ons.")
+        }
+        val have = AddOnStore.all(context).mapTo(HashSet()) { it.base }
+        val usable = entries.filter { it.addOn != null }
+        val missing = usable.filter { it.addOn!!.base !in have }
+        val lines = ArrayList<String>()
+        lines += mark(Check.WORKING) + "Signed in as " + Stremio.email(context)
+        lines += if (missing.isEmpty()) mark(Check.WORKING) + "All " + usable.size + " usable add-ons are in KueTV"
+        else mark(Check.DOUBT) + "Not in KueTV yet: " + missing.joinToString(", ") { it.name } + ". Press \"Bring in my Stremio add-ons\"."
+        entries.filter { it.addOn == null }.forEach { lines += mark(Check.DOUBT) + it.name + ": " + it.why }
+        return Check(name, if (missing.isEmpty()) Check.WORKING else Check.DOUBT, lines.joinToString("\n"))
     }
 
     /**
@@ -184,6 +222,7 @@ object Health {
                     else -> Check("Film and series catalogues", Check.WORKING, catalogues.size.toString() + " catalogues. The " + tried.size + " tried all answered, " + pages.sumOf { it.second?.size ?: 0 } + " titles on their first pages.")
                 }
             }
+            stremio(context)?.let { out += it }
             for (a in AddOnStore.all(context)) out += addOn(a, lang)
             for (list in FreeStore.all(context)) {
                 out += try {

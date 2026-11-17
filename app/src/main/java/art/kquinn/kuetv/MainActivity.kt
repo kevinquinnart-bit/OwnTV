@@ -194,6 +194,7 @@ private fun App() {
     val favourites = remember { Favourites(context.applicationContext) }
     var driveSignIn by remember { mutableStateOf(false) }
     var addOnsOpen by remember { mutableStateOf(false) }
+    var stremioOpen by remember { mutableStateOf(false) }
     // 1: sending this device's set-up to another. 2: copying another device's set-up to here.
     var setUpShare by remember { mutableIntStateOf(0) }
     var reportOpen by remember { mutableStateOf(false) }
@@ -455,7 +456,8 @@ private fun App() {
                 Updates.offer = null
             })
             driveSignIn -> DriveSignInScreen(onDone = { driveSignIn = false })
-            addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false })
+            stremioOpen -> StremioScreen(onDone = { stremioOpen = false })
+            addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false }, onStremio = { stremioOpen = true })
             reportOpen -> ReportScreen(onDone = { reportOpen = false })
             aboutOpen -> AboutScreen(onDone = { aboutOpen = false })
             freeOpen -> FreeListsScreen(
@@ -1139,8 +1141,8 @@ private fun MainScreen(
                     val account = library.account
                     if (!phone) {
                         // What the film the remote is on is about, asked for once it has been stayed on for a moment.
-                        val about by produceState(onFilm?.let { state.filmAbout[it.id] }, onFilm?.id) {
-                            if (value != null || onFilm == null || account == null) return@produceState
+                        val about by keyedState(onFilm?.id, { onFilm?.let { state.filmAbout[it.id] } }) {
+                            if (value != null || onFilm == null || account == null) return@keyedState
                             delay(600)
                             value = withContext(Dispatchers.IO) { runCatching { Provider.filmAbout(account, onFilm.id) }.getOrDefault(About()) }.also { state.filmAbout[onFilm.id] = it }
                         }
@@ -2339,7 +2341,7 @@ private fun CopyChoiceScreen(name: String, onAddOn: () -> Unit, onProvider: () -
  * On a TV the link can be pasted on a phone instead: the TV shows an address to open on the same Wi-Fi.
  */
 @Composable
-private fun AddOnsScreen(onDone: () -> Unit) {
+private fun AddOnsScreen(onDone: () -> Unit, onStremio: () -> Unit) {
     val context = LocalContext.current
     val phone = LocalPhone.current
     val scope = rememberCoroutineScope()
@@ -2355,18 +2357,10 @@ private fun AddOnsScreen(onDone: () -> Unit) {
             busy = true
             said = null
             scope.launch {
-                said = try {
-                    val addOn = withContext(Dispatchers.IO) { AddOns.read(typed) }
-                    AddOnStore.add(context, addOn)
-                    link = ""
-                    "Added " + addOn.name + "."
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: AddOnProblem) {
-                    e.message
-                } catch (e: Exception) {
-                    "Something went wrong adding that. Try again."
-                }
+                // An add-on or a channel list, whichever the link is.
+                val result = withContext(Dispatchers.IO) { Links.add(context, typed) }
+                if (result.ok) link = ""
+                said = result.said
                 busy = false
             }
         }
@@ -2383,13 +2377,39 @@ private fun AddOnsScreen(onDone: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("Add-ons", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
-        Note("Add-ons find other places to play the films and series already in your lists. KueTV comes with none: you add your own by its link.")
+        Note("Add-ons find other places to play films and series, add subtitles, and bring more to browse.")
+        // The Stremio account: every add-on installed there, brought in at once.
+        Box(Modifier.padding(top = 6.dp)) { Heading("Stremio account") }
+        val stremioKey = remember(Stremio.changes) { Stremio.key(context) }
+        if (stremioKey.isEmpty()) {
+            FocusRow("Sign in to Stremio", onStremio, look = Look.OTHER, below = "Brings in every add-on you have installed in Stremio")
+        } else {
+            val bring: () -> Unit = {
+                if (!busy) {
+                    busy = true
+                    said = "Asking Stremio…"
+                    scope.launch {
+                        said = try {
+                            Stremio.say(withContext(Dispatchers.IO) { Stremio.bringIn(context) })
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: AddOnProblem) {
+                            e.message
+                        }
+                        busy = false
+                    }
+                }
+            }
+            FocusRow("Bring in my Stremio add-ons", bring, look = Look.OTHER, below = "Signed in as " + Stremio.email(context))
+            FocusRow("Sign out of Stremio", { Stremio.signOut(context); said = "Signed out of Stremio. The add-ons stay." }, look = Look.OTHER)
+        }
+        Box(Modifier.padding(top = 10.dp)) { Heading("Or add one by its link") }
         phoneAddress?.let { address ->
             Note("Easiest: on your phone, on the same Wi-Fi, open")
             Text(address, color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
             Note("and paste the link there.")
         }
-        Field("Add-on link", link, onDone = { add(link) }) { link = it }
+        Field("Add-on or channel list link", link, onDone = { add(link) }) { link = it }
         val first = remember { FocusRequester() }
         LaunchedEffect(Unit) {
             withFrameNanos { }
@@ -2544,8 +2564,8 @@ private fun livePlayable(group: ChannelGroup, account: Account?, serverAheadSec:
 @Composable
 private fun nowLine(account: Account?, channelId: String): String? {
     if (account == null) return null
-    val line by produceState(NowNext.cached(channelId)?.let { NowNext.line(it, System.currentTimeMillis()) }, channelId) {
-        if (value != null) return@produceState
+    val line by keyedState(channelId, { NowNext.cached(channelId)?.let { NowNext.line(it, System.currentTimeMillis()) } }) {
+        if (value != null) return@keyedState
         delay(500)
         value = try {
             NowNext.line(NowNext.get(account, channelId), System.currentTimeMillis())
@@ -2620,8 +2640,8 @@ private fun Pane.GuideGrid(
             itemsIndexed(shown, key = { _, c -> c.id }) { _, channel ->
                 val first = channel.versions[channel.start].channel
                 // null while it is being asked for. A row asks only after staying on screen for half a second.
-                val guide by produceState(NowNext.cached(first.id), first.id) {
-                    if (value != null) return@produceState
+                val guide by keyedState(first.id, { NowNext.cached(first.id) }) {
+                    if (value != null) return@keyedState
                     delay(500)
                     value = try {
                         NowNext.get(account, first.id)
@@ -3269,7 +3289,9 @@ private fun LivePreview(on: ChannelGroup?, account: Account?, modifier: Modifier
                 Text("Move onto a channel to watch it here.", color = Soft, fontSize = 18.sp, modifier = Modifier.padding(16.dp))
             }
         }
-        if (group != null) ProgrammeDetails(group, account, Modifier.fillMaxWidth().weight(1f))
+        // What is on follows the remote straight away; only the picture waits, to save connections.
+        val details = on ?: group
+        if (details != null) ProgrammeDetails(details, account, Modifier.fillMaxWidth().weight(1f))
     }
 }
 
@@ -3277,8 +3299,8 @@ private fun LivePreview(on: ChannelGroup?, account: Account?, modifier: Modifier
 @Composable
 private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: Modifier) {
     val id = group.versions[group.start].channel.id
-    val guide by produceState(NowNext.cached(id), id) {
-        if (value != null || account == null) return@produceState
+    val guide by keyedState(id, { NowNext.cached(id) }) {
+        if (value != null || account == null) return@keyedState
         value = try {
             NowNext.get(account, id)
         } catch (e: CancellationException) {
@@ -3293,6 +3315,8 @@ private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: M
     val onNow = listing.firstOrNull { it.startMs <= at && it.stopMs > at }
     val next = listing.firstOrNull { it.startMs >= (onNow?.stopMs ?: at) }
     Column(modifier.background(Panel, RoundedCornerShape(14.dp)).padding(horizontal = 16.dp, vertical = 12.dp)) {
+        // Whose details these are, so they can't be taken for another channel's.
+        Text(group.name, color = Soft, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 4.dp))
         when {
             account == null -> Text("Programme details need a login: server address, username and password.", color = Soft, fontSize = 17.sp)
             guide == null -> Text("Finding what is on…", color = Soft, fontSize = 17.sp)
@@ -3314,8 +3338,10 @@ private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: M
         if (next != null) {
             Text(
                 "Next · " + clock.format(java.util.Date(next.startMs)) + " · " + next.title.ifBlank { "No title" },
-                color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp),
+                color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp),
             )
+            // A line or two about what is on next.
+            if (next.description.isNotBlank()) Text(next.description, color = Soft, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -3466,29 +3492,14 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
     BackHandler { onDone() }
 
     val add: (String) -> Unit = { typed ->
-        val tidy = FreeStore.tidy(typed)
-        if (tidy == null) {
-            said = "Paste the list's link first."
-        } else if (!busy) {
+        if (!busy) {
             busy = true
             said = null
             scope.launch {
-                said = try {
-                    // The list is read before it is kept, so a dead link is never added.
-                    val found = withContext(Dispatchers.IO) { Provider.loadFree(tidy) }
-                    if (found.isEmpty()) "That list holds no channels."
-                    else {
-                        FreeStore.add(context, tidy)
-                        link = ""
-                        "Added. " + found.size + " channels. They are in Live TV under categories that start \"Free:\"."
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: ProviderProblem) {
-                    e.message
-                } catch (e: Exception) {
-                    "That link couldn't be read as a channel list."
-                }
+                // A channel list or an add-on, whichever the link is. It is read before it is kept, so a dead link is never added.
+                val result = withContext(Dispatchers.IO) { Links.add(context, typed) }
+                if (result.ok) link = ""
+                said = result.said
                 busy = false
             }
         }
@@ -3524,7 +3535,7 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
             Text(address, color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
             Note("and paste the link there.")
         }
-        Field("List link", link, onDone = { add(link) }) { link = it }
+        Field("Channel list or add-on link", link, onDone = { add(link) }) { link = it }
         val first = remember { FocusRequester() }
         LaunchedEffect(Unit) {
             withFrameNanos { }
@@ -3544,4 +3555,91 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
         }
         FocusRow("Done", onDone, look = Look.OTHER)
     }
+}
+
+// --------------------------------------------------------------------------------------------- Stremio
+
+/** Signing in to Stremio, then bringing in its add-ons. On a TV, the email and password can be typed on the phone. */
+@Composable
+private fun StremioScreen(onDone: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val scope = rememberCoroutineScope()
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var said by remember { mutableStateOf<String?>(null) }
+    var done by remember { mutableStateOf(false) }
+    var phoneAddress by remember { mutableStateOf<String?>(null) }
+    BackHandler { onDone() }
+    val go: (String, String) -> Unit = { e, p ->
+        if (!busy) {
+            busy = true
+            said = "Signing in…"
+            scope.launch {
+                said = try {
+                    withContext(Dispatchers.IO) {
+                        Stremio.signIn(context, e, p)
+                        "Signed in. " + Stremio.say(Stremio.bringIn(context))
+                    }.also { done = true; password = "" }
+                } catch (x: CancellationException) {
+                    throw x
+                } catch (x: AddOnProblem) {
+                    x.message
+                }
+                busy = false
+            }
+        }
+    }
+    DisposableEffect(Unit) {
+        val main = Handler(Looper.getMainLooper())
+        val server = if (phone) null else PhoneSetup(onStremio = { e, p -> main.post { go(e, p) } }) { _, _, _, _ -> }
+        phoneAddress = server?.start()
+        onDispose { server?.stop() }
+    }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(done) {
+        withFrameNanos { }
+        if (!phone) runCatching { first.requestFocus() }
+    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 36.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Sign in to Stremio", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Note("KueTV brings in every add-on installed in your Stremio account. Your password goes only to Stremio, and isn't kept.")
+        if (!done) {
+            phoneAddress?.let { address ->
+                Note("Easiest: on your phone, on the same Wi-Fi, open")
+                Text(address, color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+                Note("and type them there.")
+            }
+            Field("Stremio email", email) { email = it }
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Stremio password", fontSize = 16.sp) },
+                singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                keyboardActions = KeyboardActions(onDone = { go(email, password) }),
+                textStyle = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FocusRow(if (busy) "Signing in…" else "Sign in and bring in my add-ons", { go(email, password) }, Modifier.focusRequester(first), look = Look.MAIN)
+        }
+        said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
+        FocusRow("Done", onDone, if (done) Modifier.focusRequester(first) else Modifier, look = if (done) Look.MAIN else Look.OTHER)
+    }
+}
+
+/**
+ * Like produceState, but the starting value is worked out again for each [key]. (produceState keeps the
+ * first key's value when the key changes, so a check for "already have it" saw the old one and stopped.)
+ */
+@Composable
+private fun <T> keyedState(key: Any?, initial: () -> T, producer: suspend androidx.compose.runtime.MutableState<T>.() -> Unit): androidx.compose.runtime.State<T> {
+    val state = remember(key) { mutableStateOf(initial()) }
+    LaunchedEffect(key) { state.producer() }
+    return state
 }
