@@ -157,6 +157,8 @@ private class Control(
     val seek: Int = 0,
     /** Written inside the button, for the picture's quality. */
     val badge: String = "",
+    /** How things stand for this button, written just above it: "Paused", "No subtitles on this channel". */
+    val status: String = "",
     val act: () -> Unit,
 )
 
@@ -745,18 +747,35 @@ fun PlayerScreen(
             showName += 1
         }
     }
-    val subsButton = Control(if (subsOn) "Subtitles on" else "Subtitles off", if (subsOn) Icon.SUBS_ON else Icon.SUBS_OFF, act = toggleSubtitles)
+    val subsStatus = when {
+        !subsOn -> "Subtitles off"
+        subtitles == 1 -> "Subtitles showing"
+        subtitles == 3 -> "No " + lang.name + " subtitles"
+        subtitles == 2 -> if (live) "No subtitles on this channel" else "No subtitles"
+        else -> ""
+    }
+    val subsButton = Control(if (subsOn) "Subtitles on" else "Subtitles off", if (subsOn) Icon.SUBS_ON else Icon.SUBS_OFF, status = subsStatus, act = toggleSubtitles)
     val pictureButton = if (versions.size > 1 && stream in versions.indices) {
-        Control(if (live) "Picture" else "Stream " + (stream + 1) + " of " + versions.size, Icon.PICTURE, badge = versions[stream].label) { change((stream + 1) % versions.size, null) }
+        Control(
+            if (live) "Picture" else "Stream", Icon.PICTURE, badge = versions[stream].label,
+            status = versions[stream].label.take(12) + " · " + (stream + 1) + " of " + versions.size,
+        ) { change((stream + 1) % versions.size, null) }
     } else null
+    // Above the wind-back button: how far back the copy goes, or how far behind live the picture is.
+    val copyNow = shiftHolder[0]
+    val backStatus = when {
+        !shifting || copyNow == null -> ""
+        isBehind -> (if (behindMs < 60_000) (behindMs / 1000).toString() + " s" else (behindMs / 60_000).toString() + " min") + " behind live"
+        else -> { tick; "Can go back " + ((System.currentTimeMillis() - copyNow.oldestTime()) / 60_000) + " min" }
+    }
     // The buttons along the bottom of the box, left to right.
     val buttons = buildList {
         if (live) {
-            if (shifting) add(Control("Back 30 s", Icon.BACK, seek = -1) { windBy(-windStep) })
-            add(Control(if (paused) "Play" else "Pause", if (paused) Icon.PLAY else Icon.PAUSE, act = togglePause))
+            if (shifting) add(Control("Back 30 s", Icon.BACK, seek = -1, status = backStatus) { windBy(-windStep) })
+            add(Control(if (paused) "Play" else "Pause", if (paused) Icon.PLAY else Icon.PAUSE, status = if (paused) "Paused" else "", act = togglePause))
             if (shifting && isBehind) add(Control("On 30 s", Icon.ON, seek = 1) { windBy(windStep) })
             if (fromStart != null) add(Control("From the start", Icon.FROM_START, act = fromStart))
-            add(Control(if (recording) "Stop recording" else "Record", if (recording) Icon.STOP else Icon.RECORD, act = toggleRecording))
+            add(Control(if (recording) "Stop recording" else "Record", if (recording) Icon.STOP else Icon.RECORD, status = if (recording) "● Recording" else "", act = toggleRecording))
             pictureButton?.let { add(it) }
             add(subsButton)
             // Always last: LIVE, drawn on the right of the box. Behind live, it jumps to what is on now.
@@ -764,7 +783,7 @@ fun PlayerScreen(
         } else {
             add(Control("Start again", Icon.FROM_START) { player.seekTo(0); showName += 1 })
             add(Control("Back 10 s", Icon.BACK, seek = -1) { windBy(-windStep) })
-            add(Control(if (paused) "Play" else "Pause", if (paused) Icon.PLAY else Icon.PAUSE, act = togglePause))
+            add(Control(if (paused) "Play" else "Pause", if (paused) Icon.PLAY else Icon.PAUSE, status = if (paused) "Paused" else "", act = togglePause))
             add(Control("On 10 s", Icon.ON, seek = 1) { windBy(windStep) })
             pictureButton?.let { add(it) }
             add(subsButton)
@@ -992,9 +1011,18 @@ fun PlayerScreen(
                 val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
                 val soft = Color(0xFFB9C2D3)
                 // The name, with the time on the right.
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     Text("   " + clock.format(java.util.Date(clockNow)), color = soft, fontSize = 22.sp, maxLines = 1)
+                    Spacer(Modifier.weight(1f))
+                    // The keys, small, on a TV while the buttons aren't in use.
+                    if (!phone && !controls) {
+                        Text(
+                            if (live) "OK buttons  ·  ▲ ▼ channel" + (if (versions.size > 1) "  ·  ◀ ▶ picture" else "") + "  ·  ≡ record"
+                            else "OK buttons  ·  ◀ ▶ wind, hold to go faster",
+                            color = soft, fontSize = 14.sp, maxLines = 1,
+                        )
+                    }
                 }
                 if (onNow != null) {
                     Text(
@@ -1041,96 +1069,67 @@ fun PlayerScreen(
                 }
                 moved?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
                 note?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
-                // The bottom of the box, across its whole width: how it is playing and the buttons (or the keys)
-                // on the left, the LIVE button on the right.
-                Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.Bottom) {
-                    Column(Modifier.weight(1f)) {
-                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            // Winding with a button held down: how far, and how fast.
-                            if (held != 0L) Label((if (held < 0) "◀◀ back " else "▶▶ on ") + windWords(held) + if (heldSpeed > 1) "  ·  ×$heldSpeed" else "", Color(0xFFFFD23F), Color.Black)
-                            if (live && versions.size > 1 && stream in versions.indices) Label(versions[stream].label + " · version " + (stream + 1) + " of " + versions.size)
-                            if (subtitles != 0 || !subsOn) {
-                                Label(
-                                    when {
-                                        !subsOn -> "Subtitles off"
-                                        subtitles == 1 -> "Subtitles on"
-                                        subtitles == 3 -> "No " + lang.name + " subtitles"
-                                        else -> if (live) "No subtitles on this channel" else "No subtitles"
-                                    },
-                                )
-                            }
-                            if (paused) Label("Paused", Color(0xFFFFD23F), Color.Black)
-                            if (shifting && isBehind) {
-                                Label(if (behindMs < 60_000) (behindMs / 1000).toString() + " s behind live" else (behindMs / 60_000).toString() + " min behind live")
-                            } else if (live && !shifting && behind && !paused) {
-                                Label("Behind live")
-                            }
-                            val copy = shiftHolder[0]
-                            if (shifting && copy != null) {
-                                tick
-                                Label("Can go back " + ((System.currentTimeMillis() - copy.oldestTime()) / 60_000) + " min")
-                            }
-                            if (recording) Label("● Recording", Color(0xFFB3261E), Color.White)
-                        }
-                        if (controls || phone) {
-                            // The buttons: pictures with a word under each. On a TV they come up with OK and share the
-                            // width; on a phone they are always there to tap. The wind buttons can be held down.
-                            Row(
-                                Modifier.fillMaxWidth().padding(top = 12.dp).then(if (phone) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
-                                horizontalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 6.dp),
-                            ) {
-                                buttons.forEachIndexed { i, b ->
-                                    if (b.icon == Icon.LIVE) return@forEachIndexed
-                                    val on = !phone && i == pick.coerceIn(0, buttons.size - 1)
-                                    val touch = if (!phone) Modifier else Modifier.pointerInput(b.label) {
-                                        if (b.seek == 0) {
-                                            detectTapGestures(onTap = { b.act(); showName += 1 })
-                                        } else {
-                                            detectTapGestures(onPress = {
-                                                // Held: wind faster and faster until let go. A quick tap winds one step.
-                                                held = 0L
-                                                val winding = windScope.launch {
-                                                    delay(400)
-                                                    var n = 0
-                                                    while (true) {
-                                                        heldSpeed = windSpeed(n)
-                                                        held += b.seek * (windStep / 4) * heldSpeed
-                                                        showName += 1
-                                                        n++
-                                                        delay(50)
-                                                    }
-                                                }
-                                                tryAwaitRelease()
-                                                winding.cancel()
-                                                if (held == 0L) b.act() else windBy(held)
-                                                held = 0L
-                                            })
+                // The bottom of the box, across its whole width: the buttons, each with how things stand for it
+                // written just above it, and the LIVE button on the right. On a TV the remote moves onto them with OK.
+                Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
+                    Row(
+                        Modifier.weight(1f).then(if (phone) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
+                        horizontalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 6.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        buttons.forEachIndexed { i, b ->
+                            if (b.icon == Icon.LIVE) return@forEachIndexed
+                            val on = !phone && controls && i == pick.coerceIn(0, buttons.size - 1)
+                            val touch = if (!phone) Modifier else Modifier.pointerInput(b.label) {
+                                if (b.seek == 0) {
+                                    detectTapGestures(onTap = { b.act(); showName += 1 })
+                                } else {
+                                    detectTapGestures(onPress = {
+                                        // Held: wind faster and faster until let go. A quick tap winds one step.
+                                        held = 0L
+                                        val winding = windScope.launch {
+                                            delay(400)
+                                            var n = 0
+                                            while (true) {
+                                                heldSpeed = windSpeed(n)
+                                                held += b.seek * (windStep / 4) * heldSpeed
+                                                showName += 1
+                                                n++
+                                                delay(50)
+                                            }
                                         }
-                                    }
-                                    Column(
-                                        (if (phone) Modifier.width(76.dp) else Modifier.weight(1f)).then(touch),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                    ) {
-                                        Box(
-                                            Modifier.size(if (phone) 52.dp else 56.dp).background(if (on) Color(0xFFFFD23F) else Color(0xFF16213A), CircleShape),
-                                            contentAlignment = Alignment.Center,
-                                        ) { ButtonIcon(b, if (on) Color.Black else Color.White) }
+                                        tryAwaitRelease()
+                                        winding.cancel()
+                                        if (held == 0L) b.act() else windBy(held)
+                                        held = 0L
+                                    })
+                                }
+                            }
+                            // Winding with this button held: how far, and how fast, in place of its usual note.
+                            val winding = held != 0L && b.seek != 0 && (held < 0) == (b.seek < 0)
+                            val status = if (winding) windWords(held) + if (heldSpeed > 1) " ×$heldSpeed" else "" else b.status
+                            Column(
+                                (if (phone) Modifier.width(84.dp) else Modifier.weight(1f)).then(touch),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                // Kept the same height on every button, so the pictures line up.
+                                Box(Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.BottomCenter) {
+                                    if (status.isNotEmpty()) {
                                         Text(
-                                            b.label, color = if (on) Color(0xFFFFD23F) else soft, fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
-                                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp),
+                                            status, color = if (winding) Color(0xFFFFD23F) else if (b.icon == Icon.STOP) Color(0xFFFF6B5E) else soft,
+                                            fontSize = 12.sp, fontWeight = if (winding) FontWeight.Bold else FontWeight.Normal, lineHeight = 14.sp,
+                                            maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                         )
                                     }
                                 }
-                            }
-                        } else {
-                            // The keys, spread across the width.
-                            Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                val keys = if (live) {
-                                    listOf("OK  buttons", "▲ ▼  channel") + (if (versions.size > 1) listOf("◀ ▶  picture") else emptyList()) + listOf("≡  record", "BACK  close")
-                                } else {
-                                    listOf("OK  buttons", "◀ ▶  wind (hold to go faster)", "BACK  close")
-                                }
-                                keys.forEach { Text(it, color = soft, fontSize = 16.sp, maxLines = 1) }
+                                Box(
+                                    Modifier.padding(top = 4.dp).size(if (phone) 50.dp else 52.dp).background(if (on) Color(0xFFFFD23F) else Color(0xFF16213A), CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) { ButtonIcon(b, if (on) Color.Black else Color.White) }
+                                Text(
+                                    b.label, color = if (on) Color(0xFFFFD23F) else Color.White, fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp),
+                                )
                             }
                         }
                     }
@@ -1145,6 +1144,7 @@ fun PlayerScreen(
                             color = if (liveOn) Color.Black else Color.White,
                             fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1,
                             modifier = Modifier
+                                .padding(bottom = 22.dp)
                                 .background(
                                     when { liveOn -> Color(0xFFFFD23F); atLive -> Color(0xFFD32F2F); else -> Color(0xFF3A4660) },
                                     RoundedCornerShape(10.dp),

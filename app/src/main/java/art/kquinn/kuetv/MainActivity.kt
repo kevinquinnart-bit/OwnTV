@@ -915,6 +915,9 @@ private class BrowseState(saved: Map<String, String> = emptyMap()) {
     var liveOn by mutableStateOf<ChannelGroup?>(null)
 }
 
+/** The width of the picture column on the right of a TV screen: the same on every section, and on Home. */
+private val SIDE_WIDTH = 300.dp
+
 /** Which of the TV's side columns the remote is in: the menu, the categories, or the list beside them. */
 private enum class Zone { MENU, CATEGORIES, CONTENT }
 
@@ -1174,7 +1177,7 @@ private fun MainScreen(
                     // TV: the list takes the left half; the channel the remote is on plays top right, what is on it below.
                     Row(fill(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                         list(Modifier.weight(1f).fillMaxHeight())
-                        LivePreview(state.liveOn, library.account, Modifier.weight(1f).fillMaxHeight())
+                        LivePreview(state.liveOn, library.account, Modifier.width(SIDE_WIDTH).fillMaxHeight())
                     }
                 }
             }
@@ -1272,7 +1275,7 @@ private fun MainScreen(
                 )
                 Column(
                     // The rows can run past the bottom of a TV screen, so the list scrolls as the remote moves down it.
-                    (if (phone) fill() else Modifier.width(600.dp * LocalTextScale.current).fillMaxHeight()).verticalScroll(rememberScrollState()),
+                    fill().verticalScroll(rememberScrollState()),
                     verticalArrangement = if (phone) Arrangement.spacedBy(8.dp) else Arrangement.Top,
                 ) {
                     if (page == null) {
@@ -1407,13 +1410,19 @@ private fun MainScreen(
                 }
             }
             Pane(this, null).body()
+            // The small TV: on every section the same size and place as Live TV's, on the right, with what is on
+            // that channel underneath. Live TV draws its own, which follows the remote down the list.
+            val small = LastLive.item
+            val wanted = remember(Choices.changes) { Choices.smallTv(context) }
+            if (small != null && wanted && section != Section.LIVE) {
+                val group = remember(small.url, library) { library.groups.firstOrNull { g -> g.versions.any { it.channel.url == small.url } } }
+                Column(Modifier.width(SIDE_WIDTH).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MiniTv(small, Modifier.fillMaxWidth())
+                    if (group != null) ProgrammeDetails(group, library.account, Modifier.fillMaxWidth().weight(1f))
+                }
+            }
         }
         }
-        // The small TV: the channel last watched carries on in the bottom right corner while browsing.
-        // Live TV has its own, bigger picture beside the list, so it is left off there.
-        val small = LastLive.item
-        val wanted = remember(Choices.changes) { Choices.smallTv(context) }
-        if (small != null && wanted && section != Section.LIVE) MiniTv(small, Modifier.align(Alignment.BottomEnd).padding(24.dp))
         }
     }
 }
@@ -2951,25 +2960,27 @@ private fun HomeScreen(
             value = homeClock()
         }
     }
+    // TV: everything down to the section tiles stays put; the rows below scroll in their own space, so
+    // nothing is pushed off the top. The margins keep clear of the edges a TV can cut off.
     Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = if (phone) 8.dp else 40.dp, vertical = if (phone) 8.dp else 24.dp),
-        verticalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 18.dp),
+        modifier.fillMaxSize().then(if (phone) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+            .padding(horizontal = if (phone) 8.dp else 48.dp, vertical = if (phone) 8.dp else 28.dp),
+        verticalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 10.dp),
     ) {
         // The top: the app's name and the time, and on a TV the channel last watched, still playing.
         val last = LastLive.item
         val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
-                KueLogo(if (phone) 36.dp else 48.dp, if (phone) 30.sp else 40.sp)
-                Text(clock, color = Soft, fontSize = if (phone) 17.sp else 22.sp)
+                KueLogo(if (phone) 36.dp else 40.dp, if (phone) 30.sp else 32.sp)
+                Text(clock, color = Soft, fontSize = if (phone) 17.sp else 18.sp)
                 if (!phone && last != null && smallTv) {
-                    Spacer(Modifier.height(16.dp))
-                    Text("Last watched", color = Soft, fontSize = 16.sp)
-                    Text(last.name, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Last watched", color = Soft, fontSize = 14.sp)
+                    Text(last.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (!phone && last != null && smallTv) MiniTv(last, Modifier.width(320.dp))
+            if (!phone && last != null && smallTv) MiniTv(last, Modifier.width(SIDE_WIDTH))
         }
 
         if (phone) {
@@ -2989,22 +3000,26 @@ private fun HomeScreen(
         } else {
             // All the tiles are drawn, so the one to land on can always take focus, even when it is off to the right.
             Row(
-                Modifier.fillMaxWidth().focusRestorer().focusGroup().horizontalScroll(rememberScrollState()).padding(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                Modifier.fillMaxWidth().focusRestorer().focusGroup().horizontalScroll(rememberScrollState()).padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 tiles.forEach { s ->
                     Tile(
                         { onOpen(s) },
-                        Modifier.size(width = 190.dp, height = 136.dp).then(if (s == state.cameFrom) Modifier.focusRequester(homeFocus) else Modifier),
+                        Modifier.size(width = 150.dp, height = 100.dp).then(if (s == state.cameFrom) Modifier.focusRequester(homeFocus) else Modifier),
                     ) { focused ->
-                        SectionIcon(s, if (focused) Color.Black else Accent, Modifier.size(52.dp))
-                        Spacer(Modifier.height(10.dp))
-                        Text(s.label, color = if (focused) Color.Black else Color.White, fontSize = 20.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        SectionIcon(s, if (focused) Color.Black else Accent, Modifier.size(38.dp))
+                        Spacer(Modifier.height(6.dp))
+                        Text(s.label, color = if (focused) Color.Black else Color.White, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
         }
 
+        Column(
+            if (phone) Modifier else Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 6.dp),
+        ) {
         // Films and episodes left part way through: OK carries on from where it was left.
         val carry = remember(Positions.changes) { Positions.watching(context) }
         if (carry.isNotEmpty()) {
@@ -3013,16 +3028,17 @@ private fun HomeScreen(
             LazyRow(
                 Modifier.fillMaxWidth().focusRestorer(),
                 state = carryList,
-                contentPadding = PaddingValues(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 18.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 14.dp),
             ) {
                 itemsIndexed(carry, key = { _, w -> w.url }) { _, w ->
                     val key = "carry:" + w.url
                     Tile(
                         { onCarryOn(w) },
-                        Modifier.width(if (phone) 110.dp else 150.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                        Modifier.width(if (phone) 110.dp else 160.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
                     ) { focused ->
-                        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+                        // On a TV the same shape as the channel tiles, so each row is the same height.
+                        Box(Modifier.fillMaxWidth().aspectRatio(if (phone) 2f / 3f else 16f / 9f).clip(RoundedCornerShape(8.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
                             if (w.poster.isNotBlank()) AsyncImage(model = w.poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             else Text(w.name, color = Soft, fontSize = 14.sp, maxLines = 4, modifier = Modifier.padding(8.dp))
                         }
@@ -3053,14 +3069,14 @@ private fun HomeScreen(
             LazyRow(
                 Modifier.fillMaxWidth().focusRestorer(),
                 state = list,
-                contentPadding = PaddingValues(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 18.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 14.dp),
             ) {
                 itemsIndexed(channels, key = { _, c -> c.id }) { i, channel ->
                     val key = "home:" + channel.id
                     Tile(
                         { onPlay(playables, i, true, key) },
-                        Modifier.width(if (phone) 150.dp else 220.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                        Modifier.width(if (phone) 150.dp else 160.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
                         onHold = { favourites.toggleAll(channel.versions.map { Favourites.key(it.channel, login) }) },
                     ) { focused ->
                         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
@@ -3080,6 +3096,7 @@ private fun HomeScreen(
                 }
             }
         }
+    }
     }
 }
 
@@ -3372,10 +3389,12 @@ private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: M
             )
             Text(onNow.title.ifBlank { "No title" }, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (onNow.description.isNotBlank()) {
-                Text(
-                    onNow.description, color = Soft, fontSize = 16.sp, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false).padding(top = 4.dp),
-                )
+                // As many whole lines as fit above the next programme, the last ending in "…".
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f, fill = false).padding(top = 4.dp)) {
+                    val line = with(androidx.compose.ui.platform.LocalDensity.current) { 22.sp.toDp() }
+                    val lines = (maxHeight / line).toInt().coerceAtLeast(1)
+                    Text(onNow.description, color = Soft, fontSize = 16.sp, lineHeight = 22.sp, maxLines = lines, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
         if (next != null) {
@@ -3384,7 +3403,7 @@ private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: M
                 color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp),
             )
             // A line or two about what is on next.
-            if (next.description.isNotBlank()) Text(next.description, color = Soft, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (next.description.isNotBlank()) Text(next.description, color = Soft, fontSize = 15.sp, lineHeight = 20.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
