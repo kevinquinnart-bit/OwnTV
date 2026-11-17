@@ -254,7 +254,7 @@ private fun App() {
                     account = theirs
                 }
                 "favourites" -> favourites.replaceAll(lines.filter { it.isNotEmpty() }.toSet())
-                "favouriteOrder" -> favourites.setOrder(lines.filter { it.isNotEmpty() })
+                "favouriteOrder" -> favourites.putInOrder(lines.filter { it.isNotEmpty() })
                 "addOns" -> AddOnStore.replaceAll(context, lines.mapNotNull { AddOn.fromJson(it) })
                 "free" -> FreeStore.replaceAll(context, lines.filter { it.isNotBlank() })
                 "hidden" -> for (line in lines) {
@@ -1181,7 +1181,7 @@ private fun MainScreen(
                         if (from >= 0 && to in shown.indices && to != from) {
                             val list = shown.toMutableList()
                             list.add(to, list.removeAt(from))
-                            favourites.setOrder(list.map { Favourites.key(it.versions[0].channel, login) })
+                            favourites.putInOrder(list.map { Favourites.key(it.versions[0].channel, login) })
                         }
                     }
                     Column(m) {

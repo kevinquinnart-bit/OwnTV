@@ -253,7 +253,7 @@ class Favourites(context: Context) {
     var order by androidx.compose.runtime.mutableStateOf(prefs.getString("order", "").orEmpty().split('\n').filter { it.isNotEmpty() })
         private set
 
-    fun setOrder(keys: List<String>) {
+    fun putInOrder(keys: List<String>) {
         order = keys
         prefs.edit().putString("order", keys.joinToString("\n")).apply()
     }
