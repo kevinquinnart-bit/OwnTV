@@ -9,7 +9,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -233,6 +235,7 @@ private fun App() {
             mapOf(
                 "account" to listOf(a.server, a.user, a.pass, a.playlist).joinToString("\n"),
                 "favourites" to favourites.keys.sorted().joinToString("\n"),
+                "favouriteOrder" to favourites.order.joinToString("\n"),
                 "addOns" to AddOnStore.all(context).joinToString("\n") { it.toJson() },
                 "free" to FreeStore.all(context).joinToString("\n"),
                 "hidden" to kinds.joinToString("\n") { kind -> kind + "=" + Choices.hidden(context, kind).sorted().joinToString("\u0001") },
@@ -251,6 +254,7 @@ private fun App() {
                     account = theirs
                 }
                 "favourites" -> favourites.replaceAll(lines.filter { it.isNotEmpty() }.toSet())
+                "favouriteOrder" -> favourites.setOrder(lines.filter { it.isNotEmpty() })
                 "addOns" -> AddOnStore.replaceAll(context, lines.mapNotNull { AddOn.fromJson(it) })
                 "free" -> FreeStore.replaceAll(context, lines.filter { it.isNotBlank() })
                 "hidden" -> for (line in lines) {
@@ -574,6 +578,7 @@ private enum class Look { ROW, MAIN, OTHER }
  * On a phone a row that is a button is drawn as one, so it reads as something to tap.
  */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun FocusRow(
     text: String,
     onClick: () -> Unit,
@@ -622,9 +627,17 @@ private fun FocusRow(
                 fontSize = textSize,
                 fontWeight = if (focused || chosen || button == Look.MAIN) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                // Too long for the row: cut short with "…", and while the remote is on it, scrolls along to show the rest.
+                overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
+                modifier = if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200) else Modifier,
             )
-            if (below != null) Text(below, color = if (focused) Color.Black else Soft, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (below != null) {
+                Text(
+                    below, color = if (focused) Color.Black else Soft, fontSize = 16.sp, maxLines = 1,
+                    overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    modifier = if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200) else Modifier,
+                )
+            }
         }
     }
 }
@@ -908,6 +921,10 @@ private class BrowseState(saved: Map<String, String> = emptyMap()) {
     val catGrids = HashMap<String, LazyGridState>()
     val catDone = HashSet<String>()
 
+    /** Putting the favourite channels in order: on, and the channel picked up to move (null when none is). */
+    var sorting by mutableStateOf(false)
+    var picked by mutableStateOf<String?>(null)
+
     /** The part of Settings open: null for the list of parts. */
     var settingsPage by mutableStateOf<String?>(null)
 
@@ -1142,28 +1159,82 @@ private fun MainScreen(
                     }
                 }
                 // One row for each channel: its 4K, FHD, HD and SD versions are kept together behind it.
-                val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null) {
+                val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null, if (liveCategory == FAVOURITES) favourites.order else null) {
                     when (liveCategory) {
                         ALL -> library.groups
+                        // Favourites in the user's own order.
                         FAVOURITES -> library.groups.filter { g -> g.versions.any { Favourites.key(it.channel, login) in favs } }
+                            .sortedBy { g -> favourites.rank(g.versions.map { Favourites.key(it.channel, login) }) }
                         Library.FREE_ALL -> library.groups.filter { g -> g.versions.any { it.free } }
                         else -> library.groups.filter { g -> g.versions.any { it.channel.categoryId == liveCategory } }
                     }
                 }
                 val playables = remember(shown) { shown.map { livePlayable(it, library.account, library.serverAheadSec) } }
                 val list: @Composable (Modifier) -> Unit = { m ->
+                    // Favourites can be put in the user's own order: pick one up, move it, put it down.
+                    val sortable = liveCategory == FAVOURITES && shown.size > 1
+                    val sorting = sortable && state.sorting
+                    BackHandler(enabled = sorting) { state.sorting = false; state.picked = null }
+                    /** Moves the picked channel to [to] in the list, and keeps that as the order. */
+                    val moveTo: (Int) -> Unit = { to ->
+                        val from = shown.indexOfFirst { it.id == state.picked }
+                        if (from >= 0 && to in shown.indices && to != from) {
+                            val list = shown.toMutableList()
+                            list.add(to, list.removeAt(from))
+                            favourites.setOrder(list.map { Favourites.key(it.versions[0].channel, login) })
+                        }
+                    }
                     Column(m) {
-                        Heading((if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint())
-                        LazyColumn(Modifier.fillMaxSize().focusRestorer(), state = state.channelList) {
+                        Heading(
+                            when {
+                                sorting && state.picked != null -> "Moving. " + if (phone) "Tap where it should go." else "▲ ▼ to move it, OK to put it down."
+                                sorting -> (if (phone) "Tap a channel to pick it up." else "OK on a channel to pick it up.") + " Back when done."
+                                else -> (if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint()
+                            },
+                        )
+                        if (sortable) {
+                            FocusRow(
+                                if (sorting) "Done sorting" else "Sort my favourites",
+                                { state.sorting = !state.sorting; state.picked = null },
+                                look = if (sorting) Look.MAIN else Look.OTHER,
+                            )
+                        }
+                        LazyColumn(
+                            Modifier.fillMaxSize().focusRestorer().onPreviewKeyEvent { e ->
+                                // A picked-up channel moves with ▲ ▼, and the remote stays on it.
+                                if (!sorting || state.picked == null) return@onPreviewKeyEvent false
+                                if (e.key != Key.DirectionUp && e.key != Key.DirectionDown) return@onPreviewKeyEvent false
+                                if (e.type == KeyEventType.KeyDown) {
+                                    val from = shown.indexOfFirst { it.id == state.picked }
+                                    val to = from + if (e.key == Key.DirectionUp) -1 else 1
+                                    moveTo(to)
+                                    if (to in shown.indices && state.channelList.layoutInfo.visibleItemsInfo.let { v -> v.firstOrNull()?.index ?: 0 >= to || (v.lastOrNull()?.index ?: 0) <= to }) {
+                                        scope.launch { state.channelList.scrollToItem((to - 2).coerceAtLeast(0)) }
+                                    }
+                                }
+                                true
+                            },
+                            state = state.channelList,
+                        ) {
                             itemsIndexed(shown, key = { _, c -> c.id }) { i, channel ->
                                 val key = "live:" + channel.id
                                 val favKeys = channel.versions.map { Favourites.key(it.channel, login) }
+                                val isPicked = sorting && state.picked == channel.id
                                 FocusRow(
-                                    (if (favKeys.any { it in favs }) "★ " else "") + channel.name,
-                                    { onPlay(playables, i, true, key) },
+                                    (if (isPicked) "↕ " else if (favKeys.any { it in favs }) "★ " else "") + channel.name,
+                                    {
+                                        when {
+                                            !sorting -> onPlay(playables, i, true, key)
+                                            state.picked == null -> state.picked = channel.id
+                                            state.picked == channel.id -> state.picked = null
+                                            // Phone: tapping another channel puts the picked one there.
+                                            else -> { moveTo(i); state.picked = null }
+                                        }
+                                    },
                                     if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
+                                    chosen = isPicked,
                                     onFocus = { state.liveOn = channel },
-                                    onHold = { favourites.toggleAll(favKeys) },
+                                    onHold = if (sorting) null else ({ favourites.toggleAll(favKeys) }),
                                     leading = { Logo(channel.logo) },
                                     below = nowLine(library.account, channel.versions[channel.start].channel.id),
                                 )
@@ -1416,7 +1487,8 @@ private fun MainScreen(
             val wanted = remember(Choices.changes) { Choices.smallTv(context) }
             if (small != null && wanted && section != Section.LIVE) {
                 val group = remember(small.url, library) { library.groups.firstOrNull { g -> g.versions.any { it.channel.url == small.url } } }
-                Column(Modifier.width(SIDE_WIDTH).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                val narrow = section == Section.FILMS || section == Section.SERIES
+                Column(Modifier.width(if (narrow) 220.dp else SIDE_WIDTH).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     MiniTv(small, Modifier.fillMaxWidth())
                     if (group != null) ProgrammeDetails(group, library.account, Modifier.fillMaxWidth().weight(1f))
                 }
@@ -1455,7 +1527,8 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
         runCatching { chosenFocus.requestFocus() }
         panels.catsWanted = false
     }
-    if (panels != null && panels.zone == Zone.CONTENT) {
+    // Only one side column open at a time: the categories open only while the remote is in them.
+    if (panels != null && panels.zone != Zone.CATEGORIES) {
         Box(Modifier.fillMaxHeight().onFocusChanged { panels.catsHas = it.hasFocus }) {
             PanelEdge { panels.catsWanted = true; panels.zone = Zone.CATEGORIES }
         }
@@ -2952,7 +3025,10 @@ private fun HomeScreen(
     val login = library.account != null
     val favs = favourites.keys
     val tiles = Section.entries.filter { it != Section.HOME }
-    val channels = remember(library, favs) { library.groups.filter { g -> g.versions.any { Favourites.key(it.channel, login) in favs } } }
+    val channels = remember(library, favs, favourites.order) {
+        library.groups.filter { g -> g.versions.any { Favourites.key(it.channel, login) in favs } }
+            .sortedBy { g -> favourites.rank(g.versions.map { Favourites.key(it.channel, login) }) }
+    }
     val playables = remember(channels) { channels.map { livePlayable(it, library.account, library.serverAheadSec) } }
     val clock by produceState(homeClock()) {
         while (true) {
@@ -3389,11 +3465,20 @@ private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: M
             )
             Text(onNow.title.ifBlank { "No title" }, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (onNow.description.isNotBlank()) {
-                // As many whole lines as fit above the next programme, the last ending in "…".
-                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f, fill = false).padding(top = 4.dp)) {
-                    val line = with(androidx.compose.ui.platform.LocalDensity.current) { 22.sp.toDp() }
-                    val lines = (maxHeight / line).toInt().coerceAtLeast(1)
-                    Text(onNow.description, color = Soft, fontSize = 16.sp, lineHeight = 22.sp, maxLines = lines, overflow = TextOverflow.Ellipsis)
+                // Too long for the space above the next programme: it scrolls up slowly by itself, waits, and starts again.
+                val scroll = remember(onNow.description) { ScrollState(0) }
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                LaunchedEffect(onNow.description, scroll.maxValue) {
+                    while (scroll.maxValue > 0) {
+                        delay(4_000)
+                        val ms = (with(density) { scroll.maxValue.toDp().value } * 45).toInt().coerceAtLeast(1_000)
+                        scroll.animateScrollTo(scroll.maxValue, androidx.compose.animation.core.tween(ms, easing = androidx.compose.animation.core.LinearEasing))
+                        delay(3_000)
+                        scroll.scrollTo(0)
+                    }
+                }
+                Box(Modifier.weight(1f, fill = false).padding(top = 4.dp).verticalScroll(scroll, enabled = false)) {
+                    Text(onNow.description, color = Soft, fontSize = 16.sp, lineHeight = 22.sp)
                 }
             }
         }

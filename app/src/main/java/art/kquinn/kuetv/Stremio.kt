@@ -40,11 +40,13 @@ object Stremio {
         val answer = try {
             http.newCall(request).execute().use { r -> JsonParser.parseString(r.body.string()).asJsonObject }
         } catch (e: Exception) {
+            Report.note("Stremio", method + " couldn't be reached: " + e.javaClass.simpleName + " · " + e.message)
             throw AddOnProblem("Couldn't reach Stremio. Check the internet and try again.")
         }
         answer.get("result")?.takeIf { it.isJsonObject }?.let { return it.asJsonObject }
         val said = answer.get("error")?.takeIf { it.isJsonObject }?.asJsonObject?.get("message")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
-        throw AddOnProblem(if (method == "login") "Stremio didn't accept that email and password." else "Stremio refused: " + said.ifBlank { "no reason given" } + ".")
+        Report.note("Stremio", method + " refused: " + said.ifBlank { "no reason given" })
+        throw AddOnProblem("Stremio said: \"" + said.ifBlank { "no reason given" } + "\"" + if (method == "login") ". Check the email and password." else ".")
     }
 
     /** Signs in, and keeps the key Stremio gives back. Call off the main thread. */

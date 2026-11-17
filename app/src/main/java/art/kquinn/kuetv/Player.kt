@@ -300,6 +300,8 @@ fun PlayerScreen(
     var paused by remember { mutableStateOf(false) }
     // A wind button held down: how far it has wound so far (back is negative), and how fast.
     var held by remember { mutableLongStateOf(0L) }
+    // The channel and version the box was last brought up for.
+    val shownFor = remember { intArrayOf(-1, -1) }
     var heldSpeed by remember { mutableIntStateOf(1) }
     val heldKey = remember { arrayOfNulls<Key>(1) }
     val windScope = rememberCoroutineScope()
@@ -610,10 +612,15 @@ fun PlayerScreen(
         }
         player.setMediaItem(media.build())
         player.prepare()
-        // A new channel, or back to live: playing, and at live.
+        // A new channel, or back to live: playing, and at live. The box comes up for a new channel or version only,
+        // not each time the player reconnects to the same one by itself.
         player.playWhenReady = true
         behind = false
-        showName += 1
+        if (shownFor[0] != index || shownFor[1] != stream) {
+            shownFor[0] = index
+            shownFor[1] = stream
+            showName += 1
+        }
     }
     // The picture has stayed stopped too long, at the start or part way through: move down a version.
     LaunchedEffect(stopped, index, stream, reload) {
@@ -968,7 +975,7 @@ fun PlayerScreen(
         )
         if (phone && !live) {
             // A tap on the picture brings up the box and its buttons.
-            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { controls = true; showName += 1 }) })
+            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { if (nameVisible) { nameVisible = false; controls = false } else { controls = true; showName += 1 } }) })
         }
         if (phone && live) {
             // A clear sheet over the picture that takes the touches: swipe to change channel, tap for the name.
@@ -995,7 +1002,8 @@ fun PlayerScreen(
                             },
                         ) { _, by -> up += by.y; across += by.x }
                     }
-                    .pointerInput(Unit) { detectTapGestures(onTap = { showName += 1 }) },
+                    // A tap brings the box up, or puts it away when it is up.
+                    .pointerInput(Unit) { detectTapGestures(onTap = { if (nameVisible) { nameVisible = false; controls = false } else showName += 1 }) },
             )
         }
         val title = items.getOrNull(index)?.name.orEmpty()
@@ -1006,6 +1014,8 @@ fun PlayerScreen(
                     .padding(if (phone) 16.dp else 36.dp)
                     .fillMaxWidth()
                     .background(Color(0xE60E1626), RoundedCornerShape(14.dp))
+                    // Phone: a tap on the box (not on a button) puts it away.
+                    .then(if (phone) Modifier.pointerInput(Unit) { detectTapGestures(onTap = { nameVisible = false; controls = false }) } else Modifier)
                     .padding(horizontal = 22.dp, vertical = 16.dp),
             ) {
                 val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
@@ -1031,7 +1041,8 @@ fun PlayerScreen(
                     )
                     Text(onNow.title.ifBlank { "No title" }, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
                     // The whole description, not cut short.
-                    if (onNow.description.isNotBlank()) Text(onNow.description, color = soft, fontSize = 18.sp, modifier = Modifier.padding(top = 2.dp))
+                    // TV: the whole description. Phone: three lines, so the box doesn't fill the screen.
+                    if (onNow.description.isNotBlank()) Text(onNow.description, color = soft, fontSize = 18.sp, maxLines = if (phone) 3 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 }
                 if (nextUp != null) {
                     Text(
@@ -1039,7 +1050,7 @@ fun PlayerScreen(
                         color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp),
                     )
                     // A line or two about what is on next.
-                    if (nextUp.description.isNotBlank()) Text(nextUp.description, color = soft, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (nextUp.description.isNotBlank()) Text(nextUp.description, color = soft, fontSize = 16.sp, maxLines = if (phone) 1 else 2, overflow = TextOverflow.Ellipsis)
                 }
                 // A film, a recording or catch-up: how far through, along a bar. On a phone the bar can be tapped or dragged.
                 if (!live) {

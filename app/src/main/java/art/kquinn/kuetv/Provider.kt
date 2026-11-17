@@ -249,6 +249,18 @@ class Favourites(context: Context) {
         prefs.edit().putStringSet("keys", keys).apply()
     }
 
+    /** The user's own order for favourite channels, by their keys. Channels not in it come after, as listed. */
+    var order by androidx.compose.runtime.mutableStateOf(prefs.getString("order", "").orEmpty().split('\n').filter { it.isNotEmpty() })
+        private set
+
+    fun setOrder(keys: List<String>) {
+        order = keys
+        prefs.edit().putString("order", keys.joinToString("\n")).apply()
+    }
+
+    /** Where a channel comes in the user's order, from any of its versions' keys; past the end when not in it. */
+    fun rank(keys: List<String>): Int = keys.minOfOrNull { k -> order.indexOf(k).let { if (it < 0) Int.MAX_VALUE else it } } ?: Int.MAX_VALUE
+
     /** Takes on the favourites copied from another device, in place of the ones here. */
     fun replaceAll(all: Set<String>) {
         keys = all
