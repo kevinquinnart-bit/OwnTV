@@ -105,6 +105,35 @@ object Updates {
         return target
     }
 
+    /**
+     * The build number inside a downloaded app, read the way the installer reads it. Null when the file
+     * isn't a whole, readable app (cut short, or something other than an app).
+     */
+    fun buildInside(context: Context, file: File): Long? = runCatching {
+        val info = context.packageManager.getPackageArchiveInfo(file.path, 0) ?: return null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
+    }.getOrNull()
+
+    /**
+     * Downloads the newest app and checks it before the installer sees it: it must be a whole app with a
+     * newer build number than the one running. If not, it downloads once more. Each try is written in the
+     * Report, so a failed update shows what was downloaded. Throws when neither try gives a newer app.
+     */
+    fun downloadChecked(context: Context, progress: (Int) -> Unit): File {
+        repeat(2) { attempt ->
+            val file = download(context, progress)
+            val inside = buildInside(context, file)
+            Report.note(
+                "Updates",
+                "try " + (attempt + 1) + ": downloaded " + file.length() + " bytes, build " + (inside?.toString() ?: "unreadable") +
+                    ", this is build " + BuildConfig.VERSION_CODE,
+            )
+            if (inside != null && inside > BuildConfig.VERSION_CODE) return file
+            file.delete()
+        }
+        throw java.io.IOException("the download wasn't a newer, whole app, twice")
+    }
+
     /** Whether the device lets KueTV put apps on. Fire TV and phones ask for this once, in their own settings. */
     fun mayInstall(context: Context): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
 

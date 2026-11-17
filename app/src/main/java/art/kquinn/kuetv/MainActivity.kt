@@ -995,17 +995,24 @@ private val LocalPanels = staticCompositionLocalOf<Panels?> { null }
 
 /** A folded side column: a thin edge. Moving onto it with the remote opens the column. */
 @Composable
-private fun PanelEdge(onLanded: () -> Unit) {
+private fun PanelEdge(label: String, onLanded: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Box(
-        Modifier.width(18.dp).fillMaxHeight()
+    // The folded column's name runs down the edge, a letter to a line, so it says what opens there.
+    Column(
+        Modifier.width(28.dp).fillMaxHeight()
             .background(if (focused) Accent else Panel, RoundedCornerShape(10.dp))
             .onFocusChanged {
                 if (it.isFocused && !focused) onLanded()
                 focused = it.isFocused
             }
-            .focusable(),
-    )
+            .focusable()
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        for (letter in label.uppercase()) {
+            Text(letter.toString(), color = if (focused) Color.Black else Soft, fontSize = 13.sp, fontWeight = FontWeight.Bold, lineHeight = 15.sp, maxLines = 1)
+        }
+    }
 }
 
 /** The KueTV mark and name. */
@@ -1507,7 +1514,7 @@ private fun MainScreen(
             // The menu: open while the remote is in it, otherwise folded to an edge.
             Row(Modifier.fillMaxHeight().onFocusChanged { panels.menuHas = it.hasFocus }) {
                 // The folded edge stays until the remote is in the opened menu, so the remote is never left on nothing.
-                if (panels.zone != Zone.MENU) PanelEdge { panels.menuWanted = true }
+                if (panels.zone != Zone.MENU) PanelEdge("Menu") { panels.menuWanted = true }
                 if (panels.zone == Zone.MENU || panels.menuWanted) {
                     // Every entry fits on the screen: the entries share the height, so the menu never scrolls.
                     Column(
@@ -1592,7 +1599,7 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
     val folded = panels != null && panels.zone != Zone.CATEGORIES
     if (folded) {
         Box(Modifier.fillMaxHeight().onFocusChanged { panels!!.catsHas = it.hasFocus }) {
-            PanelEdge { panels!!.catsWanted = true }
+            PanelEdge("Categories") { panels!!.catsWanted = true }
         }
     }
     if (folded && !panels!!.catsWanted) return
@@ -3687,7 +3694,7 @@ private fun UpdateNow(latest: Updates.Latest, modifier: Modifier = Modifier) {
                 said = "Downloading · 0%"
                 scope.launch {
                     try {
-                        val file = withContext(Dispatchers.IO) { Updates.download(context) { p -> scope.launch { said = "Downloading · $p%" } } }
+                        val file = withContext(Dispatchers.IO) { Updates.downloadChecked(context) { p -> scope.launch { said = "Downloading · $p%" } } }
                         said = "Downloaded. Choose Install on the next screen."
                         Report.note("Updates", "downloaded " + latest.name + ", handing to the installer")
                         Updates.install(context, file)

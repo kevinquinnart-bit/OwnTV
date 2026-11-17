@@ -75,4 +75,21 @@ class VersionsTest {
         assertEquals(listOf("HD", "HD", "SD"), group.versions.map { it.label })
         assertEquals(listOf("1", "2", "3"), group.versions.map { it.channel.id })
     }
+
+    @Test fun nowTvIsTheSameChannelByAnotherRoute() {
+        val groups = Versions.group(
+            listOf(
+                channel("Sky Sports News | NowTV"), channel("Sky Sports News"),
+                channel("Sky Sports Main Event | NowTV"), channel("Sky Sports Main Event"),
+                channel("Sky Sports Premier League | Now TV"), channel("Sky Sports Premier League HD"),
+                channel("Sky Sports F1 | NowTV"), channel("NOW 80s"), channel("Now TV"),
+            ),
+        )
+        assertEquals(
+            listOf("Sky Sports News", "Sky Sports Main Event", "Sky Sports Premier League", "Sky Sports F1", "NOW 80s", "Now TV"),
+            groups.map { it.name },
+        )
+        assertEquals(2, groups[0].versions.size)
+        assertEquals("Standard Now TV", Versions.read("Sky Sports News | NowTV").label)
+    }
 }

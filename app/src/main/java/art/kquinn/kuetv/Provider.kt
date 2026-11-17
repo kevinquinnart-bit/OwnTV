@@ -168,9 +168,9 @@ object Versions {
     private const val RANK_PLAIN = 2
     private const val RANK_SD = 1
 
-    /** The words in a channel's name that say which version it is, standing on their own. */
+    /** The words in a channel's name that say which version it is, standing on their own. Now TV counts as one. */
     private val word = Regex(
-        "(?<![A-Za-z0-9])(4K|UHD|2160P|FHD|FULL ?HD|1080[PI]|HD|720P|SD|576[PI]|480P|HEVC|H\\.?265|[56]0 ?FPS)(?![A-Za-z0-9])",
+        "(?<![A-Za-z0-9])(4K|UHD|2160P|FHD|FULL ?HD|1080[PI]|HD|720P|SD|576[PI]|480P|HEVC|H\\.?265|[56]0 ?FPS|NOW ?TV)(?![A-Za-z0-9])",
         RegexOption.IGNORE_CASE,
     )
     private val emptyBrackets = Regex("[(\\[]\\s*[)\\]]")
@@ -197,7 +197,8 @@ object Versions {
                 else -> null
             }
             if (found == null) {
-                val tag = if (w.endsWith("FPS")) w.dropLast(3) + "fps" else "HEVC"
+                // "| NowTV" is the same channel by another route, so it joins the row as one more version.
+                val tag = if (w.endsWith("FPS")) w.dropLast(3) + "fps" else if (w == "NOWTV") "Now TV" else "HEVC"
                 if (!extra.contains(tag)) extra += " $tag"
             } else if (quality == "Standard" || found.first > rank) {
                 rank = found.first

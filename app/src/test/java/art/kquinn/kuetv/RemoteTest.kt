@@ -51,6 +51,11 @@ class RemoteTest {
     private fun remoteOn(text: String) = rule.onAllNodes(isFocused() and (hasText(text, substring = true) or hasAnyDescendant(hasText(text, substring = true))))
         .fetchSemanticsNodes().isNotEmpty()
 
+    /** The letters running down the folded edges, left to right, run together: "MENU" when the menu is folded. */
+    private fun edges(): String = rule.onAllNodes(androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Text), useUnmergedTree = true)
+        .fetchSemanticsNodes().mapNotNull { n -> n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString("")?.takeIf { it.length == 1 } }
+        .joinToString("")
+
     /** Where the remote is, for the message when a step fails. */
     private fun where(): String = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { n ->
         (n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString(" ") ?: "something with no words") +
@@ -67,6 +72,7 @@ class RemoteTest {
         assertTrue("▶ from the menu opens the categories · remote on " + where(), categoriesOpen())
         assertFalse("▶ from the menu folds the menu · remote on " + where(), menuOpen())
         assertTrue("▶ from the menu puts the remote on the category being shown (All) · remote on " + where(), remoteOn("All"))
+        assertTrue("the folded menu's edge reads MENU · edges read " + edges(), edges().contains("MENU"))
 
         press(Key.DirectionLeft)
         assertTrue("◀ from the categories opens the menu · remote on " + where(), menuOpen())
@@ -78,6 +84,7 @@ class RemoteTest {
         assertFalse("▶ into the channel list folds the categories · remote on " + where(), categoriesOpen())
         assertFalse("▶ into the channel list keeps the menu folded · remote on " + where(), menuOpen())
         assertTrue("▶ into the channel list puts the remote on a channel · remote on " + where(), remoteOn("BBC One") || remoteOn("Sky Sports"))
+        assertTrue("both folded edges say what they are · edges read " + edges(), edges().contains("MENU") && edges().contains("CATEGORIES"))
 
         press(Key.DirectionLeft)
         assertTrue("◀ from the channel list opens the categories · remote on " + where(), categoriesOpen())
