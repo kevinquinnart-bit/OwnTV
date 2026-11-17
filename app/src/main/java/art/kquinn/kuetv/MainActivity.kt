@@ -1124,6 +1124,9 @@ private fun MainScreen(
         withFrameNanos { }
         withFrameNanos { }
         runCatching { menuFocus.requestFocus() }
+        // The remote is in the menu now: say so before the "opening" mark goes, or for a moment the menu
+        // counts as shut, is taken away with the remote on it, and the remote is lost.
+        panels.zone = Zone.MENU
         panels.menuWanted = false
     }
     // Back from any section goes to Home. A page open inside a section (a channel's guide, a series) closes first.
@@ -1535,6 +1538,8 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
         withFrameNanos { }
         withFrameNanos { }
         runCatching { chosenFocus.requestFocus() }
+        // The remote is in the categories now: say so before the "opening" mark goes (see the menu's own).
+        panels.zone = Zone.CATEGORIES
         panels.catsWanted = false
     }
     if (panels != null) {
@@ -3830,4 +3835,11 @@ private fun <T> keyedState(key: Any?, initial: () -> T, producer: suspend androi
     val state = remember(key) { mutableStateOf(initial()) }
     LaunchedEffect(key) { state.producer() }
     return state
+}
+
+/** For the automatic checks only: Live TV as a TV shows it, with the lists given. */
+@Composable
+internal fun LiveTvForChecks(library: Library, favourites: Favourites) {
+    val state = remember { BrowseState().apply { section = Section.LIVE } }
+    MainScreen(library, state, favourites, { _, _, _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
 }
