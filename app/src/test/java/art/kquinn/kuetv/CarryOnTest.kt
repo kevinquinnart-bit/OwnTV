@@ -176,8 +176,9 @@ class CarryOnTest {
     }
 
     @Test fun readyMadeListsHavePlainNames() {
-        assertEquals("UK free channels", FreeStore.label("https://iptv-org.github.io/iptv/countries/uk.m3u"))
-        assertEquals("Ireland free channels", FreeStore.label("https://iptv-org.github.io/iptv/countries/ie.m3u"))
+        assertEquals("UK free channels (iptv-org)", FreeStore.label("https://iptv-org.github.io/iptv/countries/uk.m3u"))
+        assertEquals("Ireland free channels (iptv-org)", FreeStore.label("https://iptv-org.github.io/iptv/countries/ie.m3u"))
+        assertEquals("UK and Ireland free channels (Free-TV)", FreeStore.label("https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8#groups=UK,Ireland"))
         assertEquals("Every country's free channels (very large)", FreeStore.label("https://iptv-org.github.io/iptv/index.country.m3u"))
     }
 
