@@ -501,6 +501,7 @@ private fun App() {
                 onAbout = { aboutOpen = true },
                 onHealth = { healthOpen = true },
                 onFree = { freeOpen = true },
+                onStremio = { stremioOpen = true },
             )
         }
         if (reminder != null) ReminderPopUp(reminder, onWatch = watchReminded, onClose = { Reminders.showing = null }, Modifier.align(Alignment.TopCenter))
@@ -610,7 +611,8 @@ private fun FocusRow(
             .press(onClick, onHold)
             .padding(horizontal = 16.dp, vertical = padV),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (button == Look.ROW) Arrangement.spacedBy(14.dp) else Arrangement.Center,
+        // Only the main yellow button is centred; every other row lines up on the left, so a list of them is even.
+        horizontalArrangement = if (button == Look.MAIN) Arrangement.Center else Arrangement.spacedBy(14.dp),
     ) {
         leading?.invoke()
         Column {
@@ -781,17 +783,74 @@ private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Un
 }
 
 @Composable
-private fun Field(label: String, value: String, onDone: (() -> Unit)? = null, onChange: (String) -> Unit) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
-        label = { Text(label, fontSize = 16.sp) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Done else ImeAction.Next),
-        keyboardActions = if (onDone != null) KeyboardActions(onDone = { onDone() }) else KeyboardActions.Default,
-        textStyle = MaterialTheme.typography.titleLarge,
-        modifier = Modifier.fillMaxWidth(),
-    )
+private fun Field(
+    label: String,
+    value: String,
+    onDone: (() -> Unit)? = null,
+    /** A password: shown as dots. */
+    secret: Boolean = false,
+    /** Put on the row a TV shows, so a screen can land the remote on it. */
+    modifier: Modifier = Modifier,
+    onChange: (String) -> Unit,
+) {
+    val box: @Composable (Modifier, () -> Unit) -> Unit = { m, finish ->
+        OutlinedTextField(
+            value = value,
+            onValueChange = onChange,
+            label = { Text(label, fontSize = 16.sp) },
+            singleLine = true,
+            visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+            keyboardOptions = KeyboardOptions(
+                imeAction = if (onDone != null || !LocalPhone.current) ImeAction.Done else ImeAction.Next,
+                keyboardType = if (secret) androidx.compose.ui.text.input.KeyboardType.Password else androidx.compose.ui.text.input.KeyboardType.Text,
+            ),
+            keyboardActions = KeyboardActions(onDone = { finish(); onDone?.invoke() }),
+            textStyle = MaterialTheme.typography.titleLarge,
+            modifier = m.fillMaxWidth(),
+        )
+    }
+    if (LocalPhone.current) {
+        box(Modifier) {}
+        return
+    }
+    // TV: a row showing what has been typed. OK opens the box and the keyboard; Done, Back, up or down closes it.
+    var editing by remember { mutableStateOf(false) }
+    val row = remember { FocusRequester() }
+    val input = remember { FocusRequester() }
+    val backToRow = remember { booleanArrayOf(false) }
+    if (!editing) {
+        FocusRow(
+            label + ": " + when { value.isEmpty() -> "not typed yet"; secret -> "•".repeat(minOf(value.length, 12)); else -> value },
+            { editing = true },
+            modifier.focusRequester(row),
+            look = Look.OTHER,
+            below = "OK to type",
+        )
+        LaunchedEffect(Unit) {
+            if (!backToRow[0]) return@LaunchedEffect
+            backToRow[0] = false
+            withFrameNanos { }
+            runCatching { row.requestFocus() }
+        }
+    } else {
+        val finish: () -> Unit = {
+            backToRow[0] = true
+            editing = false
+        }
+        box(
+            Modifier.focusRequester(input).onPreviewKeyEvent { e ->
+                when (e.key) {
+                    Key.Back, Key.DirectionUp, Key.DirectionDown -> { if (e.type == KeyEventType.KeyUp) finish(); true }
+                    else -> false
+                }
+            },
+            finish,
+        )
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            runCatching { input.requestFocus() }
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------------- main
@@ -946,6 +1005,7 @@ private fun MainScreen(
     onAbout: () -> Unit,
     onHealth: () -> Unit,
     onFree: () -> Unit,
+    onStremio: () -> Unit,
 ) {
     val context = LocalContext.current
     // The category in each section, kept for the next time the app opens.
@@ -1204,7 +1264,7 @@ private fun MainScreen(
                 val paired = remember(Sync.changes) { Sync.key(context).isNotEmpty() }
                 val parts = listOf(
                     "Your provider" to "Provider details, reload, categories, free channel lists ($freeCount)",
-                    "Films and series" to "Add-ons (" + addOns.size + ")",
+                    "Films and series" to "Add-ons (" + addOns.size + "), Stremio account",
                     "Watching" to "Subtitles, pause and rewind, text size",
                     "Recordings" to "Google Drive: " + when { !drive.isSetUp -> "not set up"; drive.signedIn -> "signed in"; else -> "not signed in" },
                     "TV and phone" to "Copy the set-up, keep in step: " + if (paired) "on" else "off",
@@ -1241,6 +1301,8 @@ private fun MainScreen(
                         }
                         "Films and series" -> {
                             FocusRow("Add-ons (" + addOns.size + ")", onAddOns, first(), look = Look.OTHER, below = "More streams, subtitles and catalogues")
+                            val stremioEmail = remember(Stremio.changes) { if (Stremio.key(context).isEmpty()) "" else Stremio.email(context) }
+                            FocusRow("Stremio account", onStremio, look = Look.OTHER, below = if (stremioEmail.isEmpty()) "Not signed in" else "Signed in as $stremioEmail")
                         }
                         "Watching" -> {
                             sub("Subtitles")
@@ -2379,30 +2441,11 @@ private fun AddOnsScreen(onDone: () -> Unit, onStremio: () -> Unit) {
         Text("Add-ons", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Note("Add-ons find other places to play films and series, add subtitles, and bring more to browse.")
         // The Stremio account: every add-on installed there, brought in at once.
-        Box(Modifier.padding(top = 6.dp)) { Heading("Stremio account") }
-        val stremioKey = remember(Stremio.changes) { Stremio.key(context) }
-        if (stremioKey.isEmpty()) {
-            FocusRow("Sign in to Stremio", onStremio, look = Look.OTHER, below = "Brings in every add-on you have installed in Stremio")
-        } else {
-            val bring: () -> Unit = {
-                if (!busy) {
-                    busy = true
-                    said = "Asking Stremio…"
-                    scope.launch {
-                        said = try {
-                            Stremio.say(withContext(Dispatchers.IO) { Stremio.bringIn(context) })
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: AddOnProblem) {
-                            e.message
-                        }
-                        busy = false
-                    }
-                }
-            }
-            FocusRow("Bring in my Stremio add-ons", bring, look = Look.OTHER, below = "Signed in as " + Stremio.email(context))
-            FocusRow("Sign out of Stremio", { Stremio.signOut(context); said = "Signed out of Stremio. The add-ons stay." }, look = Look.OTHER)
-        }
+        val stremioEmail = remember(Stremio.changes) { if (Stremio.key(context).isEmpty()) "" else Stremio.email(context) }
+        FocusRow(
+            "Stremio account", onStremio, look = Look.OTHER,
+            below = if (stremioEmail.isEmpty()) "Sign in to bring in every add-on you have in Stremio" else "Signed in as $stremioEmail",
+        )
         Box(Modifier.padding(top = 10.dp)) { Heading("Or add one by its link") }
         phoneAddress?.let { address ->
             Note("Easiest: on your phone, on the same Wi-Fi, open")
@@ -3559,29 +3602,29 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
 
 // --------------------------------------------------------------------------------------------- Stremio
 
-/** Signing in to Stremio, then bringing in its add-ons. On a TV, the email and password can be typed on the phone. */
+/**
+ * The Stremio account, in one place. Signed out: sign in, with the email and password typed here or on the
+ * phone. Signed in: bring the add-ons in again, or sign out.
+ */
 @Composable
 private fun StremioScreen(onDone: () -> Unit) {
     val context = LocalContext.current
     val phone = LocalPhone.current
     val scope = rememberCoroutineScope()
+    val key = remember(Stremio.changes) { Stremio.key(context) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var said by remember { mutableStateOf<String?>(null) }
-    var done by remember { mutableStateOf(false) }
     var phoneAddress by remember { mutableStateOf<String?>(null) }
     BackHandler { onDone() }
-    val go: (String, String) -> Unit = { e, p ->
+    val bring: () -> Unit = {
         if (!busy) {
             busy = true
-            said = "Signing in…"
+            said = "Asking Stremio…"
             scope.launch {
                 said = try {
-                    withContext(Dispatchers.IO) {
-                        Stremio.signIn(context, e, p)
-                        "Signed in. " + Stremio.say(Stremio.bringIn(context))
-                    }.also { done = true; password = "" }
+                    Stremio.say(withContext(Dispatchers.IO) { Stremio.bringIn(context) })
                 } catch (x: CancellationException) {
                     throw x
                 } catch (x: AddOnProblem) {
@@ -3591,14 +3634,35 @@ private fun StremioScreen(onDone: () -> Unit) {
             }
         }
     }
-    DisposableEffect(Unit) {
+    val signIn: (String, String) -> Unit = { e, p ->
+        if (!busy) {
+            busy = true
+            said = "Signing in…"
+            scope.launch {
+                said = try {
+                    withContext(Dispatchers.IO) {
+                        Stremio.signIn(context, e, p)
+                        "Signed in. " + Stremio.say(Stremio.bringIn(context))
+                    }.also { password = "" }
+                } catch (x: CancellationException) {
+                    throw x
+                } catch (x: AddOnProblem) {
+                    x.message
+                }
+                busy = false
+            }
+        }
+    }
+    // While signed out, a TV also answers the phone, so the email and password can be typed there.
+    DisposableEffect(key.isEmpty()) {
         val main = Handler(Looper.getMainLooper())
-        val server = if (phone) null else PhoneSetup(onStremio = { e, p -> main.post { go(e, p) } }) { _, _, _, _ -> }
+        val server = if (phone || key.isNotEmpty()) null else PhoneSetup(onStremio = { e, p -> main.post { signIn(e, p) } }) { _, _, _, _ -> }
         phoneAddress = server?.start()
         onDispose { server?.stop() }
     }
     val first = remember { FocusRequester() }
-    LaunchedEffect(done) {
+    LaunchedEffect(key) {
+        withFrameNanos { }
         withFrameNanos { }
         if (!phone) runCatching { first.requestFocus() }
     }
@@ -3606,30 +3670,23 @@ private fun StremioScreen(onDone: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 36.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("Sign in to Stremio", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
-        Note("KueTV brings in every add-on installed in your Stremio account. Your password goes only to Stremio, and isn't kept.")
-        if (!done) {
+        Text("Stremio account", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        if (key.isNotEmpty()) {
+            Note("Signed in as " + Stremio.email(context) + ".")
+            FocusRow(if (busy) "Asking Stremio…" else "Bring in my Stremio add-ons", bring, Modifier.focusRequester(first), look = Look.MAIN)
+            said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
+            FocusRow("Sign out of Stremio", { Stremio.signOut(context); said = "Signed out. The add-ons stay." }, look = Look.OTHER, below = "The add-ons already brought in stay")
+        } else {
+            Note("Sign in once, and KueTV brings in every add-on you have installed in Stremio. Your password goes only to Stremio and isn't kept.")
             phoneAddress?.let { address ->
-                Note("Easiest: on your phone, on the same Wi-Fi, open")
-                Text(address, color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
-                Note("and type them there.")
+                Note("Easiest: on your phone, on the same Wi-Fi, open " + address + " and type them there.")
             }
-            Field("Stremio email", email) { email = it }
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Stremio password", fontSize = 16.sp) },
-                singleLine = true,
-                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
-                keyboardActions = KeyboardActions(onDone = { go(email, password) }),
-                textStyle = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            FocusRow(if (busy) "Signing in…" else "Sign in and bring in my add-ons", { go(email, password) }, Modifier.focusRequester(first), look = Look.MAIN)
+            Field("Email", email, modifier = Modifier.focusRequester(first)) { email = it }
+            Field("Password", password, secret = true) { password = it }
+            FocusRow(if (busy) "Signing in…" else "Sign in", { signIn(email, password) }, if (phone) Modifier.focusRequester(first) else Modifier, look = Look.MAIN)
+            said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
         }
-        said?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp)) }
-        FocusRow("Done", onDone, if (done) Modifier.focusRequester(first) else Modifier, look = if (done) Look.MAIN else Look.OTHER)
+        FocusRow("‹ Back", onDone, look = Look.OTHER)
     }
 }
 
