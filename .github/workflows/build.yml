@@ -52,6 +52,13 @@ jobs:
           # What the app reads each time it opens, to know whether a newer version is waiting.
           printf 'code=%s\nname=%s\n' "$VERSION_CODE" "$VERSION_NAME" > dist/version.txt
           echo "Torrent engine in this build:"; unzip -l dist/KueTV2.apk | grep '\.so$' || echo "MISSING"
+          # The VPN engine loads each of these by name; a build without any one of them is not published.
+          for abi in armeabi-v7a arm64-v8a; do
+            for lib in libopenvpn.so libovpnexec.so libovpnutil.so libosslutil.so libosslspeedtest.so libovpn3.so; do
+              unzip -l dist/KueTV2.apk | grep -q "lib/$abi/$lib" || { echo "VPN engine part missing: $abi/$lib"; exit 1; }
+            done
+          done
+          echo "VPN engine in this build: all parts, for both kinds of chip"
           if [ -n "$KUETV_DRIVE_CLIENT_ID" ] && [ -n "$KUETV_DRIVE_CLIENT_SECRET" ]; then echo "Google Drive keys: in this build"; else echo "Google Drive keys: MISSING from this build"; fi
 
       - name: Publish

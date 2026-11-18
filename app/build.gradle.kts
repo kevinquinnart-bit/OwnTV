@@ -55,9 +55,9 @@ android {
     packaging {
         jniLibs {
             // The VPN engine runs OpenVPN as a program of its own, which the device can only start when unpacked.
+            // Every part of the engine is kept: leaving one out (0.1.67 to 0.1.71 left out its speed test, which
+            // it loads on starting) stops the VPN dead. The build checks they are all in the app.
             useLegacyPackaging = true
-            // Parts of the engine KueTV doesn't use: the OpenVPN 3 engine and a speed test.
-            excludes += setOf("**/libovpn3.so", "**/libosslspeedtest.so")
         }
     }
     buildFeatures {
