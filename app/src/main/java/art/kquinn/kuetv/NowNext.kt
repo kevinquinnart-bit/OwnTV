@@ -36,10 +36,20 @@ object NowNext {
         cached(channelId)?.let { return it }
         return gate.withPermit {
             cached(channelId) ?: withContext(Dispatchers.IO) { Provider.guide(account, channelId) }
+                // A guide that is out by an hour or more, moved as set in Settings.
+                .let { list -> GuideOffset.ms.let { off -> if (off == 0L) list else list.map { it.copy(startMs = it.startMs + off, stopMs = it.stopMs + off) } } }
                 .ifEmpty { FreeGuides.lookup(name) }
                 .also { kept[channelId] = System.currentTimeMillis() to it }
         }
     }
+
+    /** Forgets every guide, so each is asked for again (after the guide times are moved). */
+    fun forgetAll() {
+        kept.clear()
+    }
+
+    /** Every guide fetched so far, by channel id. */
+    fun everyKept(): Map<String, List<Programme>> = kept.mapValues { it.value.second }
 
     /** Forgets the channels found to have no guide, so they are asked again once the free guides have been read. */
     fun forgetEmpty() {

@@ -272,6 +272,8 @@ fun PlayerScreen(
     onFromStart: ((Playable) -> Unit)? = null,
     /** Live: opens Multiview on these channels, starting with the one playing. */
     onMultiview: ((List<Playable>, Int) -> Unit)? = null,
+    /** Live: other lists of channels to pick from in the list over the picture (Favourites, Recently watched, All). */
+    lists: List<Pair<String, () -> List<Playable>>> = emptyList(),
 ) {
     val context = LocalContext.current
     val phone = LocalPhone.current
@@ -319,6 +321,11 @@ fun PlayerScreen(
     var channelList by remember { mutableStateOf(false) }
     var listPick by remember { mutableIntStateOf(0) }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // Which list the list over the picture shows: -1 the one playing from, or one of [lists].
+    var shownList by remember { mutableIntStateOf(-1) }
+    val shownItems: List<Playable> = if (shownList < 0) items else remember(shownList) { runCatching { lists[shownList].second() }.getOrDefault(emptyList()) }
+    // Above the channels, a row for each list to switch to.
+    val headerRows = if (lists.isEmpty()) 0 else lists.size + 1
     // A channel number being typed on the remote's number keys; it is gone to a moment after the last key.
     var typed by remember { mutableStateOf("") }
     // Live: the channel watched before this one, for 0 (or the Last channel button) to go back to.
@@ -747,7 +754,7 @@ fun PlayerScreen(
         }
     }
     // The list of channels follows the remote, keeping a few rows above the one it is on.
-    LaunchedEffect(channelList, listPick) {
+    LaunchedEffect(channelList, listPick, shownList) {
         if (!channelList) return@LaunchedEffect
         val visible = listState.layoutInfo.visibleItemsInfo
         if (visible.isEmpty() || listPick <= visible.first().index || listPick >= visible.last().index) listState.scrollToItem((listPick - 3).coerceAtLeast(0))
@@ -958,9 +965,40 @@ fun PlayerScreen(
             5 -> soundOnly = !soundOnly
         }
     }
+    // OK on a row of the list over the picture: a list's row shows that list; a channel's row watches it.
+    val pickInList: (Int) -> Unit = { row ->
+        if (row < headerRows) {
+            shownList = row - 1
+            listPick = headerRows + if (shownList < 0) index else 0
+        } else {
+            val i = row - headerRows
+            if (shownList < 0) {
+                if (i == index) channelList = false else go(i)
+            } else {
+                // Another list: it becomes the one ▲ ▼ move along.
+                val chosen = shownItems
+                if (i in chosen.indices) {
+                    items.clear()
+                    items.addAll(chosen)
+                    previous = -1
+                    shownList = -1
+                    if (i == index) {
+                        // The same place in the new list: the new channel starts there, and its name shows.
+                        channelList = false
+                        shownFor[0] = -1
+                        stream = Settled.startFor(items[i])
+                        reload += 1
+                    } else {
+                        go(i)
+                    }
+                }
+            }
+        }
+    }
     val openList: () -> Unit = {
         channelList = true
-        listPick = index
+        shownList = -1
+        listPick = headerRows + index
         controls = false
         nameVisible = false
     }
@@ -1109,7 +1147,7 @@ fun PlayerScreen(
                             val moves = listOf(Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight, Key.ChannelUp, Key.ChannelDown)
                             if (!ok && e.key !in moves) return@onPreviewKeyEvent false
                             if (e.type == KeyEventType.KeyDown) {
-                                val last = items.size - 1
+                                val last = headerRows + shownItems.size - 1
                                 when (e.key) {
                                     Key.DirectionUp -> listPick = (listPick - 1).coerceAtLeast(0)
                                     Key.DirectionDown -> listPick = (listPick + 1).coerceAtMost(last)
@@ -1117,7 +1155,7 @@ fun PlayerScreen(
                                     Key.ChannelDown -> listPick = (listPick + LIST_PAGE).coerceAtMost(last)
                                     Key.DirectionRight -> channelList = false
                                     Key.DirectionLeft -> {}
-                                    else -> if (listPick == index) channelList = false else go(listPick)
+                                    else -> pickInList(listPick)
                                 }
                             }
                             return@onPreviewKeyEvent true
@@ -1453,21 +1491,34 @@ fun PlayerScreen(
                     }
                     if (!phone) Text("▲ ▼ move  ·  CH+ CH− a page  ·  OK watch  ·  ▶ close", color = Color(0xFFB9C2D3), fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp, bottom = 6.dp))
                     androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().weight(1f), state = listState) {
-                        this.items(items.size) { i ->
-                            val on = !phone && i == listPick
-                            val playing = i == index
+                        // The lists to switch to.
+                        this.items(headerRows) { h ->
+                            val on = !phone && h == listPick
+                            val name = if (h == 0) "This list" else lists[h - 1].first
+                            Text(
+                                (if (shownList == h - 1) "● " else "") + name, color = if (on) Color.Black else Color(0xFFFFD23F), fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                                    .background(if (on) Color(0xFFFFD23F) else Color.Transparent, RoundedCornerShape(8.dp))
+                                    .then(if (phone) Modifier.clickable { pickInList(h) } else Modifier)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                            )
+                        }
+                        this.items(shownItems.size) { i ->
+                            val on = !phone && headerRows + i == listPick
+                            val playing = shownList < 0 && i == index
                             Row(
                                 Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 2.dp)
                                     .background(if (on) Color(0xFFFFD23F) else if (playing) Color(0xFF263A63) else Color.Transparent, RoundedCornerShape(8.dp))
-                                    .then(if (phone) Modifier.clickable { if (i == index) channelList = false else go(i) } else Modifier)
+                                    .then(if (phone) Modifier.clickable { pickInList(headerRows + i) } else Modifier)
                                     .padding(horizontal = 10.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text((i + 1).toString(), color = if (on) Color.Black else Color(0xFFB9C2D3), fontSize = 16.sp, modifier = Modifier.width(52.dp))
                                 Text(
-                                    (if (playing) "▶ " else "") + items[i].name, color = if (on) Color.Black else Color.White, fontSize = 18.sp,
+                                    (if (playing) "▶ " else "") + shownItems[i].name, color = if (on) Color.Black else Color.White, fontSize = 18.sp,
                                     fontWeight = if (on || playing) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
                             }

@@ -49,6 +49,9 @@ object FreeGuides {
     fun lastFetchedMs(context: Context): Long = prefs(context).getLong("fetched", 0)
 
     /** A channel's free guide, oldest first; empty when none of the free guides has it. */
+    /** Every channel's free guide, by [key]. */
+    fun everything(): Map<String, List<Programme>> = index
+
     fun lookup(name: String): List<Programme> = if (name.isBlank()) emptyList() else index[key(name)].orEmpty()
 
     /**
