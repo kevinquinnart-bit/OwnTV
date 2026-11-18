@@ -644,7 +644,8 @@ private fun FocusRow(
     padV: Dp = 12.dp,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val button = if (LocalPhone.current) look else Look.ROW
+    val phoneRow = LocalPhone.current
+    val button = if (phoneRow) look else Look.ROW
     Row(
         modifier
             .fillMaxWidth()
@@ -675,7 +676,8 @@ private fun FocusRow(
                 color = if (focused || button == Look.MAIN) Color.Black else Color.White,
                 fontSize = textSize,
                 fontWeight = if (focused || chosen || button == Look.MAIN) FontWeight.Bold else FontWeight.Normal,
-                maxLines = 1,
+                // A phone has no remote to scroll a long row along, so there the words run onto more lines instead.
+                maxLines = if (phoneRow) 3 else 1,
                 // Too long for the row: cut short with "…", and while the remote is on it, scrolls along to show the rest.
                 overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
                 modifier = if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200) else Modifier,
@@ -683,7 +685,7 @@ private fun FocusRow(
             if (below != null) {
                 Text(
                     // Dark on yellow, light on dark: the main button is yellow even when the remote isn't on it.
-                    below, color = if (focused || button == Look.MAIN) Color(0xFF2B2B2B) else Soft, fontSize = 16.sp, maxLines = 1,
+                    below, color = if (focused || button == Look.MAIN) Color(0xFF2B2B2B) else Soft, fontSize = 16.sp, maxLines = if (phoneRow) 3 else 1,
                     overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
                     modifier = if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200) else Modifier,
                 )
