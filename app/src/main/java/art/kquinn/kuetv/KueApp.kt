@@ -24,6 +24,7 @@ class KueApp : ICSOpenVPNApplication() {
             previous?.uncaughtException(thread, error)
         }
         super.onCreate()
+        KueDns.load(this)
     }
 
     private fun writeCrash(thread: Thread, error: Throwable) {

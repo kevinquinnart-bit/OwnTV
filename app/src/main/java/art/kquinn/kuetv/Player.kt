@@ -371,13 +371,8 @@ fun PlayerScreen(
         // A problem writing the file arrives from the player's own thread; the screen is told on the main one.
         Recorder(onProblem = { why -> main.post { finishRecording(); say(why) } }).also { recorderHolder[0] = it }
     }
-    val http = remember {
-        DefaultHttpDataSource.Factory()
-            .setUserAgent(Provider.USER_AGENT)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
-    }
+    // Through the DNS server chosen in Settings, when there is one.
+    val http = remember { KueDns.playerHttp() }
     val subtitlesWanted = remember { Choices.subtitles(context) }
     // Subtitles for this sitting, as set in Settings to begin with; the Subtitles button changes it here only.
     var subsOn by remember { mutableStateOf(subtitlesWanted) }
@@ -395,7 +390,7 @@ fun PlayerScreen(
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(
                     DataSource.Factory { Either(Tap(DefaultDataSource.Factory(context, http).createDataSource(), recorder), TorrentSource(context.applicationContext), ShiftSource()) },
-                ),
+                ).setDrmSessionManagerProvider(Drm.provider(http)),
             )
             .setLoadControl(load)
             .build().apply {
@@ -404,6 +399,9 @@ fun PlayerScreen(
                     .setPreferredTextLanguage(lang.code)
                     .setSelectUndeterminedTextLanguage(true)
                     .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !subtitlesWanted)
+                    // The most detail chosen in Settings; and with stereo only, two-channel sound when the stream has it.
+                    .apply { PictureQuality.size(PictureQuality.get(context)).let { (w, h) -> setMaxVideoSize(w, h) } }
+                    .setMaxAudioChannelCount(if (Sound.stereoOnly(context)) 2 else Int.MAX_VALUE)
                     .build()
                 playWhenReady = true
             }
@@ -437,7 +435,7 @@ fun PlayerScreen(
             url.isEmpty() -> Unit
             recording -> { finishRecording(); say("Recording saved.") }
             // Only a stream that arrives as one unbroken run can be copied as it plays.
-            url.substringBefore('?').endsWith(".m3u8", ignoreCase = true) -> say("This channel can't be recorded.")
+            url.substringBefore('?').let { it.endsWith(".m3u8", ignoreCase = true) || it.endsWith(".mpd", ignoreCase = true) } || Drm.of(url) != null -> say("This channel can't be recorded.")
             Recordings.folder(context).usableSpace < ROOM_TO_RECORD -> say("Not enough storage here to record.")
             else -> try {
                 val file = Recordings.newFile(context, item.name)
@@ -457,6 +455,21 @@ fun PlayerScreen(
         moved = why
         note = null
         stream = next
+    }
+
+    // The TV switched to the picture's own frame rate, when that is chosen; back to its usual one after.
+    DisposableEffect(player) {
+        val rate = object : Player.Listener {
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                val fps = player.videoFormat?.frameRate ?: return
+                if (fps > 0f) FrameRate.match(context, fps)
+            }
+        }
+        player.addListener(rate)
+        onDispose {
+            player.removeListener(rate)
+            FrameRate.release(context)
+        }
     }
 
     DisposableEffect(player) {
@@ -643,9 +656,19 @@ fun PlayerScreen(
         http.setDefaultRequestProperties(now?.headers?.takeIf { it.isNotEmpty() } ?: item.headers)
         // Live, with pause and rewind on: the channel is fetched into a copy here and played from that.
         // A stream that comes in many small files (.m3u8) can't be copied this way, so it plays as before.
-        val address = now?.url ?: item.url
+        var address = now?.url ?: item.url
+        if (Stalker.isLink(address)) {
+            // A portal's channel: the portal gives a fresh link to play it from.
+            val link = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { Stalker.resolve(address) } }
+            address = link.getOrElse {
+                note = it.message ?: "The portal didn't give a link for this channel."
+                return@LaunchedEffect
+            }
+        }
         var playFrom = address
-        if (live && shiftWanted && !torrent && !address.substringBefore('?').endsWith(".m3u8", ignoreCase = true)) {
+        // Streams in many small files (.m3u8, .mpd), and protected ones, can't be copied as they play.
+        val pieces = address.substringBefore('?').let { it.endsWith(".m3u8", ignoreCase = true) || it.endsWith(".mpd", ignoreCase = true) } || Drm.of(address) != null
+        if (live && shiftWanted && !torrent && !pieces) {
             var copy = shiftHolder[0]
             if (copy == null || copy.closed || shiftUrl[0] != address) {
                 copy?.close()
@@ -1608,17 +1631,9 @@ fun PlayerScreen(
 @Composable
 fun MiniTv(item: Playable, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    var retry by remember(item.url) { mutableIntStateOf(0) }
-    val player = remember(item.url) {
-        val http = DefaultHttpDataSource.Factory().setUserAgent(Provider.USER_AGENT).setAllowCrossProtocolRedirects(true)
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http)))
-            .build().apply {
-                trackSelectionParameters = trackSelectionParameters.buildUpon().setPreferredAudioLanguage("en").build()
-                setMediaItem(MediaItem.fromUri(item.url))
-                playWhenReady = true
-            }
-    }
+    val address = resolvedAddress(item.url) ?: return
+    var retry by remember(address) { mutableIntStateOf(0) }
+    val player = remember(address) { lightPlayer(context, address) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) { retry += 1 }

@@ -75,8 +75,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
+    // Protected (DRM) channels mostly come as DASH (.mpd).
+    implementation("androidx.media3:media3-exoplayer-dash:1.11.1")
+    // The player fetches through OkHttp when a DNS server of the user's choosing is set.
+    implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("com.squareup.okhttp3:okhttp:5.5.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:5.5.0")
     implementation("com.google.code.gson:gson:2.13.1")
     implementation("io.coil-kt.coil3:coil-compose:3.6.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.0")

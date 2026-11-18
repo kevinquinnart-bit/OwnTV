@@ -56,6 +56,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -111,10 +112,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Page = Color(0xFF0E1626)
-private val Panel = Color(0xFF16213A)
-private val Accent = Color(0xFFFFD23F)
-private val Soft = Color(0xFFB9C2D3)
+// The colours come from the look chosen in Settings › Looks, so a change shows straight away.
+private val Page: Color get() = Looks.page
+private val Panel: Color get() = Looks.panel
+private val Accent: Color get() = Looks.accentColour
+private val Soft: Color get() = Looks.soft
+private val Ink: Color get() = Looks.ink
+private val AccentInk: Color get() = Looks.accentInk
 
 /** The app's lettering: Poppins throughout. Signs it doesn't have (★ ● ≡) come from the device's own. */
 private val Poppins = FontFamily(Font(R.font.poppins_regular, FontWeight.Normal), Font(R.font.poppins_bold, FontWeight.Bold))
@@ -140,8 +144,9 @@ class MainActivity : ComponentActivity() {
         // A TV is always sideways. A phone turns with the way it is held.
         val tv = isTv(this)
         if (tv) requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        Looks.load(this)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme(primary = Accent), typography = KueType) {
+            MaterialTheme(colorScheme = if (Looks.light) lightColorScheme(primary = Accent) else darkColorScheme(primary = Accent), typography = KueType) {
                 // The text size chosen in Settings makes every line of lettering bigger, on every screen.
                 val scale = remember(Choices.changes) { Choices.textSizeScales[Choices.textSize(this)] }
                 val density = androidx.compose.ui.platform.LocalDensity.current
@@ -572,7 +577,7 @@ private fun App() {
         if (Reminders.showing == reminder) Reminders.showing = null
     }
     Box(
-        Modifier.fillMaxSize().background(Page).then(if (playing == null) Modifier.safeDrawingPadding() else Modifier)
+        Modifier.fillMaxSize().background(Looks.backdrop).then(if (playing == null) Modifier.safeDrawingPadding() else Modifier)
             // With a reminder up, OK watches it and Back puts it away, before anything underneath sees those keys.
             .onPreviewKeyEvent { e ->
                 if (Reminders.showing == null) return@onPreviewKeyEvent false
@@ -738,14 +743,14 @@ private fun ReminderPopUp(reminder: Reminder, onWatch: () -> Unit, onClose: () -
     val started = System.currentTimeMillis() >= reminder.startMs
     Column(
         modifier.padding(top = if (phone) 12.dp else 28.dp, start = 12.dp, end = 12.dp).widthIn(max = 720.dp)
-            .background(Color(0xF216213A), RoundedCornerShape(16.dp)).border(2.dp, Accent, RoundedCornerShape(16.dp))
+            .background(Looks.panel.copy(alpha = 0.95f), RoundedCornerShape(16.dp)).border(2.dp, Accent, RoundedCornerShape(16.dp))
             .padding(horizontal = 22.dp, vertical = 16.dp),
     ) {
         Text(
             (if (started) "Started at " else "Starting at ") + clock.format(java.util.Date(reminder.startMs)) + " on " + reminder.channel,
-            color = Accent, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+            color = AccentInk, fontSize = 17.sp, fontWeight = FontWeight.Bold,
         )
-        Text(reminder.title, color = Color.White, fontSize = Sizes.ROW, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(reminder.title, color = Ink, fontSize = Sizes.ROW, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
         if (phone) {
             Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
@@ -753,7 +758,7 @@ private fun ReminderPopUp(reminder: Reminder, onWatch: () -> Unit, onClose: () -
                     modifier = Modifier.background(Accent, RoundedCornerShape(22.dp)).clickable(onClick = onWatch).padding(horizontal = 18.dp, vertical = 9.dp),
                 )
                 Text(
-                    "Not now", color = Color.White, fontSize = 18.sp,
+                    "Not now", color = Ink, fontSize = 18.sp,
                     modifier = Modifier.background(Panel, RoundedCornerShape(22.dp)).clickable(onClick = onClose).padding(horizontal = 18.dp, vertical = 9.dp),
                 )
             }
@@ -825,10 +830,11 @@ private fun FocusRow(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
+            .focusRing(focused)
             .background(
                 when {
                     focused || button == Look.MAIN -> Accent
-                    chosen -> Color(0x33FFFFFF)
+                    chosen -> Looks.faint2
                     button == Look.OTHER -> Panel
                     else -> Color.Transparent
                 },
@@ -848,7 +854,7 @@ private fun FocusRow(
         Column {
             Text(
                 text,
-                color = if (focused || button == Look.MAIN) Color.Black else Color.White,
+                color = if (focused || button == Look.MAIN) Color.Black else Ink,
                 fontSize = textSize,
                 fontWeight = if (focused || chosen || button == Look.MAIN) FontWeight.Bold else FontWeight.Normal,
                 // A phone has no remote to scroll a long row along, so there the words run onto more lines instead.
@@ -902,7 +908,7 @@ private fun Modifier.press(onClick: () -> Unit, onHold: (() -> Unit)?): Modifier
 private fun Chip(text: String, chosen: Boolean, onClick: () -> Unit) {
     Text(
         text,
-        color = if (chosen) Color.Black else Color.White,
+        color = if (chosen) Color.Black else Ink,
         fontSize = 17.sp,
         fontWeight = if (chosen) FontWeight.Bold else FontWeight.Normal,
         maxLines = 1,
@@ -935,10 +941,10 @@ private fun Heading(text: String) {
 @Composable
 private fun LoadingScreen() {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        CircularProgressIndicator(color = Accent)
+        CircularProgressIndicator(color = AccentInk)
         Spacer(Modifier.height(22.dp))
         Text(
-            "Loading your channels and films…", color = Color.White, fontSize = Sizes.ROW,
+            "Loading your channels and films…", color = Ink, fontSize = Sizes.ROW,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         )
@@ -950,7 +956,7 @@ private fun ProblemScreen(message: String, onRetry: () -> Unit, onEdit: () -> Un
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     Column(Modifier.fillMaxSize().padding(horizontal = if (LocalPhone.current) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
-        Text(message, color = Color.White, fontSize = Sizes.ROW, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
+        Text(message, color = Ink, fontSize = Sizes.ROW, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
         FocusRow("Try again", onRetry, Modifier.focusRequester(first), look = Look.MAIN)
         Spacer(Modifier.height(8.dp))
         FocusRow("Change provider details", onEdit, look = Look.OTHER)
@@ -983,22 +989,22 @@ private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Un
     if (canCancel) BackHandler { onCancel() }
 
     val intro: @Composable () -> Unit = {
-        Text("Set up KueTV", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold)
+        Text("Set up KueTV", color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(if (phone) 8.dp else 26.dp))
         val address = phoneAddress
         if (address != null) {
             Text("Easiest: on your phone, open", color = Soft, fontSize = Sizes.BODY)
-            Text(address, color = Accent, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 10.dp))
+            Text(address, color = AccentInk, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 10.dp))
             Text("and type your provider details there. Your phone must be on the same Wi-Fi as this TV.", color = Soft, fontSize = Sizes.BODY)
         } else {
             Text(if (phone) "Type your provider details in the boxes below." else "Type your provider details in the boxes on the right.", color = Soft, fontSize = Sizes.BODY)
         }
-        warning?.let { Text(it, color = Accent, fontSize = Sizes.BODY, modifier = Modifier.padding(top = if (phone) 10.dp else 26.dp)) }
+        warning?.let { Text(it, color = AccentInk, fontSize = Sizes.BODY, modifier = Modifier.padding(top = if (phone) 10.dp else 26.dp)) }
     }
     val form: @Composable () -> Unit = {
         // The keyboard's own button moves to the next box, and on the last one it saves.
         Field("Server address", server) { server = it }
-        Field("Username", user) { user = it }
+        Field("Username (or MAC address, for a portal)", user) { user = it }
         Field("Password", pass) { pass = it }
         Field("Or one playlist link", playlist, onDone = { submit(server, user, pass, playlist) }) { playlist = it }
         Spacer(Modifier.height(6.dp))
@@ -1163,7 +1169,7 @@ private fun TitleMenu(
                 },
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, bottom = 6.dp))
+            Text(name, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, bottom = 6.dp))
             FocusRow("Play", { onClose(); onPlay() }, Modifier.focusRequester(first), look = Look.MAIN)
             FocusRow(if (favourite) "★ Remove from favourites" else "★ Add to favourites", { onFavourite(); onClose() }, look = Look.OTHER)
             FocusRow(if (watched) "Mark as not watched" else "✓ Mark as watched", { onWatched(); onClose() }, look = Look.OTHER)
@@ -1272,6 +1278,7 @@ private fun PanelEdge(label: String, onLanded: () -> Unit) {
     // The folded column's name runs down the edge, a letter to a line, so it says what opens there.
     Column(
         Modifier.width(28.dp).fillMaxHeight()
+            .focusRing(focused, RoundedCornerShape(10.dp))
             .background(if (focused) Accent else Panel, RoundedCornerShape(10.dp))
             .onFocusChanged {
                 if (it.isFocused && !focused) onLanded()
@@ -1303,7 +1310,7 @@ private fun KueLogo(markSize: Dp, textSize: androidx.compose.ui.unit.TextUnit, m
             bitmap.asImageBitmap()
         }
         Image(bitmap = mark, contentDescription = null, modifier = Modifier.size(markSize))
-        Text("KueTV", color = Color.White, fontSize = textSize, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text("KueTV", color = Ink, fontSize = textSize, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
@@ -1744,7 +1751,8 @@ private fun MainScreen(
                     "Favourites" to "Every channel, film and series you have starred",
                     "Your provider" to "Provider details" + (if (savedProviders.size > 1) " (" + savedProviders.size + " saved)" else "") + ", reload, categories, free channel lists ($freeCount)",
                     "Films and series" to "Add-ons (" + addOns.size + "), Stremio account",
-                    "Watching" to "Subtitles, pause and rewind, text size",
+                    "Watching" to "Subtitles, pause and rewind, sound and picture, text size",
+                    "Looks" to Looks.themes[Looks.theme] + ", " + Looks.accents[Looks.accent].lowercase() + " highlight" + if (Looks.glass > 0) ", glass" else "",
                     "Google Drive" to when { !drive.isSetUp -> "Not set up"; drive.signedIn -> "Signed in · backup and recordings"; else -> "Not signed in · backup and recordings" },
                     "TV and phone" to "Copy the set-up, keep in step: " + if (paired) "on" else "off",
                     "VPN" to remember(Vpn.changes, Vpn.level) { vpnLine(context) },
@@ -1826,6 +1834,11 @@ private fun MainScreen(
                             FocusRow("Change provider details", onEdit, first(), look = Look.OTHER)
                             FocusRow("Add another provider", extras.addProvider, look = Look.OTHER, below = "The one in use is kept, to switch back to")
                             FocusRow("Reload channels and films", onReload, look = Look.OTHER, below = "Fetches everything afresh from your provider")
+                            val dns = remember(Choices.changes) { KueDns.chosen }
+                            FocusRow(
+                                "DNS server: " + KueDns.names[dns], { KueDns.set(context, (dns + 1) % KueDns.names.size) }, look = Look.OTHER,
+                                below = "If your internet blocks your provider, try another · OK to change",
+                            )
                             val hiddenCount = remember(Choices.changes) { listOf("live", "film", "show").sumOf { Choices.hidden(context, it).size } }
                             FocusRow("Categories: show, hide and order" + if (hiddenCount == 0) "" else " ($hiddenCount hidden)", onCategories, look = Look.OTHER)
                             sub("Backup")
@@ -1891,6 +1904,27 @@ private fun MainScreen(
                             for (k in SpareKeys.keys) {
                                 FocusRow(k.name + ": " + (if (spareNow >= 0) SpareKeys.action(context, k.code) else ""), { SpareKeys.next(context, k.code) }, look = Look.OTHER, below = "OK to change · only on remotes that have it")
                             }
+                            sub("Sound and picture")
+                            val engineNow = Choices.changes
+                            val stereo = engineNow >= 0 && Sound.stereoOnly(context)
+                            FocusRow(
+                                "Surround sound: " + if (stereo) "off, stereo only" else "on, when your TV or speakers can", { Sound.stereoOnly(context, !stereo) }, look = Look.OTHER,
+                                below = "Dolby and DTS sent on to your TV or sound bar, or made into stereo here",
+                            )
+                            val night = engineNow >= 0 && Sound.night(context)
+                            FocusRow("Night mode: " + if (night) "on" else "off", { Sound.night(context, !night) }, look = Look.OTHER, below = "Loud bangs quieter, speech louder · from the next thing you play")
+                            val quality = if (engineNow >= 0) PictureQuality.get(context) else 0
+                            FocusRow(
+                                "Picture quality: " + PictureQuality.names[quality], { PictureQuality.set(context, (quality + 1) % PictureQuality.names.size) }, look = Look.OTHER,
+                                below = "Less detail uses less internet, for a slow connection · OK to change",
+                            )
+                            if (!phone) {
+                                val matchRate = engineNow >= 0 && FrameRate.on(context)
+                                FocusRow(
+                                    "Match the TV to the film: " + if (matchRate) "on" else "off", { FrameRate.on(context, !matchRate) }, look = Look.OTHER,
+                                    below = "Smoother movement. The screen may go dark for a second as each one starts",
+                                )
+                            }
                             sub("Screen")
                             val textSize = remember(Choices.changes) { Choices.textSize(context) }
                             FocusRow("Text size: " + Choices.textSizeNames[textSize], { Choices.textSize(context, (textSize + 1) % 3) }, look = Look.OTHER)
@@ -1900,6 +1934,13 @@ private fun MainScreen(
                                 "Small picture when you leave KueTV: " + if (pipOn) "on" else "off", { Pip.on(context, !pipOn) }, look = Look.OTHER,
                                 below = "What is playing carries on in a corner when you press Home, where the device allows it",
                             )
+                        }
+                        "Looks" -> {
+                            FocusRow("Colours: " + Looks.themes[Looks.theme], { Looks.set(context, "theme", (Looks.theme + 1) % Looks.themes.size) }, first(), look = Look.OTHER, below = "Dark or light · OK to change")
+                            FocusRow("Highlight colour: " + Looks.accents[Looks.accent], { Looks.set(context, "accent", (Looks.accent + 1) % Looks.accents.size) }, look = Look.OTHER, below = "What the remote is on, and the main buttons")
+                            FocusRow("Outline round what the remote is on: " + Looks.outlines[Looks.outline], { Looks.set(context, "outline", (Looks.outline + 1) % Looks.outlines.size) }, look = Look.OTHER, below = "Easier to spot from across the room")
+                            FocusRow("Glass look: " + Looks.glasses[Looks.glass], { Looks.set(context, "glass", (Looks.glass + 1) % Looks.glasses.size) }, look = Look.OTHER, below = "See-through panels on a soft glow of the highlight colour")
+                            FocusRow("Back to the usual look", { Looks.reset(context) }, look = Look.OTHER)
                         }
                         "Google Drive" -> {
                             when {
@@ -2121,7 +2162,7 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
 
 @Composable
 private fun Logo(url: String) {
-    Box(Modifier.size(width = 64.dp, height = 40.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(width = 64.dp, height = 40.dp).clip(RoundedCornerShape(6.dp)).background(Looks.faint), contentAlignment = Alignment.Center) {
         if (url.isNotBlank()) AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(3.dp))
     }
 }
@@ -2144,7 +2185,7 @@ private fun Poster(
     Column(
         modifier
             .clip(RoundedCornerShape(12.dp))
-            .border(3.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(12.dp))
+            .border((3 + Looks.outlineWidth).dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(12.dp))
             .onFocusChanged {
                 if (it.isFocused && !focused) onFocus()
                 focused = it.isFocused
@@ -2156,8 +2197,8 @@ private fun Poster(
             if (poster.isNotBlank()) AsyncImage(model = poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             if (favourite) {
                 Text(
-                    "★", color = Accent, fontSize = 22.sp,
-                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(Color(0xCC0E1626), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 1.dp),
+                    "★", color = AccentInk, fontSize = 22.sp,
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(Looks.page.copy(alpha = 0.8f), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 1.dp),
                 )
             }
             if (watched) {
@@ -2174,7 +2215,7 @@ private fun Poster(
         }
         Text(
             name,
-            color = if (focused) Accent else Color.White,
+            color = if (focused) AccentInk else Ink,
             fontSize = 17.sp,
             fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal,
             maxLines = 2,
@@ -2348,7 +2389,7 @@ private fun Pane.ProgrammePage(
         Heading(channel.name + if (catchUp) " · catch-up" else " · guide · OK on a later programme: ◆ reminder, then ● record, then neither")
         val result = loaded
         when {
-            result == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
+            result == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = AccentInk) }
 
             // Choosing a day: today back to the oldest day the provider keeps.
             step == CHOOSING_DAY -> {
@@ -2451,13 +2492,14 @@ private fun ProgrammeRow(whenText: String, title: String, description: String, o
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
+            .focusRing(focused)
             .background(if (focused) Accent else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(whenText, color = if (focused) Color.Black else Soft, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(title, color = if (focused) Color.Black else Color.White, fontSize = Sizes.ROW, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, color = if (focused) Color.Black else Ink, fontSize = Sizes.ROW, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (focused && description.isNotBlank()) {
             Text(description, color = Color.Black, fontSize = 17.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
         }
@@ -2612,7 +2654,7 @@ private fun Pane.EpisodePage(
         val result = loaded
         val episodes = result?.getOrNull()
         when {
-            result == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
+            result == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = AccentInk) }
             episodes == null -> Note(result.exceptionOrNull()?.message ?: "Couldn't load the episodes for this series.")
             episodes.isEmpty() -> Note(if (show.id.startsWith(Catalogue.PREFIX)) "No episodes are listed for this series." else "Your provider listed no episodes for this series.")
             else -> {
@@ -2853,7 +2895,7 @@ private fun Pane.TvAppsPane() {
         Heading("TV apps · these play in their own apps")
         val apps = found
         if (apps == null) {
-            Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
+            Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = AccentInk) }
             return@Column
         }
         LazyColumn(Modifier.fillMaxSize().focusRestorer()) {
@@ -2880,6 +2922,7 @@ private fun TvAppRow(title: String, line: String, icon: android.graphics.Bitmap?
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
+            .focusRing(focused)
             .background(if (focused) Accent else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
@@ -2887,7 +2930,7 @@ private fun TvAppRow(title: String, line: String, icon: android.graphics.Bitmap?
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Box(Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(Looks.faint), contentAlignment = Alignment.Center) {
             if (icon != null) {
                 val picture = remember(icon) { icon.asImageBitmap() }
                 Image(bitmap = picture, contentDescription = null, modifier = Modifier.fillMaxSize())
@@ -2896,7 +2939,7 @@ private fun TvAppRow(title: String, line: String, icon: android.graphics.Bitmap?
             }
         }
         Column {
-            Text(title, color = if (focused) Color.Black else Color.White, fontSize = Sizes.ROW, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, color = if (focused) Color.Black else Ink, fontSize = Sizes.ROW, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(line, color = if (focused) Color.Black else Soft, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -3092,9 +3135,9 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
         val line: @Composable (String) -> Unit = { Text(it, color = Soft, fontSize = Sizes.BODY, modifier = Modifier.padding(start = 16.dp)) }
         val big: @Composable (String) -> Unit = {
-            Text(it, color = Accent, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 14.dp))
+            Text(it, color = AccentInk, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 14.dp))
         }
-        Text("Google Drive", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 22.dp))
+        Text("Google Drive", color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 22.dp))
         when {
             done -> {
                 line("Signed in" + if (drive.email.isBlank()) "." else " as " + drive.email + ".")
@@ -3103,12 +3146,12 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
                 FocusRow("Done", onDone, Modifier.focusRequester(first), look = Look.MAIN)
             }
             problem != null -> {
-                Text(problem.orEmpty(), color = Color.White, fontSize = Sizes.ROW, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
+                Text(problem.orEmpty(), color = Ink, fontSize = Sizes.ROW, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
                 FocusRow("Try again", { attempt++ }, Modifier.focusRequester(first), look = Look.MAIN)
                 Spacer(Modifier.height(8.dp))
                 FocusRow("Back", onDone, look = Look.OTHER)
             }
-            shown == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
+            shown == null -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = AccentInk) }
             else -> {
                 line(if (phone) "The button below copies this code and opens this page:" else "On your phone or computer, open")
                 big(shown.url.removePrefix("https://").removePrefix("www."))
@@ -3158,7 +3201,7 @@ private fun CopyChoiceScreen(name: String, onAddOn: () -> Unit, onProvider: () -
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 40.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(name, color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp))
+        Text(name, color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp))
         Note("Which copy do you want to play?")
         Spacer(Modifier.height(8.dp))
         FocusRow("Add-on stream", onAddOn, if (last == 0) Modifier.focusRequester(first) else Modifier, look = if (last == 0) Look.MAIN else Look.OTHER)
@@ -3340,7 +3383,7 @@ private fun Page(title: String, intro: String, status: Status?, rows: @Composabl
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 200.dp, vertical = if (phone) 12.dp else 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(title, color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp))
+        Text(title, color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp))
         Text(intro, color = Soft, fontSize = Sizes.BODY, modifier = Modifier.padding(start = 16.dp, bottom = 4.dp))
         if (status != null) StatusBox(status)
         rows()
@@ -3356,14 +3399,14 @@ private fun StatusBox(status: Status) {
     ) {
         Box(Modifier.padding(top = 6.dp).size(12.dp).background(statusColour(status.kind), CircleShape))
         Spacer(Modifier.width(12.dp))
-        Text(status.text, color = Color.White, fontSize = Sizes.BODY)
+        Text(status.text, color = Ink, fontSize = Sizes.BODY)
     }
 }
 
 /** A plain panel of information (not a message about something that happened). */
 @Composable
 private fun InfoPanel(text: String) {
-    Text(text, color = Color.White, fontSize = Sizes.BODY, modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp))
+    Text(text, color = Ink, fontSize = Sizes.BODY, modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp))
 }
 
 /** One part of an add-on, with a coloured dot for how it did. */
@@ -3372,7 +3415,7 @@ private fun PartLine(kind: Int, text: String) {
     Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.Top) {
         Box(Modifier.padding(top = 7.dp).size(10.dp).background(statusColour(kind), CircleShape))
         Spacer(Modifier.width(12.dp))
-        Text(text, color = Color.White, fontSize = 18.sp)
+        Text(text, color = Ink, fontSize = 18.sp)
     }
 }
 
@@ -3436,13 +3479,13 @@ private fun SendSetUpScreen(account: Account, favourites: Favourites, onDone: ()
         runCatching { first.requestFocus() }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
-        Text("Send this set-up", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
+        Text("Send this set-up", color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
         when {
             ready == false -> Note("This device isn't on a home network, so it can't send its set-up. Join the Wi-Fi and try again.")
             taken -> Note("Sent. The other device now has your provider details, favourites and add-ons. From now on the two keep in step by themselves when KueTV is open on both, on the same Wi-Fi.")
             else -> {
                 Note("On the other device, on the same Wi-Fi, open KueTV and choose \"Copy set-up from another device\". Then type this code there:")
-                Text(code, color = Accent, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 10.dp))
+                Text(code, color = AccentInk, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 10.dp))
                 Note("Keep this screen open until it says Sent.")
             }
         }
@@ -3486,7 +3529,7 @@ private fun TakeSetUpScreen(onDone: () -> Unit, onTaken: (SetUp) -> Unit) {
         }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
-        Text("Copy set-up from another device", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
+        Text("Copy set-up from another device", color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
         Note("On the device that is already set up, open KueTV › Settings › \"Send this set-up to another device\". It shows a code. Type it here.")
         Note("This replaces the provider details, favourites and add-ons on this device.")
         Spacer(Modifier.height(14.dp))
@@ -3762,12 +3805,13 @@ private fun GuideChip(text: String, chosen: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Text(
         text,
-        color = if (focused || chosen) Color.Black else Color.White,
+        color = if (focused || chosen) Color.Black else Ink,
         fontSize = 15.sp,
         fontWeight = if (focused || chosen) FontWeight.Bold else FontWeight.Normal,
         maxLines = 1,
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
+            .focusRing(focused, RoundedCornerShape(16.dp))
             .background(if (focused) Accent else if (chosen) Color(0xFFB9C2D3) else Panel)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
@@ -3791,8 +3835,8 @@ private fun GuideDetails(about: Pair<String, Programme>?, channel: ChannelGroup?
                 val (name, programme) = about
                 Column(panel.background(Panel, RoundedCornerShape(14.dp)).padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Text(name, color = Soft, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(time(programme.startMs) + " to " + time(programme.stopMs), color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Text(programme.title.ifBlank { "No title" }, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(time(programme.startMs) + " to " + time(programme.stopMs), color = AccentInk, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(programme.title.ifBlank { "No title" }, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (programme.description.isNotBlank()) {
                         Text(programme.description, color = Soft, fontSize = 16.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).padding(top = 2.dp))
                     }
@@ -3818,6 +3862,7 @@ private fun GridCell(title: String, sub: String, width: Dp, onNow: Boolean, onCl
     if (logo != null) {
         Row(
             modifier.width(width).fillMaxHeight().padding(1.dp).clip(RoundedCornerShape(8.dp))
+                .focusRing(focused, RoundedCornerShape(8.dp))
                 .background(if (focused) Accent else Panel)
                 .onFocusChanged {
                     if (it.isFocused && !focused) onFocus()
@@ -3829,7 +3874,7 @@ private fun GridCell(title: String, sub: String, width: Dp, onNow: Boolean, onCl
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Logo(logo)
-            Text(title, color = if (focused) Color.Black else Color.White, fontSize = 16.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, color = if (focused) Color.Black else Ink, fontSize = 16.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         return
     }
@@ -3839,7 +3884,8 @@ private fun GridCell(title: String, sub: String, width: Dp, onNow: Boolean, onCl
             .fillMaxHeight()
             .padding(1.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (focused) Accent else if (onNow) Color(0xFF263A63) else Panel)
+            .focusRing(focused, RoundedCornerShape(8.dp))
+            .background(if (focused) Accent else if (onNow) Looks.nowCell else Panel)
             .onFocusChanged {
                 if (it.isFocused && !focused) onFocus()
                 focused = it.isFocused
@@ -3848,7 +3894,7 @@ private fun GridCell(title: String, sub: String, width: Dp, onNow: Boolean, onCl
             .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(title, color = if (focused) Color.Black else Color.White, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, color = if (focused) Color.Black else Ink, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (sub.isNotEmpty()) Text(sub, color = if (focused) Color.Black else Soft, fontSize = 13.sp, maxLines = 1)
     }
 }
@@ -3889,7 +3935,7 @@ private fun ReportScreen(onDone: () -> Unit) {
         if (!phone) runCatching { first.requestFocus() }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 120.dp, vertical = if (phone) 12.dp else 30.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Report for Claude", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text("Report for Claude", color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Note("What the app did and what went wrong, most recent last. It holds no addresses, usernames or passwords.")
         if (phone) {
             FocusRow(if (copied) "Copied. Paste it into your chat with Claude." else "Copy the report", {
@@ -3901,7 +3947,7 @@ private fun ReportScreen(onDone: () -> Unit) {
             }, look = Look.MAIN)
         } else if (address != null) {
             Note("To send it: on your phone, on the same Wi-Fi, open")
-            Text(address.orEmpty(), color = Accent, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+            Text(address.orEmpty(), color = AccentInk, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
             Note("and tap Copy there. Keep this screen open while you do.")
         } else {
             Note("This TV isn't on a home network, so the report can only be read here.")
@@ -3927,7 +3973,7 @@ private fun AboutStrip(name: String?, about: About?) {
         if (name != null) {
             Text(
                 name + if (about == null || about.line.isBlank()) "" else "  ·  " + about.line,
-                color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             if (about != null && about.plot.isNotBlank()) Text(about.plot, color = Soft, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
@@ -3993,7 +4039,7 @@ private fun CategoriesScreen(library: Library, onDone: () -> Unit) {
         else -> null
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 160.dp, vertical = if (phone) 12.dp else 30.dp)) {
-        Text("Categories", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text("Categories", color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Text(
             "Which show, and their order. " + (if (phone) "Tap" else "OK on") + " a category to hide it or show it again.",
             color = Soft, fontSize = 18.sp, modifier = Modifier.padding(start = 16.dp, bottom = 6.dp),
@@ -4124,7 +4170,7 @@ private fun HomeScreen(
                 if (!phone && last != null && smallTv) {
                     Spacer(Modifier.height(10.dp))
                     Text("Last watched", color = Soft, fontSize = 14.sp)
-                    Text(last.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(last.name, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             if (!phone && last != null && smallTv) MiniTv(last, Modifier.width(SIDE_WIDTH))
@@ -4135,9 +4181,9 @@ private fun HomeScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     row.forEach { s ->
                         Tile({ onOpen(s) }, Modifier.weight(1f).aspectRatio(1.1f)) { focused ->
-                            SectionIcon(s, if (focused) Color.Black else Accent, Modifier.size(40.dp))
+                            SectionIcon(s, if (focused) Color.Black else AccentInk, Modifier.size(40.dp))
                             Spacer(Modifier.height(8.dp))
-                            Text(s.label, color = if (focused) Color.Black else Color.White, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(s.label, color = if (focused) Color.Black else Ink, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     // A short last row keeps its tiles the same size as the others.
@@ -4155,9 +4201,9 @@ private fun HomeScreen(
                         { onOpen(s) },
                         Modifier.size(width = 150.dp, height = 100.dp).then(if (s == state.cameFrom) Modifier.focusRequester(homeFocus) else Modifier),
                     ) { focused ->
-                        SectionIcon(s, if (focused) Color.Black else Accent, Modifier.size(38.dp))
+                        SectionIcon(s, if (focused) Color.Black else AccentInk, Modifier.size(38.dp))
                         Spacer(Modifier.height(6.dp))
-                        Text(s.label, color = if (focused) Color.Black else Color.White, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(s.label, color = if (focused) Color.Black else Ink, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -4185,17 +4231,17 @@ private fun HomeScreen(
                         Modifier.width(if (phone) 110.dp else 160.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
                     ) { focused ->
                         // On a TV the same shape as the channel tiles, so each row is the same height.
-                        Box(Modifier.fillMaxWidth().aspectRatio(if (phone) 2f / 3f else 16f / 9f).clip(RoundedCornerShape(8.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().aspectRatio(if (phone) 2f / 3f else 16f / 9f).clip(RoundedCornerShape(8.dp)).background(Looks.faint), contentAlignment = Alignment.Center) {
                             if (w.poster.isNotBlank()) AsyncImage(model = w.poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             else Text(w.name, color = Soft, fontSize = 14.sp, maxLines = 4, modifier = Modifier.padding(8.dp))
                         }
                         // How far through: a bar, and the minutes left.
                         val through = if (w.lengthMs > 0) (w.positionMs.toFloat() / w.lengthMs).coerceIn(0f, 1f) else 0f
-                        Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).background(Color(0x33FFFFFF), RoundedCornerShape(2.dp))) {
+                        Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).background(Looks.faint2, RoundedCornerShape(2.dp))) {
                             Box(Modifier.fillMaxWidth(through).fillMaxHeight().background(if (focused) Color.Black else Accent, RoundedCornerShape(2.dp)))
                         }
                         Text(
-                            w.name, color = if (focused) Color.Black else Color.White, fontSize = if (phone) 13.sp else 15.sp, fontWeight = FontWeight.Bold,
+                            w.name, color = if (focused) Color.Black else Ink, fontSize = if (phone) 13.sp else 15.sp, fontWeight = FontWeight.Bold,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         )
                         Text(
@@ -4226,12 +4272,12 @@ private fun HomeScreen(
                         Modifier.width(if (phone) 150.dp else 160.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
                         onHold = { favourites.toggleAll(channel.versions.map { Favourites.key(it.channel, login) }) },
                     ) { focused ->
-                        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Looks.faint), contentAlignment = Alignment.Center) {
                             if (channel.logo.isNotBlank()) AsyncImage(model = channel.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(10.dp))
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            channel.name, color = if (focused) Color.Black else Color.White, fontSize = if (phone) 15.sp else 18.sp,
+                            channel.name, color = if (focused) Color.Black else Ink, fontSize = if (phone) 15.sp else 18.sp,
                             fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
                         )
                         Text(
@@ -4269,12 +4315,12 @@ private fun <T> PosterRow(title: String, items: List<T>, key: (T) -> String, nam
                 Modifier.width(if (phone) 110.dp else 120.dp).then(if (key(item) == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
                 onHold = { onHold(item) },
             ) { focused ->
-                Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Looks.faint), contentAlignment = Alignment.Center) {
                     if (poster(item).isNotBlank()) AsyncImage(model = poster(item), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                     else Text(name(item), color = Soft, fontSize = 14.sp, maxLines = 4, modifier = Modifier.padding(8.dp))
                 }
                 Text(
-                    name(item), color = if (focused) Color.Black else Color.White, fontSize = if (phone) 13.sp else 15.sp, fontWeight = FontWeight.Bold,
+                    name(item), color = if (focused) Color.Black else Ink, fontSize = if (phone) 13.sp else 15.sp, fontWeight = FontWeight.Bold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 )
             }
@@ -4285,7 +4331,7 @@ private fun <T> PosterRow(title: String, items: List<T>, key: (T) -> String, nam
 /** An episode's picture, beside its name. */
 @Composable
 private fun EpisodePicture(url: String) {
-    Box(Modifier.size(width = 112.dp, height = 63.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x22FFFFFF))) {
+    Box(Modifier.size(width = 112.dp, height = 63.dp).clip(RoundedCornerShape(6.dp)).background(Looks.faint)) {
         AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
     }
 }
@@ -4305,6 +4351,7 @@ private fun Tile(
         modifier
             .scale(if (focused) 1.06f else 1f)
             .clip(RoundedCornerShape(16.dp))
+            .focusRing(focused, RoundedCornerShape(16.dp))
             .background(if (focused) Accent else Panel)
             .onFocusChanged { focused = it.isFocused }
             .press(onClick, onHold)
@@ -4409,7 +4456,7 @@ private fun UpdateOfferScreen(latest: Updates.Latest, onLater: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 40.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("A newer KueTV 2 is ready", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text("A newer KueTV 2 is ready", color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Note("You have version " + BuildConfig.VERSION_NAME + ". Version " + latest.name + " is on the download.")
         Spacer(Modifier.height(8.dp))
         UpdateNow(latest, Modifier.focusRequester(first))
@@ -4456,7 +4503,7 @@ private fun AboutScreen(onDone: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 40.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("About KueTV 2", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text("About KueTV 2", color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Note("Version " + BuildConfig.VERSION_NAME + ". It also checks for a newer version each time it opens.")
         Spacer(Modifier.height(8.dp))
         FocusRow(if (checking) "Checking…" else "Check for updates", check, Modifier.focusRequester(first), look = Look.MAIN)
@@ -4583,9 +4630,9 @@ private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: M
         if (onNow != null) {
             Text(
                 "Now · " + clock.format(java.util.Date(onNow.startMs)) + " to " + clock.format(java.util.Date(onNow.stopMs)),
-                color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                color = AccentInk, fontSize = 16.sp, fontWeight = FontWeight.Bold,
             )
-            Text(onNow.title.ifBlank { "No title" }, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(onNow.title.ifBlank { "No title" }, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (onNow.description.isNotBlank()) {
                 // Too long for the space above the next programme: it scrolls up slowly by itself, waits, and starts again.
                 val scroll = remember(onNow.description) { ScrollState(0) }
@@ -4607,7 +4654,7 @@ private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: M
         if (next != null) {
             Text(
                 "Next · " + clock.format(java.util.Date(next.startMs)) + " · " + next.title.ifBlank { "No title" },
-                color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp),
+                color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp),
             )
             // A line or two about what is on next.
             if (next.description.isNotBlank()) Text(next.description, color = Soft, fontSize = 15.sp, lineHeight = 20.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -4640,7 +4687,7 @@ private fun HealthScreen(account: Account, library: Library?, onDone: () -> Unit
         if (Health.lastRunMs == 0L) "" else java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.UK).format(java.util.Date(Health.lastRunMs))
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 140.dp, vertical = if (phone) 12.dp else 30.dp)) {
-        Text("Health check", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 6.dp))
+        Text("Health check", color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 6.dp))
         Note(if (running) "Checking everything. This takes up to a minute…" else Health.summary(results) + if (at.isEmpty()) "" else " · checked " + at)
         Spacer(Modifier.height(10.dp))
         LazyColumn(Modifier.fillMaxWidth().weight(1f).focusRestorer(), verticalArrangement = if (phone) Arrangement.spacedBy(6.dp) else Arrangement.Top) {
@@ -4660,12 +4707,12 @@ private fun HealthRow(title: String, detail: String, state: Int) {
     var focused by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-            .background(if (focused) Color(0x33FFFFFF) else Color.Transparent)
+            .background(if (focused) Looks.faint2 else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .focusable()
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        Text(title, color = when (state) { Check.WORKING -> Color.White; Check.DOUBT -> Accent; else -> Color(0xFFFF6B5E) }, fontSize = Sizes.ROW, fontWeight = FontWeight.Bold)
+        Text(title, color = when (state) { Check.WORKING -> Ink; Check.DOUBT -> AccentInk; else -> Color(0xFFFF6B5E) }, fontSize = Sizes.ROW, fontWeight = FontWeight.Bold)
         Text(detail, color = Soft, fontSize = 16.sp)
     }
 }
@@ -4712,7 +4759,7 @@ private fun CatalogueGrid(catalogue: Catalogue, state: BrowseState, resume: Focu
         if (!phone) AboutStrip(on?.name, on?.about)
         when {
             problem -> Note("This catalogue didn't answer. Check the internet, or see Settings › Health check.")
-            items.isEmpty() && busy -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
+            items.isEmpty() && busy -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = AccentInk) }
             items.isEmpty() -> Note("This catalogue is empty.")
             else -> LazyVerticalGrid(
                 columns = if (phone) GridCells.Adaptive(104.dp) else GridCells.Fixed(4),
@@ -4790,7 +4837,7 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 36.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("Free channel lists", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text("Free channel lists", color = Ink, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Note("A backup for your provider. If a channel from your provider won't play, a free channel of the same name is tried next.")
         // What has been added can be watched straight away.
         if (lists.isNotEmpty()) {
@@ -4807,7 +4854,7 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
         Box(Modifier.padding(top = 10.dp)) { Heading("Or add any list by its link") }
         phoneAddress?.let { address ->
             Note("Easiest: on your phone, on the same Wi-Fi, open")
-            Text(address, color = Accent, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+            Text(address, color = AccentInk, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
             Note("and paste the link there.")
         }
         Field("Channel list or add-on link", link, onDone = { add(link) }) { link = it }
@@ -5361,7 +5408,7 @@ private fun ChannelMenu(channel: ChannelGroup, login: Boolean, favourites: Favou
                 },
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(channel.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, bottom = 6.dp))
+            Text(channel.name, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, bottom = 6.dp))
             when (naming) {
                 null -> {
                     FocusRow(if (favourite) "★ Remove from favourites" else "★ Add to favourites", { favourites.toggleAll(favKeys); onClose() }, Modifier.focusRequester(first), look = Look.OTHER)

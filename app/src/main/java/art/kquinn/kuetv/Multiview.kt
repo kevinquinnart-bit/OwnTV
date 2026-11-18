@@ -207,17 +207,9 @@ private fun Square(item: Playable, sound: Boolean) {
         Text(item.name + ": this one can only play full screen", color = Color(0xFFB9C2D3), fontSize = 16.sp, modifier = Modifier.padding(12.dp))
         return
     }
-    var retry by remember(url) { mutableIntStateOf(0) }
-    val player = remember(url) {
-        val http = DefaultHttpDataSource.Factory().setUserAgent(Provider.USER_AGENT).setAllowCrossProtocolRedirects(true)
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http)))
-            .build().apply {
-                trackSelectionParameters = trackSelectionParameters.buildUpon().setPreferredAudioLanguage("en").build()
-                setMediaItem(MediaItem.fromUri(url))
-                playWhenReady = true
-            }
-    }
+    val address = resolvedAddress(url) ?: return
+    var retry by remember(address) { mutableIntStateOf(0) }
+    val player = remember(address) { lightPlayer(context, address) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) { retry += 1 }

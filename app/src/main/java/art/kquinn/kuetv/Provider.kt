@@ -29,6 +29,8 @@ data class Channel(
     val url: String,
     /** Days of catch-up the provider says this channel keeps; 0 when none. */
     val catchupDays: Int,
+    /** For a protected channel: its lock, as [Drm.Lock.text]; null for an ordinary one. */
+    val drm: String? = null,
 )
 
 data class Film(val id: String, val name: String, val poster: String, val categoryId: String, val url: String, val added: Long = 0)
@@ -82,6 +84,11 @@ class Library(
     /** How far the provider's own clock is ahead of world time, in seconds. Catch-up is asked for on its clock. */
     val serverAheadSec: Int = 0,
 ) {
+    init {
+        // Protected channels' keys, ready for when one is played.
+        for (c in channels) Drm.Lock.of(c.drm)?.let { Drm.note(c.url, it) }
+    }
+
     /** The channels with the versions of the same channel (4K, FHD, HD, SD) kept together as one. */
     val groups: List<ChannelGroup> by lazy {
         // A TV channel from an add-on is always a row of its own: it plays only through the add-ons, so it can't be
@@ -353,6 +360,9 @@ object AccountStore {
      * categories and catch-up details.
      */
     fun tidy(server: String, user: String, pass: String, playlist: String): Account {
+        // A portal and a MAC address (in the username box, or after the address): a MAG/Stalker portal.
+        if (pass.isBlank() && server.isNotBlank()) Stalker.spec(server, user)?.let { return Account("", "", "", it) }
+        if (Stalker.macIn(playlist) != null) Stalker.spec(playlist, playlist)?.let { return Account("", "", "", it) }
         val link = playlist.trim()
         if (link.isNotEmpty()) {
             val url = link.toHttpUrlOrNull()
@@ -378,6 +388,8 @@ object Provider {
     val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS)
+        // The DNS server chosen in Settings, or the internet's own.
+        .dns(KueDns)
         .build()
 
     // Notes in square brackets, and the circled letters some lists put after a name (Ⓖ for geo-blocked, Ⓢ, Ⓨ).
@@ -385,7 +397,11 @@ object Provider {
 
     /** Signs in (or opens the playlist) to see that the provider answers. Throws a [ProviderProblem] saying why not. */
     fun reach(account: Account) {
-        if (account.isLogin) checkLogin(account) else open(account.playlist).close()
+        when {
+            account.isLogin -> checkLogin(account)
+            Stalker.isSpec(account.playlist) -> Stalker.reach(account.playlist)
+            else -> open(account.playlist).close()
+        }
     }
 
     /** The channels in a free channel list, read from its link. Call off the main thread. */
@@ -407,7 +423,11 @@ object Provider {
     }
 
     /** Fetches everything the provider lists. Call off the main thread. */
-    fun load(account: Account): Library = if (account.isLogin) loadLogin(account) else loadPlaylist(account.playlist)
+    fun load(account: Account): Library = when {
+        account.isLogin -> loadLogin(account)
+        Stalker.isSpec(account.playlist) -> Stalker.load(account.playlist)
+        else -> loadPlaylist(account.playlist)
+    }
 
     // ---------------------------------------------------------------- login (server, username, password)
 
@@ -703,11 +723,20 @@ object Provider {
             var group = ""
             var days = 0
             var pending = false
+            // A protected channel's "#KODIPROP" lines come before its address, either side of its "#EXTINF".
+            var lockType: String? = null
+            var lockKey: String? = null
             var count = 0
             try {
                 while (true) {
                     val line = reader.readLine()?.trim() ?: break
-                    if (line.startsWith("#EXTINF")) {
+                    if (line.startsWith("#KODIPROP:", ignoreCase = true)) {
+                        val prop = line.substringAfter(':')
+                        val k = prop.substringBefore('=').trim().lowercase()
+                        val v = prop.substringAfter('=', "").trim()
+                        if (k.endsWith("license_type")) lockType = Drm.typeOf(v)
+                        if (k.endsWith("license_key")) lockKey = v
+                    } else if (line.startsWith("#EXTINF")) {
                         val attrs = attribute.findAll(line).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
                         // The name follows the first comma after the last quoted value, so a comma inside the name is kept.
                         val comma = line.indexOf(',', line.lastIndexOf('"').coerceAtLeast(0))
@@ -718,6 +747,9 @@ object Provider {
                         pending = true
                     } else if (pending && line.isNotEmpty() && !line.startsWith("#")) {
                         pending = false
+                        val lock = if (lockType != null && !lockKey.isNullOrBlank()) Drm.Lock(lockType!!, lockKey!!).text else null
+                        lockType = null
+                        lockKey = null
                         count++
                         val id = count.toString()
                         if (line.contains("/series/")) continue
@@ -726,7 +758,7 @@ object Provider {
                             films += Film(id, name, logo, group, line)
                         } else {
                             liveNames += group
-                            channels += Channel(id, name, logo, group, line, days)
+                            channels += Channel(id, name, logo, group, line, days, lock)
                         }
                     }
                 }

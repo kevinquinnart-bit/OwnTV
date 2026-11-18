@@ -8,6 +8,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.compose.runtime.getValue
@@ -55,7 +56,14 @@ object SoundSync {
 @OptIn(UnstableApi::class)
 class SyncedRenderers(context: Context) : DefaultRenderersFactory(context) {
     override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink? {
-        val sink = super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams) ?: return null
+        // Stereo only, or night mode (which needs the sound here to work on): Dolby and DTS are decoded here, not passed on.
+        val decodeHere = Sound.stereoOnly(context) || Sound.night(context)
+        val sink = DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+            .setAudioProcessors(arrayOf(NightProcessor { Sound.night(context) }))
+            .apply { if (decodeHere) setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES) }
+            .build()
         return object : ForwardingAudioSink(sink) {
             override fun getCurrentPositionUs(sourceEnded: Boolean): Long = SoundSync.shifted(super.getCurrentPositionUs(sourceEnded), SoundSync.offsetUs)
         }
