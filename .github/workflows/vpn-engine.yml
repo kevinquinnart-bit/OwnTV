@@ -1,0 +1,52 @@
+name: VPN engine
+
+# Builds the OpenVPN engine (OpenVPN for Android, by Arne Schwabe, GPL v2) as a library KueTV can carry.
+# Run on its own branch; the result is downloaded and kept with KueTV, so KueTV's own build stays quick.
+on:
+  push:
+    branches: [ vpn-engine ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Get OpenVPN for Android
+        uses: actions/checkout@v7
+        with:
+          repository: schwabe/ics-openvpn
+          ref: 660901ce320539aec476bd04bd1999c396d5e778
+          path: ics
+          submodules: true
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Make it a library
+        working-directory: ics
+        run: |
+          python3 ../tools/to_library.py
+          mkdir -p ~/.gradle && echo "org.gradle.jvmargs=-Xmx3072M" > ~/.gradle/gradle.properties
+          which swig && swig -version | head -3
+
+      - name: Build the engine
+        working-directory: ics
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :main:assembleSkeletonOvpn2Release --stacktrace
+          ls -la main/build/outputs/aar/
+          echo "Native parts:"; unzip -l main/build/outputs/aar/*.aar | grep '\.so$'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openvpn-engine
+          path: ics/main/build/outputs/aar/*.aar
