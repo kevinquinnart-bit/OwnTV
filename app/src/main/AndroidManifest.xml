@@ -50,7 +50,7 @@
         android:label="@string/app_name"
         android:theme="@style/KueTheme"
         android:usesCleartextTraffic="true"
-        tools:replace="android:allowBackup,android:icon,android:roundIcon,android:label,android:theme">
+        tools:replace="android:name,android:allowBackup,android:icon,android:roundIcon,android:label,android:theme">
 
         <!-- The VPN engine's ways for other apps to control it, and to start it with the device: not wanted here. -->
         <service android:name="de.blinkt.openvpn.api.ExternalOpenVPNService" tools:node="remove" />
