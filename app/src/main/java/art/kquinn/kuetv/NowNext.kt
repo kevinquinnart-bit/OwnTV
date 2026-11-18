@@ -22,6 +22,11 @@ object NowNext {
     /** The guide already in hand for a channel, if it is fresh enough. */
     fun cached(channelId: String): List<Programme>? = kept[channelId]?.takeIf { System.currentTimeMillis() - it.first < KEEP_MS }?.second
 
+    /** For the automatic checks only: a channel's guide, as if it had just been fetched. */
+    internal fun keepForChecks(channelId: String, guide: List<Programme>) {
+        kept[channelId] = System.currentTimeMillis() to guide
+    }
+
     suspend fun get(account: Account, channelId: String): List<Programme> {
         // A channel from a free list isn't one the provider has a guide for.
         if (channelId.startsWith(Library.FREE)) return emptyList()

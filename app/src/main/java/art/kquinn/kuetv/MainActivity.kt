@@ -1561,10 +1561,12 @@ private fun MainScreen(
             }
             Pane(this, null).body()
             // The small TV: on every section the same size and place as Live TV's, on the right, with what is on
-            // that channel underneath. Live TV draws its own, which follows the remote down the list.
+            // that channel underneath. Live TV draws its own, which follows the remote down the list. The TV Guide's
+            // grid also draws its own, in its top right corner, so the grid can run the full width of the screen.
             val small = LastLive.item
             val wanted = remember(Choices.changes) { Choices.smallTv(context) }
-            if (small != null && wanted && section != Section.LIVE) {
+            val guideGrid = section == Section.GUIDE && state.guide.open == null
+            if (small != null && wanted && section != Section.LIVE && !guideGrid) {
                 val group = remember(small.url, library) { library.groups.firstOrNull { g -> g.versions.any { it.channel.url == small.url } } }
                 val narrow = section == Section.FILMS || section == Section.SERIES
                 Column(Modifier.width(if (narrow) 220.dp else SIDE_WIDTH).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -3000,13 +3002,30 @@ private fun Pane.GuideGrid(
     val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
     val time: (Long) -> String = { clock.format(java.util.Date(it)) }
     var about by remember { mutableStateOf<Pair<String, Programme>?>(null) }
+    // The channel row the remote is on: its picture plays in the top right corner.
+    var onChannel by remember { mutableStateOf<ChannelGroup?>(null) }
     val nameWidth = 230.dp * scale
     val tell: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
 
     Column(fill()) {
-        Heading("OK: watch what is on now · on a later one, ◆ reminder, then ● record, then neither · catch up on an earlier one")
+        // The standard guide layout: what the remote is on, described along the top, with the channel's picture in
+        // the top right corner. The grid runs the full width of the screen underneath.
+        Row(Modifier.fillMaxWidth().height(GUIDE_PICTURE_WIDTH * 9f / 16f + 41.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            GuideDetails(about, onChannel, account, time, Modifier.weight(1f).fillMaxHeight())
+            PreviewPicture(onChannel, Modifier.width(GUIDE_PICTURE_WIDTH))
+        }
+        Spacer(Modifier.height(8.dp))
         Row {
-            Spacer(Modifier.width(nameWidth))
+            // The day at the left edge of the grid, as it moves sideways: Today, Tomorrow, or the day's name.
+            val leftMs = start + (with(density) { strip.value.toDp() }.value / GRID_DP_PER_MIN * 60_000L).toLong()
+            val dayOf: (Long) -> Long = { ms -> (ms + java.util.TimeZone.getDefault().getOffset(ms)) / DAY_MS }
+            val day = when (dayOf(leftMs) - dayOf(opened)) {
+                0L -> "Today"
+                1L -> "Tomorrow"
+                -1L -> "Yesterday"
+                else -> java.text.SimpleDateFormat("EEEE", java.util.Locale.UK).format(java.util.Date(leftMs))
+            }
+            Text(day, color = Soft, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.width(nameWidth).padding(start = 8.dp))
             Box(Modifier.weight(1f).horizontalScroll(strip, enabled = false)) {
                 Row(Modifier.width(total)) {
                     for (i in 0 until GRID_SPAN_MIN / 30) {
@@ -3034,7 +3053,7 @@ private fun Pane.GuideGrid(
                     val nameKey = "pick:" + channel.id
                     GridCell(
                         (if (channel.versions.any { Favourites.key(it.channel, true) in favs }) "★ " else "") + channel.name, "",
-                        nameWidth, false, { onOpen(channel) }, { about = null },
+                        nameWidth, false, { onOpen(channel) }, { about = null; onChannel = channel },
                         if (nameKey == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                     )
                     Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(strip)) {
@@ -3073,7 +3092,7 @@ private fun Pane.GuideGrid(
                                                 )
                                             }
                                         },
-                                        { about = channel.name to programme },
+                                        { about = channel.name to programme; onChannel = channel },
                                         if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                                     )
                                 }
@@ -3083,16 +3102,41 @@ private fun Pane.GuideGrid(
                 }
             }
         }
-        // What the remote is on, in full. Kept clear of the small TV in the corner.
-        Column(Modifier.fillMaxWidth().height(104.dp * scale).padding(start = 16.dp, top = 8.dp, end = 410.dp)) {
-            about?.let { (channel, programme) ->
-                Text(
-                    channel + " · " + time(programme.startMs) + " to " + time(programme.stopMs) + " · " + programme.title.ifBlank { "No title" },
-                    color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                Text(programme.description, color = Soft, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** The width of the picture in the TV Guide's top right corner. */
+private val GUIDE_PICTURE_WIDTH = 256.dp
+
+/**
+ * Along the top of the TV Guide: the programme the remote is on, in full. On a channel's name: what is on
+ * that channel now and next. The keys' meanings sit underneath, on one line.
+ */
+@Composable
+private fun GuideDetails(about: Pair<String, Programme>?, channel: ChannelGroup?, account: Account, time: (Long) -> String, modifier: Modifier) {
+    Column(modifier) {
+        val panel = Modifier.fillMaxWidth().weight(1f)
+        when {
+            about != null -> {
+                val (name, programme) = about
+                Column(panel.background(Panel, RoundedCornerShape(14.dp)).padding(horizontal = 16.dp, vertical = 10.dp)) {
+                    Text(name, color = Soft, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(time(programme.startMs) + " to " + time(programme.stopMs), color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(programme.title.ifBlank { "No title" }, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (programme.description.isNotBlank()) {
+                        Text(programme.description, color = Soft, fontSize = 16.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).padding(top = 2.dp))
+                    }
+                }
+            }
+            channel != null -> ProgrammeDetails(channel, account, panel)
+            else -> Box(panel.background(Panel, RoundedCornerShape(14.dp)).padding(16.dp)) {
+                Text("Move onto a programme to see what it is about.", color = Soft, fontSize = 17.sp)
             }
         }
+        Text(
+            "OK: watch what is on now · on a later one, ◆ reminder, then ● record, then neither · catch up on an earlier one",
+            color = Soft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, top = 4.dp),
+        )
     }
 }
 
@@ -3745,6 +3789,19 @@ private fun UpdateNow(latest: Updates.Latest, modifier: Modifier = Modifier) {
  */
 @Composable
 private fun LivePreview(on: ChannelGroup?, account: Account?, modifier: Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        PreviewPicture(on, Modifier.fillMaxWidth())
+        // What is on follows the remote straight away; only the picture waits, to save connections.
+        if (on != null) ProgrammeDetails(on, account, Modifier.fillMaxWidth().weight(1f))
+    }
+}
+
+/**
+ * The small picture of the channel the remote is on. It changes channel once the remote has stayed on it
+ * for a moment, and plays the channel's lightest version. Before any channel: the last one watched.
+ */
+@Composable
+private fun PreviewPicture(on: ChannelGroup?, modifier: Modifier) {
     var showing by remember { mutableStateOf(on) }
     LaunchedEffect(on) {
         if (on == null || on.id == showing?.id) return@LaunchedEffect
@@ -3753,17 +3810,12 @@ private fun LivePreview(on: ChannelGroup?, account: Account?, modifier: Modifier
     }
     val group = showing
     val item = remember(group?.id) { group?.takeIf { AddOns.showable(it.lightest.url) }?.let { Playable(it.name, it.lightest.url) } } ?: LastLive.item
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (item != null) {
-            MiniTv(item, Modifier.fillMaxWidth())
-        } else {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Panel, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-                Text("Move onto a channel to watch it here.", color = Soft, fontSize = 18.sp, modifier = Modifier.padding(16.dp))
-            }
+    if (item != null) {
+        MiniTv(item, modifier)
+    } else {
+        Box(modifier.aspectRatio(16f / 9f).background(Panel, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+            Text("Move onto a channel to watch it here.", color = Soft, fontSize = 18.sp, modifier = Modifier.padding(16.dp))
         }
-        // What is on follows the remote straight away; only the picture waits, to save connections.
-        val details = on ?: group
-        if (details != null) ProgrammeDetails(details, account, Modifier.fillMaxWidth().weight(1f))
     }
 }
 
@@ -4370,6 +4422,13 @@ private fun <T> keyedState(key: Any?, initial: () -> T, producer: suspend androi
 @Composable
 internal fun LiveTvForChecks(library: Library, favourites: Favourites) {
     val state = remember { BrowseState().apply { section = Section.LIVE } }
+    MainScreen(library, state, favourites, { _, _, _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+}
+
+/** For the automatic checks only: the TV Guide as a TV shows it. */
+@Composable
+internal fun GuideForChecks(library: Library, favourites: Favourites) {
+    val state = remember { BrowseState().apply { section = Section.GUIDE } }
     MainScreen(library, state, favourites, { _, _, _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
 }
 
