@@ -279,6 +279,8 @@ fun PlayerScreen(
     lists: List<Pair<String, () -> List<Playable>>> = emptyList(),
     /** Plays these with VLC instead, from this one. */
     onVlc: ((List<Playable>, Int) -> Unit)? = null,
+    /** Live: ◀ leaves full screen for the Live TV list, on this channel. */
+    onChannels: ((Playable) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val phone = LocalPhone.current
@@ -1033,6 +1035,11 @@ fun PlayerScreen(
         controls = false
         nameVisible = false
     }
+    // Live: the Live TV list itself, on the channel playing, when there is one to go to; else the list over the picture.
+    val toChannels: () -> Unit = {
+        val here = items.getOrNull(index)
+        if (onChannels != null && here != null) onChannels(here) else openList()
+    }
     val openOptions: () -> Unit = {
         options = true
         optionRow = 0
@@ -1050,7 +1057,7 @@ fun PlayerScreen(
             pictureButton?.let { add(it) }
             add(subsButton)
             add(Control("Options", Icon.OPTIONS, act = openOptions))
-            if (items.size > 1) add(Control("Channels", Icon.LIST, act = openList))
+            if (items.size > 1 || onChannels != null) add(Control("Channels", Icon.LIST, act = toChannels))
             if (previous in items.indices) add(Control("Last channel", Icon.PREVIOUS) { go(previous) })
             if (items.size > 1 && onMultiview != null) add(Control("Multiview", Icon.MULTI) { onMultiview(items.toList(), index) })
             // Always last: LIVE, drawn on the right of the box. Behind live, it jumps to what is on now.
@@ -1260,8 +1267,8 @@ fun PlayerScreen(
                                 showName += 1
                                 true
                             } else {
-                                // Live: ◀ opens the list of channels; ▶ does nothing here (it puts the list away).
-                                if (live && e.key == Key.DirectionLeft && items.size > 1) openList()
+                                // Live: ◀ goes to the Live TV list, on this channel; ▶ does nothing here.
+                                if (live && e.key == Key.DirectionLeft && (items.size > 1 || onChannels != null)) toChannels()
                                 true
                             }
                             else -> false
@@ -1357,7 +1364,7 @@ fun PlayerScreen(
                         // The keys, small, on a TV while the buttons aren't in use.
                         if (!phone && !controls) {
                             Text(
-                                if (live) "OK buttons  ·  ▲ ▼ channel" + (if (items.size > 1) "  ·  ◀ channels" else "") + "  ·  ≡ record"
+                                if (live) "OK buttons  ·  ▲ ▼ channel" + (if (items.size > 1 || onChannels != null) "  ·  ◀ channels" else "") + "  ·  ≡ record"
                                 else "OK buttons  ·  ◀ ▶ wind, hold to go faster",
                                 color = soft, fontSize = 14.sp, maxLines = 1,
                             )

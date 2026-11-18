@@ -22,6 +22,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -646,6 +647,28 @@ private fun App() {
                     onFromStart = { programme -> playing = Playing(listOf(programme), 0, false) },
                     onMultiview = { items, index -> playing = null; multi = Playing(items, index, true) },
                     onVlc = { items, index -> playing = Playing(items, index, now.live, vlc = true) },
+                    // ◀ on a live channel: back to the Live TV list, on that channel, in the category it was in if it is there.
+                    onChannels = if (!now.live || whole == null) null else ({ item ->
+                        val group = whole.groups.firstOrNull { g -> g.versions.any { it.channel.url == item.url } }
+                            ?: whole.groups.firstOrNull { it.name == item.name }
+                        if (group != null) {
+                            val login = whole.account != null
+                            val cat = browse.liveCategory
+                            val inCat = when {
+                                cat.startsWith(MyCategories.PREFIX) -> MyCategories.all(context).firstOrNull { it.id == cat }?.channels.orEmpty().contains(group.id)
+                                cat == ALL || cat == RECENT -> true
+                                cat == FAVOURITES -> group.versions.any { Favourites.key(it.channel, login) in favourites.keys }
+                                cat == Library.FREE_ALL -> group.versions.any { it.free }
+                                else -> group.versions.any { it.channel.categoryId == cat }
+                            }
+                            if (!inCat) browse.liveCategory = if (group.versions.any { Favourites.key(it.channel, login) in favourites.keys }) FAVOURITES else ALL
+                            browse.resumeKey = "live:" + group.id
+                            browse.liveOn = group
+                            browse.jumpLive = true
+                            browse.section = Section.LIVE
+                        }
+                        playing = null
+                    }),
                     // The list over the picture holds only the channels being played: the other lists that were
                     // offered above them (0.1.91) confused more than they helped.
                 )
@@ -1259,6 +1282,9 @@ private class BrowseState(saved: Map<String, String> = emptyMap()) {
     /** The row or poster that was sent to the player; focus returns to it. */
     var resumeKey by mutableStateOf<String?>(null)
 
+    /** Set when ◀ in the player comes back to the Live TV list: it is scrolled to the channel that was playing. */
+    var jumpLive = false
+
     /** What has been fetched of each catalogue so far, where each one's grid is scrolled to, and the ones fetched to the end. */
     val catItems = HashMap<String, androidx.compose.runtime.snapshots.SnapshotStateList<CatItem>>()
     val catGrids = HashMap<String, LazyGridState>()
@@ -1584,6 +1610,17 @@ private fun MainScreen(
                     }
                 }
                 val playables = remember(shown) { shown.map { livePlayable(it, library.account, library.serverAheadSec) } }
+                // Come from the player with ◀: the list moves to the channel that was playing, and the remote lands on it.
+                LaunchedEffect(shown) {
+                    if (!state.jumpLive) return@LaunchedEffect
+                    state.jumpLive = false
+                    val at = shown.indexOfFirst { "live:" + it.id == state.resumeKey }
+                    if (at < 0) return@LaunchedEffect
+                    runCatching { state.channelList.scrollToItem((at - 3).coerceAtLeast(0)) }
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    runCatching { resume.requestFocus() }
+                }
                 val list: @Composable (Modifier) -> Unit = { m ->
                     // Favourites can be put in the user's own order: pick one up, move it, put it down.
                     val sortable = liveCategory == FAVOURITES && shown.size > 1
@@ -4227,23 +4264,37 @@ private fun HomeScreen(
     // nothing is pushed off the top. The margins keep clear of the edges a TV can cut off.
     Column(
         modifier.fillMaxSize().then(if (phone) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-            .padding(horizontal = if (phone) 8.dp else 48.dp, vertical = if (phone) 8.dp else 28.dp),
+            .padding(horizontal = if (phone) 8.dp else 48.dp, vertical = if (phone) 8.dp else 22.dp),
         verticalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 10.dp),
     ) {
-        // The top: the app's name and the time, and on a TV the channel last watched, still playing.
+        // The top. Phone: the app's name and the time. TV, as on Freely: what the remote is on (or the channel last
+        // watched) in big letters on the left, and the channel last watched still playing on the right.
         val last = LastLive.item
         val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                KueLogo(if (phone) 36.dp else 40.dp, if (phone) 30.sp else 32.sp)
-                Text(clock, color = Soft, fontSize = if (phone) 17.sp else 18.sp)
-                if (!phone && last != null && smallTv) {
-                    Spacer(Modifier.height(10.dp))
-                    Text("Last watched", color = Soft, fontSize = 14.sp)
-                    Text(last.name, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+        var hero by remember { mutableStateOf<HomeHero?>(null) }
+        if (phone) {
+            Column(Modifier.fillMaxWidth()) {
+                KueLogo(36.dp, 30.sp)
+                Text(clock, color = Soft, fontSize = 17.sp)
             }
-            if (!phone && last != null && smallTv) MiniTv(last, Modifier.width(SIDE_WIDTH))
+        } else {
+            val lastGroup = remember(library, last) {
+                last?.let { l -> library.groups.firstOrNull { g -> g.versions.any { it.channel.url == l.url } } ?: library.groups.firstOrNull { it.name == l.name } }
+            }
+            val shownHero = hero ?: (lastGroup ?: channels.firstOrNull())?.let { HomeHero.OnChannel(it) }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        KueLogo(30.dp, 24.sp)
+                        Spacer(Modifier.width(18.dp))
+                        Text(clock, color = Soft, fontSize = 16.sp, maxLines = 1)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    if (shownHero != null) HeroWords(shownHero, library.account)
+                }
+                if (last != null && smallTv) MiniTv(last, Modifier.width(SIDE_WIDTH))
+                else if (shownHero != null) HeroPicture(shownHero, Modifier.width(SIDE_WIDTH))
+            }
         }
 
         if (phone) {
@@ -4279,51 +4330,13 @@ private fun HomeScreen(
             }
         }
 
-        // The rows below the tiles, each with its heading. On a TV they show whole: a row that would be cut off
-        // at the bottom stays hidden until the remote moves down to it, and the rows then move up a row at a time.
-        val blockSpacing = Arrangement.spacedBy(if (phone) 14.dp else 6.dp)
+        // The rows below the tiles, each with its heading, as on Freely: pictures with their names under them.
+        // On a TV they show whole: a row that would be cut off at the bottom stays hidden until the remote moves
+        // down to it, and the rows then move up a row at a time.
+        val blockSpacing = Arrangement.spacedBy(if (phone) 14.dp else 4.dp)
+        val rowGap = Arrangement.spacedBy(if (phone) 12.dp else 18.dp)
+        val rowPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
         val rows: List<@Composable () -> Unit> = listOf(
-        { Column(verticalArrangement = blockSpacing) {
-        // Films and episodes left part way through: OK carries on from where it was left.
-        val carry = remember(Positions.changes) { Positions.watching(context) }
-        if (carry.isNotEmpty()) {
-            Heading("Carry on watching")
-            val carryList = remember { LazyListState(carry.indexOfFirst { "carry:" + it.url == state.resumeKey }.coerceAtLeast(0)) }
-            LazyRow(
-                Modifier.fillMaxWidth().focusRestorer(),
-                state = carryList,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 14.dp),
-            ) {
-                itemsIndexed(carry, key = { _, w -> w.url }) { _, w ->
-                    val key = "carry:" + w.url
-                    Tile(
-                        { onCarryOn(w) },
-                        Modifier.width(if (phone) 110.dp else 160.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
-                    ) { focused ->
-                        // On a TV the same shape as the channel tiles, so each row is the same height.
-                        Box(Modifier.fillMaxWidth().aspectRatio(if (phone) 2f / 3f else 16f / 9f).clip(RoundedCornerShape(8.dp)).background(Looks.faint), contentAlignment = Alignment.Center) {
-                            if (w.poster.isNotBlank()) AsyncImage(model = w.poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                            else Text(w.name, color = Soft, fontSize = 14.sp, maxLines = 4, modifier = Modifier.padding(8.dp))
-                        }
-                        // How far through: a bar, and the minutes left.
-                        val through = if (w.lengthMs > 0) (w.positionMs.toFloat() / w.lengthMs).coerceIn(0f, 1f) else 0f
-                        Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).background(Looks.faint2, RoundedCornerShape(2.dp))) {
-                            Box(Modifier.fillMaxWidth(through).fillMaxHeight().background(if (focused) Color.Black else Accent, RoundedCornerShape(2.dp)))
-                        }
-                        Text(
-                            w.name, color = if (focused) Color.Black else Ink, fontSize = if (phone) 13.sp else 15.sp, fontWeight = FontWeight.Bold,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        )
-                        Text(
-                            ((w.lengthMs - w.positionMs) / 60_000).coerceAtLeast(1).toString() + " min left",
-                            color = if (focused) Color.Black else Soft, fontSize = if (phone) 12.sp else 13.sp, maxLines = 1, modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            }
-        }
-        } },
         { Column(verticalArrangement = blockSpacing) {
         Heading("Favourite channels")
         if (channels.isEmpty()) {
@@ -4331,32 +4344,50 @@ private fun HomeScreen(
         } else {
             // Opens on the channel that was playing, so coming back from the player lands on it.
             val list = remember { LazyListState(channels.indexOfFirst { "home:" + it.id == state.resumeKey }.coerceAtLeast(0)) }
-            LazyRow(
-                Modifier.fillMaxWidth().focusRestorer(),
-                state = list,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 14.dp),
-            ) {
+            LazyRow(Modifier.fillMaxWidth().focusRestorer(), state = list, contentPadding = rowPadding, horizontalArrangement = rowGap) {
                 itemsIndexed(channels, key = { _, c -> c.id }) { i, channel ->
                     val key = "home:" + channel.id
-                    Tile(
+                    val onNow = guideFor(library.account, channel.versions[channel.start].channel.id, channel.name)
+                        ?.let { g -> val at = System.currentTimeMillis(); g.firstOrNull { it.startMs <= at && it.stopMs > at } }
+                    HomeCard(
                         { onPlay(playables, i, true, key) },
-                        Modifier.width(if (phone) 150.dp else 160.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                        Modifier.width(if (phone) 150.dp else 176.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                        16f / 9f,
+                        onNow?.title?.ifBlank { null } ?: channel.name,
+                        if (onNow?.title.isNullOrBlank()) null else channel.name,
                         onHold = { favourites.toggleAll(channel.versions.map { Favourites.key(it.channel, login) }) },
-                    ) { focused ->
-                        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Looks.faint), contentAlignment = Alignment.Center) {
-                            if (channel.logo.isNotBlank()) AsyncImage(model = channel.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(10.dp))
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            channel.name, color = if (focused) Color.Black else Ink, fontSize = if (phone) 15.sp else 18.sp,
-                            fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(
-                            nowLine(library.account, channel.versions[channel.start].channel.id, channel.name).orEmpty(),
-                            color = if (focused) Color.Black else Soft, fontSize = if (phone) 12.sp else 14.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
-                        )
+                        onFocus = { hero = HomeHero.OnChannel(channel) },
+                        bar = onNow?.let { ((System.currentTimeMillis() - it.startMs).toFloat() / (it.stopMs - it.startMs).coerceAtLeast(1)).coerceIn(0f, 1f) },
+                    ) {
+                        if (channel.logo.isNotBlank()) AsyncImage(model = channel.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(14.dp))
+                        else Text(channel.name, color = Soft, fontSize = 15.sp, maxLines = 2, modifier = Modifier.padding(8.dp))
+                    }
+                }
+            }
+        }
+        } },
+        { Column(verticalArrangement = blockSpacing) {
+        // Films and episodes left part way through: OK carries on from where it was left.
+        val carry = remember(Positions.changes) { Positions.watching(context) }
+        if (carry.isNotEmpty()) {
+            Heading("Carry on watching")
+            val carryList = remember { LazyListState(carry.indexOfFirst { "carry:" + it.url == state.resumeKey }.coerceAtLeast(0)) }
+            LazyRow(Modifier.fillMaxWidth().focusRestorer(), state = carryList, contentPadding = rowPadding, horizontalArrangement = rowGap) {
+                itemsIndexed(carry, key = { _, w -> w.url }) { _, w ->
+                    val key = "carry:" + w.url
+                    val left = ((w.lengthMs - w.positionMs) / 60_000).coerceAtLeast(1).toString() + " min left"
+                    HomeCard(
+                        { onCarryOn(w) },
+                        Modifier.width(if (phone) 150.dp else 176.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                        16f / 9f,
+                        w.name,
+                        left,
+                        onFocus = { hero = HomeHero.Plain(w.name, left, "", w.poster) },
+                        // How far through.
+                        bar = if (w.lengthMs > 0) (w.positionMs.toFloat() / w.lengthMs).coerceIn(0f, 1f) else 0f,
+                    ) {
+                        if (w.poster.isNotBlank()) AsyncImage(model = w.poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        else Text(w.name, color = Soft, fontSize = 14.sp, maxLines = 3, modifier = Modifier.padding(8.dp))
                     }
                 }
             }
@@ -4365,11 +4396,15 @@ private fun HomeScreen(
         // Favourite films and series, each in a row of posters. Hold OK takes one off.
         { Column(verticalArrangement = blockSpacing) {
             val favFilms = remember(library, favs) { library.films.filter { Favourites.key(it, login) in favs } }
-            PosterRow("Favourite films", favFilms, { "homefilm:" + it.id }, { it.name }, { it.poster }, state, resume, onFilm) { favourites.toggle(Favourites.key(it, login)) }
+            PosterRow("Favourite films", favFilms, { "homefilm:" + it.id }, { it.name }, { it.poster }, state, resume, onFilm,
+                hero = { f -> val about = state.filmAbout[f.id]; HomeHero.Plain(f.name, about?.line.orEmpty(), about?.plot.orEmpty(), f.poster) },
+                onHero = { hero = it }) { favourites.toggle(Favourites.key(it, login)) }
         } },
         { Column(verticalArrangement = blockSpacing) {
             val favShows = remember(library, favs) { library.shows.filter { Favourites.key(it) in favs } }
-            PosterRow("Favourite series", favShows, { "homeshow:" + it.id }, { it.name }, { it.poster }, state, resume, onShow) { favourites.toggle(Favourites.key(it)) }
+            PosterRow("Favourite series", favShows, { "homeshow:" + it.id }, { it.name }, { it.poster }, state, resume, onShow,
+                hero = { sh -> HomeHero.Plain(sh.name, sh.about.line, sh.about.plot, sh.poster) },
+                onHero = { hero = it }) { favourites.toggle(Favourites.key(it)) }
         } },
         )
         if (phone) Column(verticalArrangement = blockSpacing) { rows.forEach { it() } }
@@ -4417,32 +4452,139 @@ private fun WholeRows(rows: List<@Composable () -> Unit>, modifier: Modifier = M
 
 /** A row on Home of favourite films or series: their posters; OK plays the film or opens the series. */
 @Composable
-private fun <T> PosterRow(title: String, items: List<T>, key: (T) -> String, name: (T) -> String, poster: (T) -> String, state: BrowseState, resume: FocusRequester, onOpen: (T) -> Unit, onHold: (T) -> Unit) {
+private fun <T> PosterRow(
+    title: String, items: List<T>, key: (T) -> String, name: (T) -> String, poster: (T) -> String, state: BrowseState, resume: FocusRequester,
+    onOpen: (T) -> Unit, hero: (T) -> HomeHero = { HomeHero.Plain(name(it), "", "", poster(it)) }, onHero: (HomeHero) -> Unit = {}, onHold: (T) -> Unit,
+) {
     if (items.isEmpty()) return
     val phone = LocalPhone.current
     Heading(title)
     LazyRow(
         Modifier.fillMaxWidth().focusRestorer(),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (phone) 12.dp else 18.dp),
     ) {
         itemsIndexed(items, key = { _, it -> key(it) }) { _, item ->
-            Tile(
+            HomeCard(
                 { state.resumeKey = key(item); onOpen(item) },
-                Modifier.width(if (phone) 110.dp else 120.dp).then(if (key(item) == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                Modifier.width(if (phone) 110.dp else 84.dp).then(if (key(item) == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                2f / 3f,
+                name(item),
+                null,
                 onHold = { onHold(item) },
-            ) { focused ->
-                Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Looks.faint), contentAlignment = Alignment.Center) {
-                    if (poster(item).isNotBlank()) AsyncImage(model = poster(item), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    else Text(name(item), color = Soft, fontSize = 14.sp, maxLines = 4, modifier = Modifier.padding(8.dp))
-                }
-                Text(
-                    name(item), color = if (focused) Color.Black else Ink, fontSize = if (phone) 13.sp else 15.sp, fontWeight = FontWeight.Bold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                )
+                onFocus = { onHero(hero(item)) },
+            ) {
+                if (poster(item).isNotBlank()) AsyncImage(model = poster(item), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                else Text(name(item), color = Soft, fontSize = 14.sp, maxLines = 4, modifier = Modifier.padding(8.dp))
             }
         }
     }
+}
+
+/** What the big space at the top of Home tells about: a channel (what is on it), or a film, series or thing to carry on. */
+private sealed interface HomeHero {
+    class OnChannel(val group: ChannelGroup) : HomeHero
+    class Plain(val title: String, val line: String, val about: String, val picture: String) : HomeHero
+}
+
+/** The words at the top of Home: a channel's name, what is on now in big letters, its times and what it is about. */
+@Composable
+private fun HeroWords(hero: HomeHero, account: Account?) {
+    var kicker = ""
+    var title = ""
+    var line = ""
+    var about = ""
+    when (hero) {
+        is HomeHero.OnChannel -> {
+            val g = hero.group
+            val guide = guideFor(account, g.versions[g.start].channel.id, g.name)
+            val at = System.currentTimeMillis()
+            val onNow = guide?.firstOrNull { it.startMs <= at && it.stopMs > at }
+            val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+            kicker = g.name
+            title = onNow?.title?.ifBlank { null } ?: g.name
+            line = if (onNow == null) "" else "Now · " + clock.format(java.util.Date(onNow.startMs)) + " to " + clock.format(java.util.Date(onNow.stopMs))
+            about = onNow?.description.orEmpty()
+        }
+        is HomeHero.Plain -> {
+            title = hero.title
+            line = hero.line
+            about = hero.about
+        }
+    }
+    Column(Modifier.fillMaxWidth()) {
+        if (kicker.isNotBlank() && kicker != title) Text(kicker, color = Soft, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (line.isNotBlank()) Text(line, color = AccentInk, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+        if (about.isNotBlank()) Text(about, color = Soft, fontSize = 16.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+/** With the small TV turned off: the picture of what the remote is on, top right of Home. */
+@Composable
+private fun HeroPicture(hero: HomeHero, modifier: Modifier) {
+    val picture = when (hero) {
+        is HomeHero.OnChannel -> hero.group.logo
+        is HomeHero.Plain -> hero.picture
+    }
+    Box(modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)).background(Panel), contentAlignment = Alignment.Center) {
+        if (picture.isNotBlank()) AsyncImage(model = picture, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(if (hero is HomeHero.OnChannel) 24.dp else 0.dp))
+    }
+}
+
+/**
+ * A picture on Home with its name under it, as on Freely. The remote on it: a yellow edge round the picture,
+ * which grows a little, and the name turns yellow. [bar] is how far through, when there is one to show.
+ */
+@Composable
+private fun HomeCard(
+    onClick: () -> Unit,
+    modifier: Modifier,
+    ratio: Float,
+    title: String,
+    below: String?,
+    onHold: (() -> Unit)? = null,
+    onFocus: () -> Unit = {},
+    bar: Float? = null,
+    picture: @Composable BoxScope.() -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    Column(modifier.onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }.press(onClick, onHold)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(ratio).scale(if (focused) 1.05f else 1f).clip(shape).background(Looks.faint)
+                .then(if (focused) Modifier.border(3.dp, Accent, shape) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) { picture() }
+        if (bar != null) {
+            Box(Modifier.padding(top = 5.dp).fillMaxWidth().height(3.dp).background(Looks.faint2, RoundedCornerShape(2.dp))) {
+                Box(Modifier.fillMaxWidth(bar).fillMaxHeight().background(Accent, RoundedCornerShape(2.dp)))
+            }
+        }
+        Text(
+            title, color = if (focused) AccentInk else Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+        if (below != null) Text(below, color = Soft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/** What is on a channel, as far as is known: the provider's guide, or with no login the free guides. Null while it is being found. */
+@Composable
+private fun guideFor(account: Account?, channelId: String, name: String): List<Programme>? {
+    if (account == null) return remember(channelId, FreeGuides.changes) { FreeGuides.lookup(name) }
+    val guide by keyedState(channelId, { NowNext.cached(channelId) }) {
+        if (value != null) return@keyedState
+        delay(500)
+        value = try {
+            NowNext.get(account, channelId, name)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    return guide
 }
 
 /** An episode's picture, beside its name. */
