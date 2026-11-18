@@ -1,0 +1,838 @@
+(kids)
+(numbers only; leave empty for none)
+(the only one)
+A backup for your provider. If a channel from your provider won't play, a free channel of the same name is tried next.
+a category to hide it or show it again.
+a category to pick it up. Back when done.
+A free account that runs out shows here as refused
+A free account there lasts 7 days. When it runs out, KueTV says so
+A little higher
+A newer KueTV 2 is ready
+A to Z
+A torrent can't be played in another player.
+About and updates
+About KueTV 2
+Active
+Add
+Add a kids profile
+Add a profile
+Add an add-on or channel list by its link
+Add another provider
+Add by link
+Add that link with this login
+Add the OpenVPN file first.
+add them before connecting.
+Add this profile
+Add to
+Add to favourites
+Add with one press
+Add-on
+Add-on stream
+Add-ons
+Added
+added, not checked yet
+Adding
+Adding or removing one in KueTV does the same in Stremio.
+All
+All 7 working
+All channels
+all free channels
+All working
+Also in Live TV, at the top of the categories, under "Free:"
+Also pairs the two, so they keep in step
+and paste the link there.
+and tap Copy there. Keep this screen open while you do.
+and type them there.
+and type your provider details there. Your phone must be on the same Wi-Fi as this TV.
+Another VPN
+answers, but no
+answers, but none for a well-known film or episode
+App updates
+as your provider gives them
+Asking Stremio
+asking them failed
+At the bottom
+Back
+Back 10 s
+Back 30 s
+BACK close
+BACK leave Multiview
+BACK stay here
+Back to my add-ons
+Back to put this away
+Back to Settings
+Back to the order your provider sends
+Back to the usual look
+Back up by itself
+Back up now
+Back when done.
+Back, without changing anything
+Backed up to Google Drive just now.
+Backing up
+Backup
+backup and recordings
+behind live
+Being checked
+Being checked now
+Best it can
+Blue
+Blue button
+Bring in my Stremio add-ons now
+bytes, build
+Can go back
+Cancel
+Carry on watching
+Carrying on from
+Catalogue "
+catalogues. The
+catch up on an earlier one
+Catch-up
+Catch-up or recording
+Categories
+Change or remove
+Change provider details
+Change the VPN file or login
+Changes made in Stremio come into KueTV each time KueTV opens.
+Channel for this square
+Channel list or add-on link
+Channels
+channels listed. Whether each one plays isn't tested.
+Check again
+Check for updates
+Check now
+Check them all again
+Checking
+Checking each add-on
+Checking everything. This takes up to a minute
+checking the username and password
+Choose Connect.
+Choose it below to switch to it.
+Choose its OpenVPN file on this phone
+Clear history
+Close
+Cloudflare (1.1.1.1)
+Colours
+Come back here afterwards.
+Commentary
+Connect
+connect on opening
+Connect when KueTV opens
+CONNECTING
+Connecting
+Connection profiles
+connects when KueTV opens
+Copied. Paste it into your chat with Claude.
+Copy
+Copy set-up from another device
+Copy the code and open the page
+Copy the report
+Copy the set-up, keep in step
+Copying to Google Drive
+Couldn't
+Couldn't add it to your Stremio account.
+Couldn't ask your add-ons. Check the internet and try again.
+Couldn't back up
+couldn't be asked
+Couldn't be reached.
+Couldn't check
+Couldn't delete that recording.
+Couldn't fetch the link
+Couldn't find the other device. Check it is on the same Wi-Fi and still showing its code.
+couldn't keep the guide
+Couldn't list the recordings in Google Drive.
+Couldn't load the episodes for this series.
+Couldn't load the episodes for this series. Check the internet and try again.
+Couldn't load the guide for this channel.
+Couldn't open Google Drive.
+Couldn't open the app or the app store.
+Couldn't put the update on. Check the internet and try again.
+Couldn't reach the download. Check the internet and try again.
+Couldn't reach the portal.
+Couldn't reach the portal. Check its address and the internet connection.
+Couldn't reach your provider. Check the server address and the internet connection.
+Couldn't read that file.
+Couldn't remove it from your Stremio account, so it will come back.
+Couldn't restore
+Couldn't start recording.
+Dark
+Dark band
+Dark or light
+Delete recordings
+Disconnect
+DNS server
+do you answer?
+doesn't answer
+Dolby and DTS sent on to your TV or sound bar, or made into stereo here
+Done
+Done putting in order
+Done sorting
+Downloaded. Choose Install on the next screen.
+Downloading
+Each add-on and how it did when last checked. OK on one opens it.
+Each square is a connection to your provider. Some allow only one or two at once.
+Easier to spot from across the room
+Easiest
+Empty this square
+English
+English 5.1
+Episode
+Every channel, film and series you have starred
+Every showing
+every time KueTV opens
+Favourite channels
+Favourite films
+Favourite series
+Favourites
+Fetches everything afresh from your provider
+Fill in the server, username and password, or a playlist link.
+Film and series catalogues
+Film details from your provider
+Film or episode
+film or recording
+Films
+Films and series
+films and series to browse
+films for a test search.
+Finding the best stream
+Finding what is on
+Finish deleting
+First aired
+First allow KueTV 2 to install apps. On a Fire TV
+first choice
+First, on the page that opened, turn on KueTV 2. Then come back and choose Update now again.
+Fit
+Fit, Stretch, Zoom
+For a guide that is out by an hour or more
+For a stream that won't play here
+Found
+Free
+Free channel lists
+Free list
+Free server in Dublin. Make the login on their page first (below).
+Free TV guides
+Freeview (UK)
+From KueTV
+From KueTV and from your Stremio account
+from KueTV.
+from KueTV. Removing it from your Stremio account
+from the catalogue
+from the next thing you play
+From the start
+getting settings from the server
+Gives
+Glass look
+GO LIVE
+Google (8.8.8.8)
+Google Drive
+Google Drive isn't set up in this copy of the app.
+Google Drive isn't set up in this copy of the app. Recordings stay here.
+Google Drive isn't signed in, so recordings stay here. Sign in under Settings.
+Green
+Green button
+Guide button
+Guide times
+Has a gap
+has no PIN now.
+Health check
+Help
+Hide all of
+Highlight colour
+History
+History, profiles
+hold OK for favourite
+hold OK for more
+Hold OK on a channel in Live TV to make it a favourite. Favourites show here.
+hold OK to mark as not watched
+hold OK to remove it and everything kept for it
+hold OK to take it off the list
+Hold OK to take off
+Home
+Home, the channel watched last, or one of your favourite channels
+How each part did when last checked
+How it works
+If your internet blocks your provider, try another
+In Google Drive
+in other languages)
+In the order your provider sends them
+In use
+In your own order
+Installed. OK opens it.
+Ireland
+is on the download.
+is ready.
+isn't playing. Trying
+It also checks for a newer version each time it opens.
+It also comes out of your Stremio account, so it won't come back.
+It answered with an error
+It answers, but found nothing for a test search.
+It answers, but holds no channels.
+It answers, but sent nothing about "
+It couldn't be reached
+It couldn't be reached.
+It didn't answer in 15 seconds
+It didn't answer when asked about a film.
+It is in Live TV's categories.
+It needs a username and password too
+Its description
+Jump to now
+Keep in step
+Keep the file I have, with this username and password
+Keep this screen open until it says Sent.
+Keeping in step
+Kept stopping on
+Kept the file for
+Kept. Server
+Kids
+Kids profile
+KueTV 2, version
+KueTV code
+KueTV report
+KueTV VPN
+Large
+Last backed up
+Last channel
+Last met the other device at
+Last watched
+Less detail uses less internet, for a slow connection
+Light
+Link
+LIVE
+live channel
+Live TV
+Loading your channels and films
+look at Health check
+Looking
+Looking for the other device
+Looking in the catalogues
+looking up the server
+Looks
+Loud bangs quieter, speech louder
+Made 📁
+make a new one and add it again.
+make a new one and add it here again.
+Make the category
+Mark as not watched
+Mark as watched
+Marked as not watched.
+Marked as watched.
+Match the TV to the film
+Menu
+min 30 s
+min left
+minutes earlier
+minutes in. Rewind to start again.
+More
+more catalogues not tried
+More films, from the catalogues
+More series, from the catalogues
+Move onto a channel to watch it here.
+Move onto a programme to see what it is about.
+Moving.
+ms earlier
+Multiview
+My add-ons
+My channels
+Name
+New category with this channel
+New PIN for
+Newest added
+newest first
+Next
+Night mode
+No
+No add-ons yet. Sign in to Stremio, or add one by its link, from Settings › Films and series.
+no answer
+no detail
+No episodes are listed for this series.
+No guide for this channel
+no keys in this copy
+No OpenVPN file has been added.
+No programme details for this channel.
+No recordings yet. While watching a live channel, press ≡ on the remote to record it.
+No recordings yet. While watching a live channel, tap the picture, then Record.
+No subtitles
+No subtitles on this channel
+No title
+No, keep it
+No, keep what is here
+None
+None found. The film index listed none, and no add-on gives any.
+None of the
+None yet
+None, outlined letters
+Normal
+Not backed up yet
+Not checked yet
+Not checked yet. Press Check again.
+Not enough storage here to record.
+Not in KueTV yet
+Not installed. OK finds it in the app store.
+not known yet
+Not met the other device since opening
+Not now
+Not read yet.
+Not set up
+Not set up in this copy of the app.
+Not signed in
+not signed in
+Not signed in. Recordings stay on this device.
+not typed yet
+not working
+NOT WORKING
+Not working
+Nothing
+Nothing dead.
+Nothing else in it can work.
+Nothing from your add-ons for this one. Playing your provider's copy.
+Nothing in your provider's lists matches. Looking in the catalogues
+Nothing is kept for that day.
+nothing KueTV uses
+Nothing matches "
+Nothing on this device can play YouTube trailers.
+Nothing played yet in this profile.
+Nothing set for
+Nothing starred yet. Hold OK on a channel, film or series to star it.
+Nothing taken from the other device since opening
+Nothing to play this from yet. Add an add-on that gives streams, in Settings › Add-ons.
+Now
+now asks for its PIN.
+Now on
+of 7 not working
+of them torrents
+of your channels have one.
+Off
+off
+Off keeps the sound only, for a commentary or the news
+off, sound only
+off, stereo only
+Off. Send the set-up from one device to the other to turn it on.
+OK
+OK again for nothing.
+OK again to record every showing.
+OK again to record it instead.
+OK back to on time
+OK buttons
+OK change its channel
+OK for 15 min, 30 min … 2 hours, then off
+OK for a reminder, or to record
+OK for catch-up
+OK for the next one
+OK for the next shape
+OK for the next sound
+OK on
+OK on a channel to pick it up.
+OK on a later programme
+OK on a recording deletes it.
+OK play now
+OK to add a channel
+OK to change
+OK to switch to it
+OK to switch to this one
+OK to type
+OK to watch
+oldest first
+on
+On
+On 10 s
+On 30 s
+on a later one, ◆ reminder, then ● record, then neither
+On now
+On the device that is already set up, open KueTV › Settings › "Send this set-up to another device". It shows a code. Type it here.
+On this phone
+On this TV
+On time
+On TV
+On your phone or computer, open
+on your phone, on the same Wi-Fi, open
+on your phone, open
+on, hides adult categories
+on, when your TV or speakers can
+once a day
+once a week
+ones for a test film
+Ones in Google Drive go to its bin, where Google keeps them for 30 days.
+only on remotes that have it
+Only this profile's
+Options
+Options › Picture to bring it back
+Or a link to its OpenVPN file
+Or add any list by its link
+Or one playlist link
+Orange
+Order
+Other
+Outline round what the remote is on
+Password
+Pause
+Pause and rewind live TV
+Paused
+Phone
+Pick a channel to catch up on
+Pick a channel to see its guide
+Pick a date and time
+Picture
+Picture for
+Picture quality
+Picture shape
+PIN for
+Pink
+Play
+Play in another player
+Play now
+Play with VLC, inside KueTV
+Play/Pause to carry on
+Player
+Playing in VLC
+Playlist
+Press "Bring in my Stremio add-ons".
+Press and hold a channel in Live TV to make it a favourite. Favourites show here.
+press and hold for favourite
+press and hold for more
+Press OK on the box and type at least two letters.
+press to stop
+Profile
+Profiles
+Programme
+Programme details need a login
+programmes for
+Provider details
+provider details, favourites and their order, add-ons, free channel lists, hidden categories and their order, subtitles, the Stremio sign-in, the VPN details, Carry on watching, and reminders. Both devices need KueTV open on the same Wi-Fi.
+Provider's order
+Put
+Puts back favourites, add-ons, provider details and choices from the backup
+Quad9 (9.9.9.9)
+reaching the server
+Reading
+Reading the file
+Reading the link
+Reading the list
+REC
+Recently watched
+Reconnecting
+RECONNECTING
+Record
+Recording
+Recording now
+Recording saved.
+Recording. Press ≡ again to finish.
+Recording. Tap the picture, then Stop, to finish.
+Recordings
+Recordings here
+recordings there.
+Recordings will be copied to the folder "
+Red button
+Reload channels and films
+Reminder
+Reminder set
+reminder, then ● record, then neither
+Remove
+Remove from favourites
+Remove the VPN details
+Removed
+Removed.
+Removing
+Rename this channel
+Report for Claude
+Reset text size, subtitles and small TV
+Restore from Google Drive
+Restored from Google Drive.
+Restoring
+s back
+s categories in order
+s on
+s PIN
+Save
+Save the name
+Save the PIN
+saved)
+Screen
+Search
+Search channels, films and series
+Season
+See-through panels on a soft glow of the highlight colour
+Send this set-up
+Send this set-up to another device
+Sent details for a test film.
+Sent. The other device now has your provider details, favourites and add-ons. From now on the two keep in step by themselves when KueTV is open on both, on the same Wi-Fi.
+Series
+Series need a login
+Server address
+server address, username and password.
+server address, username and password. A playlist link on its own doesn't give them.
+server address, username and password. A playlist link on its own doesn't list them.
+Set a PIN for
+Set to record
+Set to record every showing of
+Set up KueTV
+setting up the connection
+Settings
+Settings › Films and series › My add-ons.
+Settings › My Fire TV › Developer options › Install unknown apps › KueTV 2 › On. Then choose Update now again.
+Show all of
+show, hide and order
+Sign in
+Sign in again in Settings › Films and series › Add-ons.
+Sign in once, and KueTV brings in every add-on you have in Stremio. Your password goes only to Stremio and isn't kept.
+Sign in to Google Drive
+Sign in to Google Drive first.
+Sign out of Google Drive
+Sign out of Stremio
+Signed in
+signed in
+Signed in as
+Signed in.
+Signed out. The add-ons already here stay.
+Signing in
+Sleep timer
+Small
+Small picture when you leave KueTV
+Small TV while browsing
+Smoother movement. The screen may go dark for a second as each one starts
+Soft
+something went wrong
+Something went wrong loading your channels. Try again.
+Something went wrong signing in. Try again.
+Sort
+Sort my favourites
+Sound
+Sound 100 ms earlier
+Sound 150 ms later
+Sound 2
+Sound and picture
+sound earlier
+sound later
+Sound only
+Sound sync
+square (it has the sound)
+Standard
+Start again
+Started at
+Starting at
+Starting in VLC
+Stay here
+Still not connected after 45 seconds. Send the Report lines starting "VPN" so the cause can be found.
+Stop recording
+stopping in a minute. Options › Sleep timer to keep watching.
+stops at
+Stream
+Streams
+Stremio account
+Stretch
+Strong
+Subs
+Subtitle background
+Subtitle colour
+Subtitle language
+Subtitle position
+Subtitle size
+Subtitles
+subtitles found for this one.
+Subtitles off
+Subtitles on
+Subtitles showing
+Subtitles, pause and rewind, sound and picture, text size
+Surround sound
+Swipe up or down to change channel
+Switch provider
+Switch to
+Take out of
+Tap
+Tap a channel to pick it up.
+Tap a recording to delete it.
+Tap a square to give it the sound, tap again to change its channel
+Tap for 15 min, 30 min … 2 hours, then off
+Tap for the next shape
+Tap for the next sound
+Tap to add a channel
+Tap where it should go.
+Teal
+test channels.
+Text size
+That channel isn't in your provider's list any more.
+That code ran out of time. Start again.
+That code wasn't right. Check it and try again.
+That hasn't been recorded yet. To take it off, use Delete recordings.
+That isn't an OpenVPN file KueTV can read
+That isn't the PIN for
+That link didn't hold a playlist the app could read.
+That one is being copied to Google Drive. Delete it once it is there.
+That one is being recorded now.
+That one is being recorded now. It will be here when it finishes.
+That portal address isn't a web address.
+That server address isn't a web address.
+That server didn't answer like an IPTV provider. Check the server address.
+That stream isn't playing. Trying the next one
+That stream isn't playing. Trying your provider's copy.
+The
+The .zip has no OpenVPN (.ovpn) file in it.
+The add-on stream tries the best one with subtitles first. If none of its streams play, it moves to your provider's copy by itself.
+The backup in Google Drive couldn't be read.
+the channel watched last
+The channel's name (empty puts your provider's back)
+The device asks once whether KueTV may run a VPN. Choose OK.
+The device wasn't given permission for KueTV's VPN, so it can't connect. Choose Connect to be asked again.
+the download answered
+The download answers. Newest version
+The download couldn't be reached.
+the download wasn't a newer, whole app, twice
+the downloaded app couldn't be kept
+The file doesn't say which server to connect to.
+The film index
+The guide and catch-up need a login
+the guide answered
+The link answered
+The link gave a web page, not the OpenVPN file. Download the .ovpn file on your phone instead, and send it from the phone page.
+The list
+the list's site
+The list's site
+the lookup answered
+The new category's name
+The one in use is kept, to switch back to
+The portal answered with an error
+The portal didn't accept that MAC address.
+The portal didn't give a link for this channel.
+The portal listed no channels for that MAC address.
+The portal's answer couldn't be read. Check it is a MAG/Stalker portal address.
+The remote's spare buttons
+the server address and
+The sign-in no longer works. Sign out and in again in Settings.
+The TV guide
+the TV guide, Add-on
+the version file had no build number
+The VPN is asking for a username and password. Add them with the file.
+The VPN is paused.
+The VPN refused the username or password. If the account has run out, make a new one and add it here again.
+Then choose the Google account your recordings should go to.
+There is no
+There is no backup in this Google Drive yet.
+There is no channel before this one yet.
+There is no other video player on this device. VLC or MX Player can be installed from the app store.
+these play in their own apps
+they already matched, or haven't met.
+Thick
+Thin
+This catalogue didn't answer. Check the internet, or see Settings › Health check.
+This catalogue is empty.
+This channel can't be recorded.
+This channel isn't playing right now.
+This device isn't on a home network, so it can't send its set-up. Join the Wi-Fi and try again.
+This device isn't on a home network. Join the Wi-Fi and try again.
+This device no longer keeps in step. To start again, send the set-up from the other device.
+This film isn't playing right now.
+this is build
+This isn't playing right now.
+This list
+this one can only play full screen
+This one is a torrent. It can take a minute to start.
+This one needs the standard player (it comes from an add-on or a torrent).
+This provider
+This replaces the provider details, favourites and add-ons on this device.
+This screen moves on by itself.
+This TV isn't on a home network, so the report can only be read here.
+This VPN needs a username and password. Add them with the file.
+titles on their first pages.
+to look at
+to move it, OK to put it down.
+To send it
+Today
+Tomorrow
+tried all answered,
+tried answered, but these were empty
+tried answered.
+tried answered. Not answering
+Try again
+trying again
+TV
+TV and phone
+TV apps
+TV channels
+TV guide
+TV Guide
+TV inputs
+Type the four figures shown on the other device.
+Type the username and password above exactly as their page shows them (they add -vpnjantit.com to the username), then choose "Use VPN Jantit's Dublin server".
+Type your provider details in the boxes below.
+Type your provider details in the boxes on the right.
+UK satellite and cable
+Unknown place
+Up to 1080p
+Up to 480p
+Up to 720p
+Update now to version
+Updates
+usable add-ons are in KueTV
+Use VPN Jantit's Dublin server with this login
+Use without a provider
+Used for channels your provider has no guide for, and for free channels.
+Username (or MAC address, for a portal)
+Version
+Very large
+VLC couldn't play this.
+VLC couldn't start on this device. Press Back, and set Player to Standard in Settings › Watching.
+VLC isn't available here.
+VLC plays some streams the standard one can't, but without pause and rewind, recording or add-ons
+VLC, MX Player or another video app, if one is on this device
+VPN off.
+VPN on.
+VPN password
+VPN username
+waiting for the internet
+Waiting for the internet.
+waiting for the server to answer
+Waiting to copy to Google Drive
+Watch
+Watch the trailer
+Watch this one full screen
+watch what is on now
+Watched
+Watching
+what is here is replaced
+What is playing carries on in a corner when you press Home, where the device allows it
+What keeps in step
+What the app did and what went wrong, most recent last. It holds no addresses, usernames or passwords.
+What the remote is on, and the main buttons
+When KueTV opens
+Where to get a free Irish one
+Which add-ons work
+Which copy do you want to play?
+Which show, and their order.
+White
+Will record
+wind, hold to go faster
+working   ! answers, with a gap   ✗ not working
+working, 1 not working
+Yellow
+Yellow button
+Yes, remove it
+Yes, restore
+Yesterday
+You have the newest version.
+You have version
+Your add-ons have nothing to play this from.
+Your backup and recordings are kept there
+Your home Wi-Fi stays reachable, so the phone page and keeping in step still work.
+Your internet's own
+Your playlist
+Your playlist stopped part way through. Try again.
+your provider
+Your provider
+Your provider answers, but sent no programmes for
+Your provider didn't answer when asked what is on.
+Your provider keeps no catch-up for this.
+Your provider listed no channels.
+Your provider listed no episodes for this series.
+Your provider listed no series.
+Your provider marks no channel as having catch-up.
+Your provider refused the username or password.
+Your provider sent a list the app couldn't read.
+Your provider sent no guide for this channel.
+Your provider sent no past programmes for this channel. Pick a date and time instead.
+Your provider signed you in but listed no channels, films or series.
+Your provider's copy
+Your provider's list stopped part way through. Try again.
+Your Stremio account holds the list of add-ons.
+Your things
+Your TV and phone share the list and this sign-in when they keep in step.
+Zoom
+Language
+KueTV's own words. OK for the next language
