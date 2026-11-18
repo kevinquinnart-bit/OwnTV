@@ -139,6 +139,8 @@ data class Playable(
     val fromStart: ((Programme) -> Playable)? = null,
     /** For a film or episode: its picture (empty if it has none). Set only on those, which go on Home's "Carry on watching". */
     val poster: String? = null,
+    /** For catch-up: what plays once this has finished, the next programme on the channel; null when there is none yet. */
+    val then: (suspend () -> Playable?)? = null,
 ) {
     /** What it is known by when its place is kept: its address, or, with no address of its own (add-on only), its name. */
     val key: String get() = url.ifEmpty { NO_ADDRESS + name }
@@ -163,7 +165,7 @@ private class Control(
 )
 
 /** The pictures drawn on the player's buttons. */
-private enum class Icon { BACK, PLAY, PAUSE, ON, FROM_START, RECORD, STOP, PICTURE, SUBS_ON, SUBS_OFF, LIVE }
+private enum class Icon { BACK, PLAY, PAUSE, ON, FROM_START, RECORD, STOP, PICTURE, SUBS_ON, SUBS_OFF, OPTIONS, LIVE }
 
 /** How much one key-repeat of a held wind button adds: faster the longer it is held. Public for the tests. */
 fun windSpeed(repeats: Int): Int = when {
@@ -258,7 +260,7 @@ private object Settled {
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(
-    items: List<Playable>,
+    firstItems: List<Playable>,
     startIndex: Int,
     live: Boolean,
     onClose: () -> Unit,
@@ -267,6 +269,8 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val phone = LocalPhone.current
+    // What is to be played: those given, and for catch-up, each next programme added as the one before it ends.
+    val items = remember { androidx.compose.runtime.mutableStateListOf<Playable>().apply { addAll(firstItems) } }
     var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) }
     var stream by remember { mutableIntStateOf(items.getOrNull(index)?.let { Settled.startFor(it) } ?: 0) }
     var note by remember { mutableStateOf<String?>(null) }
@@ -294,6 +298,15 @@ fun PlayerScreen(
     var retryTick by remember { mutableIntStateOf(0) }
 
     var recording by remember { mutableStateOf(false) }
+    // The next episode (or programme), counting down to start: its place in the list, or -1 with none waiting.
+    var upNext by remember { mutableIntStateOf(-1) }
+    var upNextIn by remember { mutableIntStateOf(0) }
+    // The Options panel: the sound, the picture's shape and the sound sync. Which row the remote is on.
+    var options by remember { mutableStateOf(false) }
+    var optionRow by remember { mutableIntStateOf(0) }
+    var sounds by remember { mutableStateOf<List<SoundChoice>>(emptyList()) }
+    var shape by remember { mutableIntStateOf(PictureShape.saved(context)) }
+    var syncMs by remember { mutableIntStateOf(0) }
     // The control buttons in the name box: brought up by OK on a TV (◀ ▶ then move along them), always there on a phone.
     var controls by remember { mutableStateOf(false) }
     var pick by remember { mutableIntStateOf(0) }
@@ -353,7 +366,7 @@ fun PlayerScreen(
             // Holds more picture in hand than the default before and during play, to ride out short stalls.
             .setBufferDurationsMs(20_000, 60_000, 2_500, 6_000)
             .build()
-        ExoPlayer.Builder(context)
+        ExoPlayer.Builder(context, SyncedRenderers(context))
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(
                     DataSource.Factory { Either(Tap(DefaultDataSource.Factory(context, http).createDataSource(), recorder), TorrentSource(context.applicationContext), ShiftSource()) },
@@ -380,6 +393,9 @@ fun PlayerScreen(
     val go: (Int) -> Unit = { next ->
         keepPlace()
         val wasRecording = finishRecording()
+        upNext = -1
+        // A sound picked for the last one doesn't carry over: the next starts on its own first choice.
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_AUDIO).build()
         index = next
         stream = items.getOrNull(next)?.let { Settled.startFor(it) } ?: 0
         controls = false
@@ -450,8 +466,28 @@ fun PlayerScreen(
                     }
                 }
                 if (state == Player.STATE_ENDED && !live && item != null) Positions.forget(context, item.key)
-                // An episode has finished and another follows it in the list: play that one.
-                if (state == Player.STATE_ENDED && !live && index < items.size - 1) go(index + 1)
+                // An episode has finished and another follows it in the list: count down to it. Catch-up: the
+                // programme that followed, once it has finished airing.
+                if (state == Player.STATE_ENDED && !live && upNext < 0) {
+                    if (index < items.size - 1) {
+                        upNext = index + 1
+                    } else {
+                        val more = items.getOrNull(index)?.then
+                        if (more != null) windScope.launch {
+                            val following = try {
+                                more()
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                null
+                            }
+                            if (following != null) {
+                                items.add(following)
+                                upNext = items.size - 1
+                            }
+                        }
+                    }
+                }
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -459,6 +495,7 @@ fun PlayerScreen(
             }
 
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                sounds = soundChoices(tracks)
                 val text = tracks.groups.filter { it.type == androidx.media3.common.C.TRACK_TYPE_TEXT }
                 subtitles = when {
                     text.any { it.isSelected } -> 1
@@ -644,6 +681,23 @@ fun PlayerScreen(
             keepPlace()
         }
     }
+    // The next episode or programme: a few seconds to see what it is, then it starts. OK starts it now, Back stays here.
+    LaunchedEffect(upNext) {
+        if (upNext < 0) return@LaunchedEffect
+        for (s in UP_NEXT_SECONDS downTo 1) {
+            upNextIn = s
+            delay(1_000)
+        }
+        val n = upNext
+        if (n in items.indices) go(n)
+    }
+    // Each channel and film keeps its own sound sync.
+    LaunchedEffect(index) {
+        val key = items.getOrNull(index)?.key ?: return@LaunchedEffect
+        syncMs = SoundSync.saved(context, key)
+        SoundSync.offsetUs = syncMs * 1_000L
+    }
+    DisposableEffect(Unit) { onDispose { SoundSync.offsetUs = 0L } }
     // After a drop: wait a moment, then pick the stream up again.
     LaunchedEffect(retryTick) {
         if (retryTick == 0) return@LaunchedEffect
@@ -777,6 +831,47 @@ fun PlayerScreen(
         isBehind -> (if (behindMs < 60_000) (behindMs / 1000).toString() + " s" else (behindMs / 60_000).toString() + " min") + " behind live"
         else -> { tick; "Can go back " + ((System.currentTimeMillis() - copyNow.oldestTime()) / 60_000) + " min" }
     }
+    // The Options panel's rows: the sound, the picture's shape, the sound sync.
+    val soundNow = sounds.indexOfFirst { it.selected }
+    val optionRows = listOf(
+        "Sound: " + when {
+            sounds.isEmpty() -> "not known yet"
+            sounds.size == 1 -> sounds[0].label + " (the only one)"
+            else -> sounds.getOrNull(soundNow)?.label.orEmpty().ifEmpty { "first choice" } + " · " + (soundNow.coerceAtLeast(0) + 1) + " of " + sounds.size
+        },
+        "Picture shape: " + PictureShape.names[shape],
+        "Sound sync: " + SoundSync.words(syncMs),
+    )
+    val optionHints = listOf(
+        if (phone) "Tap for the next sound" else "OK for the next sound",
+        if (phone) "Tap for the next shape: Fit, Stretch, Zoom" else "OK for the next shape: Fit, Stretch, Zoom",
+        if (phone) "− sound earlier · + sound later · tap the words for on time" else "◀ sound earlier · ▶ sound later · OK back to on time",
+    )
+    val nextSound: () -> Unit = {
+        if (sounds.size > 1) {
+            val n = sounds[(soundNow.coerceAtLeast(0) + 1) % sounds.size]
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setOverrideForType(androidx.media3.common.TrackSelectionOverride(n.group, n.track)).build()
+        }
+    }
+    val setSync: (Int) -> Unit = { ms ->
+        syncMs = ms.coerceIn(-SoundSync.MOST_MS, SoundSync.MOST_MS)
+        SoundSync.offsetUs = syncMs * 1_000L
+        items.getOrNull(index)?.let { SoundSync.save(context, it.key, syncMs) }
+    }
+    val optionAct: (Int) -> Unit = { row ->
+        when (row) {
+            0 -> nextSound()
+            1 -> { shape = (shape + 1) % PictureShape.names.size; PictureShape.save(context, shape) }
+            2 -> setSync(0)
+        }
+    }
+    val openOptions: () -> Unit = {
+        options = true
+        optionRow = 0
+        controls = false
+        nameVisible = false
+    }
     // The buttons along the bottom of the box, left to right.
     val buttons = buildList {
         if (live) {
@@ -787,6 +882,7 @@ fun PlayerScreen(
             add(Control(if (recording) "Stop recording" else "Record", if (recording) Icon.STOP else Icon.RECORD, status = if (recording) "● Recording" else "", act = toggleRecording))
             pictureButton?.let { add(it) }
             add(subsButton)
+            add(Control("Options", Icon.OPTIONS, act = openOptions))
             // Always last: LIVE, drawn on the right of the box. Behind live, it jumps to what is on now.
             add(Control(if (isBehind || paused) "GO LIVE" else "● LIVE", Icon.LIVE) { if (isBehind || paused) { player.play(); reload += 1 } })
         } else {
@@ -796,14 +892,20 @@ fun PlayerScreen(
             add(Control("On 10 s", Icon.ON, seek = 1) { windBy(windStep) })
             pictureButton?.let { add(it) }
             add(subsButton)
+            add(Control("Options", Icon.OPTIONS, act = openOptions))
         }
     }
     val pickPlay: () -> Int = { buttons.indexOfFirst { it.icon == Icon.PLAY || it.icon == Icon.PAUSE }.coerceAtLeast(0) }
 
     // Back hides the buttons first; with them gone, Back closes the player.
     BackHandler {
+        // The next episode counting down, or the Options panel: Back puts that away and stays here.
         // With the box up (the buttons or not), Back only puts it away. With it gone, Back closes the player.
-        if (nameVisible) {
+        if (upNext >= 0) {
+            upNext = -1
+        } else if (options) {
+            options = false
+        } else if (nameVisible) {
             controls = false
             nameVisible = false
         } else {
@@ -871,6 +973,27 @@ fun PlayerScreen(
                     .focusRequester(focus)
                     .focusable()
                     .onPreviewKeyEvent { e ->
+                        val ok = e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter
+                        // The next episode counting down: OK starts it now.
+                        if (upNext >= 0 && ok) {
+                            if (e.type == KeyEventType.KeyDown) go(upNext)
+                            return@onPreviewKeyEvent true
+                        }
+                        // The Options panel: ▲ ▼ move along its rows, OK changes the row, ◀ ▶ move the sound sync.
+                        if (options) {
+                            val dpad = ok || e.key in listOf(Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight)
+                            if (!dpad) return@onPreviewKeyEvent false
+                            if (e.type == KeyEventType.KeyDown) {
+                                when (e.key) {
+                                    Key.DirectionUp -> optionRow = (optionRow - 1).coerceAtLeast(0)
+                                    Key.DirectionDown -> optionRow = (optionRow + 1).coerceAtMost(optionRows.size - 1)
+                                    Key.DirectionLeft, Key.DirectionRight ->
+                                        if (optionRow == 2) setSync(syncMs + if (e.key == Key.DirectionRight) SoundSync.STEP_MS else -SoundSync.STEP_MS)
+                                    else -> optionAct(optionRow)
+                                }
+                            }
+                            return@onPreviewKeyEvent true
+                        }
                         val buttonsUp = controls && nameVisible && buttons.isNotEmpty()
                         // Winding: the rewind and fast-forward keys, OK on a wind button, and for a film left and right.
                         // A press winds one step when it is let go; held down, it winds faster and faster until let go.
@@ -924,7 +1047,8 @@ fun PlayerScreen(
                                     // Start on Pause, whichever buttons come before it.
                                     pick = pickPlay()
                                 }
-                                showName += 1
+                                // Options opens its own panel, in place of the box.
+                                if (!options) showName += 1
                                 true
                             }
                             Key.Menu, Key.MediaRecord -> { if (live) toggleRecording(); live }
@@ -975,6 +1099,7 @@ fun PlayerScreen(
                     setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
                 }
             },
+            update = { it.resizeMode = PictureShape.mode(shape) },
         )
         if (phone && !live) {
             // A tap on the picture brings up the box and its buttons.
@@ -1096,7 +1221,7 @@ fun PlayerScreen(
                             val on = !phone && controls && i == pick.coerceIn(0, buttons.size - 1)
                             val touch = if (!phone) Modifier else Modifier.pointerInput(b.label) {
                                 if (b.seek == 0) {
-                                    detectTapGestures(onTap = { b.act(); showName += 1 })
+                                    detectTapGestures(onTap = { b.act(); if (!options) showName += 1 })
                                 } else {
                                     detectTapGestures(onPress = {
                                         // Held: wind faster and faster until let go. A quick tap winds one step.
@@ -1169,6 +1294,65 @@ fun PlayerScreen(
                     }
                 }
                 if (phone && live && items.size > 1) Text("Swipe up or down to change channel", color = soft, fontSize = 15.sp, modifier = Modifier.padding(top = 10.dp))
+            }
+        }
+        // The next episode or programme, counting down in the top right corner.
+        if (upNext >= 0) {
+            Column(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(if (phone) 16.dp else 36.dp)
+                    .widthIn(max = 460.dp)
+                    .background(Color(0xF00E1626), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+            ) {
+                Text("Next", color = Color(0xFFFFD23F), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(items.getOrNull(upNext)?.name.orEmpty(), color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("Starts in $upNextIn s", color = Color(0xFFB9C2D3), fontSize = 17.sp, modifier = Modifier.padding(top = 4.dp))
+                if (phone) {
+                    Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PlayerChip("Play now", main = true) { go(upNext) }
+                        PlayerChip("Stay here") { upNext = -1 }
+                    }
+                } else {
+                    Text("OK play now  ·  BACK stay here", color = Color(0xFFB9C2D3), fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+        }
+        // Options: the sound, the picture's shape and the sound sync, on the right of the screen.
+        if (options) {
+            Column(
+                Modifier
+                    .align(if (phone) Alignment.BottomCenter else Alignment.CenterEnd)
+                    .padding(if (phone) 16.dp else 36.dp)
+                    .then(if (phone) Modifier.fillMaxWidth() else Modifier.width(480.dp))
+                    .background(Color(0xF00E1626), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("Options", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
+                optionRows.forEachIndexed { i, words ->
+                    val on = !phone && i == optionRow
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(if (on) Color(0xFFFFD23F) else Color(0xFF16213A), RoundedCornerShape(10.dp))
+                            .then(if (phone) Modifier.clickable { optionAct(i) } else Modifier)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(words, color = if (on) Color.Black else Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            if (phone && i == 2) {
+                                PlayerChip("−") { setSync(syncMs - SoundSync.STEP_MS) }
+                                Spacer(Modifier.width(8.dp))
+                                PlayerChip("+") { setSync(syncMs + SoundSync.STEP_MS) }
+                            }
+                        }
+                        Text(optionHints[i], color = if (on) Color.Black else Color(0xFFB9C2D3), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                if (!phone) Text("BACK close", color = Color(0xFFB9C2D3), fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp, top = 2.dp))
+                else PlayerChip("Close") { options = false }
             }
         }
         if (recording) {
@@ -1290,8 +1474,24 @@ private fun ButtonIcon(b: Control, color: Color) {
                 }
                 Icon.RECORD -> drawCircle(Color(0xFFE53935), radius = w * 0.34f)
                 Icon.STOP -> drawRect(Color(0xFFE53935), Offset(w * 0.2f, h * 0.2f), Size(w * 0.6f, h * 0.6f))
+                Icon.OPTIONS -> for (x in listOf(0.18f, 0.5f, 0.82f)) drawCircle(color, radius = w * 0.1f, center = Offset(w * x, h * 0.5f))
                 else -> {}
             }
         }
     }
+}
+
+/** How long the next episode or programme waits before it starts. */
+private const val UP_NEXT_SECONDS = 10
+
+/** A small button on the phone, in the player's boxes. */
+@Composable
+private fun PlayerChip(text: String, main: Boolean = false, onClick: () -> Unit) {
+    Text(
+        text, color = if (main) Color.Black else Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+        modifier = Modifier
+            .background(if (main) Color(0xFFFFD23F) else Color(0xFF3A4660), RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }

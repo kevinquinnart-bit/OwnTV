@@ -1938,8 +1938,7 @@ private fun Pane.ProgrammePage(
                             description = programme.description,
                             onClick = {
                                 if (catchUp) {
-                                    val url = Provider.catchupUrl(account, channel.id, programme, serverAheadSec)
-                                    onPlay(listOf(Playable(channel.name + " · " + programme.title, url)), 0, false, key)
+                                    onPlay(listOf(catchupPlayable(channel.name, account, channel.id, programme, serverAheadSec)), 0, false, key)
                                 } else if (later) {
                                     // A programme that hasn't started: OK sets a reminder, again sets it to record, again sets neither.
                                     stepLater(context, plan, remind, reminded, set, day(programme.startMs) + " " + time(programme.startMs))
@@ -2933,10 +2932,25 @@ private fun livePlayable(group: ChannelGroup, account: Account?, serverAheadSec:
         group.name, first.url, group.versions.map { Stream(it.label, it.channel.url) }, group.start,
         guide = if (account == null) null else ({ NowNext.get(account, first.id) }),
         fromStart = if (account == null || kept == null) null else ({ programme ->
-            Playable(group.name + " · " + programme.title.ifBlank { "from the start" }, Provider.catchupUrl(account, kept.id, programme, serverAheadSec))
+            catchupPlayable(group.name, account, kept.id, programme, serverAheadSec)
         }),
     )
 }
+
+/**
+ * A programme played through catch-up. Once it ends, the programme that followed it on the channel plays on,
+ * if that one has finished airing too; one still on air is left, as the provider can't give all of it yet.
+ */
+internal fun catchupPlayable(channelName: String, account: Account, channelId: String, programme: Programme, serverAheadSec: Int): Playable =
+    Playable(
+        channelName + " · " + programme.title.ifBlank { "No title" },
+        Provider.catchupUrl(account, channelId, programme, serverAheadSec),
+        then = {
+            val listing = NowNext.get(account, channelId)
+            val next = listing.filter { it.startMs >= programme.stopMs - 60_000 && it.startMs > programme.startMs }.minByOrNull { it.startMs }
+            if (next == null || next.stopMs > System.currentTimeMillis()) null else catchupPlayable(channelName, account, channelId, next, serverAheadSec)
+        },
+    )
 
 /**
  * What is on a channel now and next, for the line under its name in a list; null until it is known, and
@@ -3089,7 +3103,7 @@ private fun Pane.GuideGrid(
                                                 programme.startMs > now -> stepLater(context, plan, remind, reminded, set, time(programme.startMs))
                                                 kept == null || programme.startMs < now - kept.catchupDays * DAY_MS -> tell("Your provider keeps no catch-up for this.")
                                                 else -> onPlay(
-                                                    listOf(Playable(channel.name + " · " + programme.title, Provider.catchupUrl(account, kept.id, programme, library.serverAheadSec))), 0, false, key,
+                                                    listOf(catchupPlayable(channel.name, account, kept.id, programme, library.serverAheadSec)), 0, false, key,
                                                 )
                                             }
                                         },
