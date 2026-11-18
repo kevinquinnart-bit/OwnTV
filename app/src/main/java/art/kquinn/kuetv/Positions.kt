@@ -47,6 +47,8 @@ object Positions {
     fun keep(context: Context, url: String, positionMs: Long, lengthMs: Long, name: String? = null, poster: String? = null) {
         if (lengthMs <= 0) return
         val edit = prefs(context).edit()
+        // Into the credits: watched.
+        if (positionMs > lengthMs * 95 / 100 && poster != null) Watched.set(context, url, true)
         // The first minute isn't worth keeping, and the last few are the credits.
         if (positionMs < 60_000 || positionMs > lengthMs * 95 / 100) {
             edit.remove(key(url)).remove(LISTED + key(url))
@@ -74,6 +76,12 @@ object Positions {
         for (w in text.split('\n').mapNotNull(::decode)) edit.putLong(key(w.url), w.positionMs).putString(LISTED + key(w.url), encode(w))
         edit.apply()
         changes++
+    }
+
+    /** How far through a film or episode left part way is, 0 to 1; null when it isn't part way. */
+    fun progress(context: Context, url: String): Float? {
+        val w = prefs(context).getString(LISTED + key(url), null)?.let(::decode) ?: return null
+        return if (w.lengthMs > 0) (w.positionMs.toFloat() / w.lengthMs).coerceIn(0f, 1f) else null
     }
 
     /** Films and episodes left part way through, most recently watched first. */

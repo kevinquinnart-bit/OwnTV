@@ -935,6 +935,74 @@ private fun fromKept(kept: String?) = when (kept) { null, "*all" -> ALL; "*favou
 @Composable
 private fun holdHint() = if (LocalPhone.current) " · press and hold for favourite" else " · hold OK for favourite"
 
+@Composable
+private fun menuHint() = if (LocalPhone.current) " · press and hold for more" else " · hold OK for more"
+
+/** Above the films or series: how they are sorted, and (films) whether those watched are hidden. OK changes each. */
+@Composable
+private fun ListingChips(watchedToo: Boolean) {
+    val context = LocalContext.current
+    val sort = remember(Listing.changes) { Listing.sort(context) }
+    val hide = remember(Listing.changes) { Listing.hideWatched(context) }
+    Row(Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        GuideChip("Sort: " + Listing.sorts[sort], false) { Listing.sort(context, (sort + 1) % Listing.sorts.size) }
+        if (watchedToo) GuideChip(if (hide) "Watched: hidden" else "Watched: shown", false) { Listing.hideWatched(context, !hide) }
+    }
+}
+
+/**
+ * Hold OK on a film: what can be done with it, in a short list. The trailer row shows once the provider has said
+ * there is one. Back, or any choice, closes it.
+ */
+@Composable
+private fun TitleMenu(
+    name: String,
+    favourite: Boolean,
+    watched: Boolean,
+    trailer: String?,
+    askTrailer: (suspend () -> String?)?,
+    onPlay: () -> Unit,
+    onFavourite: () -> Unit,
+    onWatched: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val context = LocalContext.current
+    val found by produceState(trailer, name) {
+        if (value == null && askTrailer != null) value = withContext(Dispatchers.IO) { runCatching { askTrailer() }.getOrNull() }
+    }
+    val first = remember { FocusRequester() }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            runCatching { first.requestFocus() }
+        }
+        // The OK that opened this is still held down when it appears: its last repeats and its letting go are not
+        // a choice. Only a fresh press counts.
+        val armed = remember { booleanArrayOf(false) }
+        Column(
+            Modifier.width(460.dp).background(Color(0xFF0E1626), RoundedCornerShape(18.dp)).padding(14.dp)
+                .onPreviewKeyEvent { e ->
+                    if (armed[0]) return@onPreviewKeyEvent false
+                    if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) { armed[0] = true; false } else true
+                },
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, bottom = 6.dp))
+            FocusRow("Play", { onClose(); onPlay() }, Modifier.focusRequester(first), look = Look.MAIN)
+            FocusRow(if (favourite) "★ Remove from favourites" else "★ Add to favourites", { onFavourite(); onClose() }, look = Look.OTHER)
+            FocusRow(if (watched) "Mark as not watched" else "✓ Mark as watched", { onWatched(); onClose() }, look = Look.OTHER)
+            val t = found
+            if (!t.isNullOrBlank()) {
+                FocusRow("▶ Watch the trailer", {
+                    onClose()
+                    if (!openTrailer(context, t)) android.widget.Toast.makeText(context, "Nothing on this device can play YouTube trailers.", android.widget.Toast.LENGTH_LONG).show()
+                }, look = Look.OTHER)
+            }
+            FocusRow("Close", onClose, look = Look.OTHER)
+        }
+    }
+}
+
 /** Where the browsing screen is: the section, the category in each, how far each list is scrolled. */
 private class BrowseState(saved: Map<String, String> = emptyMap()) {
     // The app opens on Home. Each section still opens on the category it was last left on.
@@ -1362,15 +1430,36 @@ private fun MainScreen(
                 val filmCatalogue = filmCatalogues.firstOrNull { it.key == filmCategory }
                 if (filmCatalogue != null) CatalogueGrid(filmCatalogue, state, resume, playCat, fill())
                 else {
-                val shown = remember(library, filmCategory, if (filmCategory == FAVOURITES) favs else null) {
-                    when (filmCategory) {
+                val sort = remember(Listing.changes) { Listing.sort(context) }
+                val hideWatched = remember(Listing.changes) { Listing.hideWatched(context) }
+                val watchedNow = Watched.changes
+                val shown = remember(library, filmCategory, if (filmCategory == FAVOURITES) favs else null, sort, hideWatched, if (hideWatched) watchedNow else 0) {
+                    val inCategory = when (filmCategory) {
                         ALL -> library.films
                         FAVOURITES -> library.films.filter { Favourites.key(it, login) in favs }
                         else -> library.films.filter { it.categoryId == filmCategory }
                     }
+                    Listing.sorted(if (hideWatched) inCategory.filter { !Watched.isWatched(context, it.url) } else inCategory, sort, { it.name }, { it.added })
+                }
+                // Hold OK on a film: a short list of what can be done with it.
+                var menuFilm by remember { mutableStateOf<Film?>(null) }
+                menuFilm?.let { film ->
+                    val favKey = Favourites.key(film, login)
+                    TitleMenu(
+                        film.name,
+                        favourite = favKey in favs,
+                        watched = Watched.isWatched(context, film.url),
+                        trailer = state.filmAbout[film.id]?.trailer,
+                        askTrailer = library.account?.let { account -> suspend { Provider.filmAbout(account, film.id).also { state.filmAbout[film.id] = it }.trailer } },
+                        onPlay = { onPlay(listOf(Playable(film.name, film.url, find = finder("movie", film.name, null, null), poster = film.poster)), 0, false, "film:" + film.id) },
+                        onFavourite = { favourites.toggle(favKey) },
+                        onWatched = { Watched.set(context, film.url, !Watched.isWatched(context, film.url)) },
+                        onClose = { menuFilm = null },
+                    )
                 }
                 Column(fill()) {
-                    Heading((if (shown.size == 1) "1 film" else "${shown.size} films") + holdHint())
+                    Heading((if (shown.size == 1) "1 film" else "${shown.size} films") + menuHint())
+                    ListingChips(watchedToo = true)
                     val onFilm = state.onFilm
                     val account = library.account
                     if (!phone) {
@@ -1398,8 +1487,10 @@ private fun MainScreen(
                                 { onPlay(listOf(Playable(film.name, film.url, find = finder("movie", film.name, null, null), poster = film.poster)), 0, false, key) },
                                 if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
                                 favourite = favKey in favs,
-                                onHold = { favourites.toggle(favKey) },
+                                onHold = { menuFilm = film },
                                 onFocus = { state.onFilm = film },
+                                watched = watchedNow >= 0 && Watched.isWatched(context, film.url),
+                                progress = Positions.changes.let { Positions.progress(context, film.url) },
                             )
                         }
                     }
@@ -1707,6 +1798,10 @@ private fun Poster(
     favourite: Boolean = false,
     onHold: (() -> Unit)? = null,
     onFocus: () -> Unit = {},
+    /** Watched to the end: a ✓ in the corner. */
+    watched: Boolean = false,
+    /** Part way through: how far, 0 to 1, as a bar along the bottom of the picture. */
+    progress: Float? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(
@@ -1727,6 +1822,17 @@ private fun Poster(
                     "★", color = Accent, fontSize = 22.sp,
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(Color(0xCC0E1626), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 1.dp),
                 )
+            }
+            if (watched) {
+                Text(
+                    "✓", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).background(Color(0xFF6BD08A), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 1.dp),
+                )
+            }
+            if (progress != null && !watched) {
+                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(6.dp).background(Color(0x99000000))) {
+                    Box(Modifier.fillMaxWidth(progress.coerceIn(0.02f, 1f)).fillMaxHeight().background(Accent))
+                }
             }
         }
         Text(
@@ -2068,12 +2174,15 @@ private fun Pane.SeriesPane(
         }, fill())
         return
     }
-    val shown = remember(library, state.showCategory, if (state.showCategory == FAVOURITES) favs else null) {
-        when (state.showCategory) {
+    val context = LocalContext.current
+    val sort = remember(Listing.changes) { Listing.sort(context) }
+    val shown = remember(library, state.showCategory, if (state.showCategory == FAVOURITES) favs else null, sort) {
+        val inCategory = when (state.showCategory) {
             ALL -> library.shows
             FAVOURITES -> library.shows.filter { Favourites.key(it) in favs }
             else -> library.shows.filter { it.categoryId == state.showCategory }
         }
+        Listing.sorted(inCategory, sort, { it.name }, { it.added })
     }
     LaunchedEffect(Unit) {
         if (!state.showJustClosed) return@LaunchedEffect
@@ -2084,6 +2193,7 @@ private fun Pane.SeriesPane(
     }
     Column(fill()) {
         Heading((if (shown.size == 1) "1 series" else "${shown.size} series") + holdHint())
+        ListingChips(watchedToo = false)
         if (!LocalPhone.current) AboutStrip(state.onShow?.name, state.onShow?.about)
         LazyVerticalGrid(
             columns = if (LocalPhone.current) GridCells.Adaptive(104.dp) else GridCells.Fixed(4),
@@ -2168,7 +2278,19 @@ private fun Pane.EpisodePage(
                 val playables = remember(episodes, finder) {
                     episodes.map { Playable(show.name + " · S" + it.season + " E" + it.number, it.url, find = finder("series", show.name, it.season, it.number), poster = show.poster) }
                 }
+                val context = LocalContext.current
+                val watchedNow = Watched.changes
+                val placesNow = Positions.changes
                 LazyColumn(Modifier.fillMaxSize(), state = state.episodeList) {
+                    // The series' trailer, when the provider gives one.
+                    val trailer = show.about.trailer
+                    if (!trailer.isNullOrBlank()) {
+                        item(key = "trailer") {
+                            FocusRow("▶ Watch the trailer", {
+                                if (!openTrailer(context, trailer)) android.widget.Toast.makeText(context, "Nothing on this device can play YouTube trailers.", android.widget.Toast.LENGTH_LONG).show()
+                            }, look = Look.OTHER)
+                        }
+                    }
                     episodes.forEachIndexed { i, episode ->
                         if (i == 0 || episodes[i - 1].season != episode.season) {
                             item(key = "season:" + episode.season) {
@@ -2177,11 +2299,23 @@ private fun Pane.EpisodePage(
                         }
                         item(key = episode.id) {
                             val key = "episode:" + episode.id
+                            val watched = watchedNow >= 0 && Watched.isWatched(context, episode.url)
+                            val part = if (placesNow >= 0) Positions.progress(context, episode.url) else null
                             FocusRow(
-                                label(episode),
+                                (if (watched) "✓ " else "") + label(episode),
                                 { onPlay(playables, i, false, key) },
                                 (if (i == 0) Modifier.focusRequester(first) else Modifier)
                                     .then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                                // Hold OK: marks it watched, or not watched.
+                                onHold = {
+                                    Watched.set(context, episode.url, !watched)
+                                    android.widget.Toast.makeText(context, if (watched) "Marked as not watched." else "Marked as watched.", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                below = when {
+                                    watched -> "Watched · hold OK to mark as not watched"
+                                    part != null -> (part * 100).toInt().toString() + "% watched"
+                                    else -> null
+                                },
                             )
                         }
                     }
@@ -4530,6 +4664,13 @@ private fun <T> keyedState(key: Any?, initial: () -> T, producer: suspend androi
 internal fun LiveTvForChecks(library: Library, favourites: Favourites) {
     val state = remember { BrowseState().apply { section = Section.LIVE } }
     MainScreen(library, state, favourites, { _, _, _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+}
+
+/** For the automatic checks only: Films as a TV shows it. [onPlay] is told each time something is played. */
+@Composable
+internal fun FilmsForChecks(library: Library, favourites: Favourites, onPlay: () -> Unit) {
+    val state = remember { BrowseState().apply { section = Section.FILMS } }
+    MainScreen(library, state, favourites, { _, _, _, _ -> onPlay() }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
 }
 
 /** For the automatic checks only: the TV Guide as a TV shows it. */

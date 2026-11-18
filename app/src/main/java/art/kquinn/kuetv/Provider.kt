@@ -31,12 +31,16 @@ data class Channel(
     val catchupDays: Int,
 )
 
-data class Film(val id: String, val name: String, val poster: String, val categoryId: String, val url: String)
+data class Film(val id: String, val name: String, val poster: String, val categoryId: String, val url: String, val added: Long = 0)
 
-data class Show(val id: String, val name: String, val poster: String, val categoryId: String, val about: About = About())
+data class Show(val id: String, val name: String, val poster: String, val categoryId: String, val about: About = About(), val added: Long = 0)
 
 /** What a film or series is about, as far as the provider says. Any part may be empty. */
-data class About(val plot: String = "", val genre: String = "", val year: String = "", val rating: String = "", val minutes: Int = 0) {
+data class About(
+    val plot: String = "", val genre: String = "", val year: String = "", val rating: String = "", val minutes: Int = 0,
+    /** The trailer, as the provider gives it: a YouTube video's id or address. May be missing in lists kept from older versions. */
+    val trailer: String? = null,
+) {
     /** "2024 · Drama · 7.1 · 1 h 52 min", leaving out whatever isn't known. */
     val line: String
         get() = listOf(
@@ -508,6 +512,7 @@ object Provider {
             year = About.year(field("releasedate").ifBlank { field("release_date") }.ifBlank { field("year") }),
             rating = About.rating(field("rating")),
             minutes = minutes,
+            trailer = field("youtube_trailer").ifBlank { null },
         )
     }
 
@@ -624,11 +629,11 @@ object Provider {
             }
             records(
                 api(account, "get_vod_streams"),
-                setOf("stream_id", "name", "stream_icon", "category_id", "container_extension"),
+                setOf("stream_id", "name", "stream_icon", "category_id", "container_extension", "added"),
             ) { r ->
                 val id = r["stream_id"] ?: return@records
                 val ext = r["container_extension"].orEmpty().ifBlank { "mp4" }
-                films += Film(id, r["name"].orEmpty().trim(), r["stream_icon"].orEmpty(), r["category_id"].orEmpty(), "$base/movie/$who/$id.$ext")
+                films += Film(id, r["name"].orEmpty().trim(), r["stream_icon"].orEmpty(), r["category_id"].orEmpty(), "$base/movie/$who/$id.$ext", r["added"]?.toLongOrNull() ?: 0)
             }
         }
         val showCategories = ArrayList<Category>()
@@ -637,13 +642,14 @@ object Provider {
             records(api(account, "get_series_categories"), setOf("category_id", "category_name")) { r ->
                 showCategories += Category(r["category_id"].orEmpty(), r["category_name"].orEmpty())
             }
-            records(api(account, "get_series"), setOf("series_id", "name", "cover", "category_id", "plot", "genre", "releaseDate", "release_date", "rating")) { r ->
+            records(api(account, "get_series"), setOf("series_id", "name", "cover", "category_id", "plot", "genre", "releaseDate", "release_date", "rating", "youtube_trailer", "last_modified")) { r ->
                 val id = r["series_id"] ?: return@records
                 val about = About(
                     plot = r["plot"].orEmpty().trim(), genre = r["genre"].orEmpty().trim(),
                     year = About.year(r["releaseDate"].orEmpty().ifBlank { r["release_date"].orEmpty() }), rating = About.rating(r["rating"].orEmpty()),
+                    trailer = r["youtube_trailer"]?.trim()?.ifBlank { null },
                 )
-                shows += Show(id, r["name"].orEmpty().trim(), r["cover"].orEmpty(), r["category_id"].orEmpty(), about)
+                shows += Show(id, r["name"].orEmpty().trim(), r["cover"].orEmpty(), r["category_id"].orEmpty(), about, r["last_modified"]?.toLongOrNull() ?: 0)
             }
         }
         if (channels.isEmpty() && films.isEmpty() && shows.isEmpty()) throw ProviderProblem("Your provider signed you in but listed no channels, films or series.")

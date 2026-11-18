@@ -474,7 +474,11 @@ fun PlayerScreen(
                         change(stream + 1, "Kept stopping on " + versions[stream].label + ". Now on " + versions[stream + 1].label + ".")
                     }
                 }
-                if (state == Player.STATE_ENDED && !live && item != null) Positions.forget(context, item.key)
+                if (state == Player.STATE_ENDED && !live && item != null) {
+                    Positions.forget(context, item.key)
+                    // A film or episode played to the end is watched (not catch-up or a recording, which have no picture).
+                    if (item.poster != null) Watched.set(context, item.key, true)
+                }
                 // An episode has finished and another follows it in the list: count down to it. Catch-up: the
                 // programme that followed, once it has finished airing.
                 if (state == Player.STATE_ENDED && !live && upNext < 0) {
