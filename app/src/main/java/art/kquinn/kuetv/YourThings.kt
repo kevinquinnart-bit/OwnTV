@@ -13,7 +13,10 @@ import com.google.gson.JsonParser
  * one there has always been: its things are kept where they always were.
  */
 object Profiles {
-    data class Profile(val id: String, val name: String, val pin: String = "", val kids: Boolean = false)
+    data class Profile(val id: String, val name: String, val pin: String = "", val kids: Boolean = false, val picture: String = "")
+
+    /** The pictures a profile can have. */
+    val pictures = listOf("🙂", "🦊", "🐼", "🦁", "🐸", "🐙", "🚀", "⚽", "🎮", "🎸", "🌟", "🍕")
 
     /** Goes up by one whenever the profiles or the one in use change. */
     var changes by mutableIntStateOf(0)
@@ -21,16 +24,16 @@ object Profiles {
 
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("profiles", Context.MODE_PRIVATE)
 
-    private fun encode(p: Profile) = JsonObject().apply { addProperty("id", p.id); addProperty("name", p.name); addProperty("pin", p.pin); addProperty("kids", p.kids) }.toString()
+    private fun encode(p: Profile) = JsonObject().apply { addProperty("id", p.id); addProperty("name", p.name); addProperty("pin", p.pin); addProperty("kids", p.kids); addProperty("picture", p.picture) }.toString()
     private fun decode(text: String): Profile? = runCatching {
         val o = JsonParser.parseString(text).asJsonObject
-        Profile(o.get("id").asString, o.get("name").asString, o.get("pin")?.asString.orEmpty(), o.get("kids")?.asBoolean ?: false)
+        Profile(o.get("id").asString, o.get("name").asString, o.get("pin")?.asString.orEmpty(), o.get("kids")?.asBoolean ?: false, o.get("picture")?.asString.orEmpty())
     }.getOrNull()
 
     /** Every profile, Main first. */
     fun all(context: Context): List<Profile> {
         val p = prefs(context)
-        val main = Profile("", p.getString("mainName", "Main").orEmpty().ifBlank { "Main" }, p.getString("mainPin", "").orEmpty())
+        val main = Profile("", p.getString("mainName", "Main").orEmpty().ifBlank { "Main" }, p.getString("mainPin", "").orEmpty(), picture = p.getString("mainPicture", "").orEmpty())
         return listOf(main) + p.getString("others", "").orEmpty().split('\n').filter { it.isNotBlank() }.mapNotNull(::decode)
     }
 
@@ -54,6 +57,15 @@ object Profiles {
     fun setPin(context: Context, id: String, pin: String) {
         if (id.isEmpty()) prefs(context).edit().putString("mainPin", pin).apply()
         else saveOthers(context, all(context).drop(1).map { if (it.id == id) it.copy(pin = pin) else it })
+        changes++
+    }
+
+    /** Gives a profile the next picture along. */
+    fun nextPicture(context: Context, id: String) {
+        val now = all(context).firstOrNull { it.id == id }?.picture.orEmpty()
+        val next = pictures[(pictures.indexOf(now) + 1) % pictures.size]
+        if (id.isEmpty()) prefs(context).edit().putString("mainPicture", next).apply()
+        else saveOthers(context, all(context).drop(1).map { if (it.id == id) it.copy(picture = next) else it })
         changes++
     }
 
@@ -190,5 +202,113 @@ object Backup {
         1 -> now - lastMs >= 24 * 3_600_000L
         2 -> now - lastMs >= 7 * 24 * 3_600_000L
         else -> false
+    }
+}
+
+/** The user's own categories of live channels: a name and the channels in it, in the order added. */
+object MyCategories {
+    data class Mine(val id: String, val name: String, val channels: List<String>)
+
+    const val PREFIX = "my:"
+
+    var changes by mutableIntStateOf(0)
+        private set
+
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(Profiles.scoped(context, "my_categories"), Context.MODE_PRIVATE)
+
+    fun all(context: Context): List<Mine> = prefs(context).getString("all", "").orEmpty().split('\n').mapNotNull { line ->
+        val p = line.split('\u0001')
+        if (p.size < 2 || p[0].isBlank()) null else Mine(p[0], p[1], p.drop(2).filter { it.isNotBlank() })
+    }
+
+    private fun save(context: Context, list: List<Mine>) {
+        prefs(context).edit().putString("all", list.joinToString("\n") { (listOf(it.id, it.name.replace('\u0001', ' ')) + it.channels).joinToString("\u0001") }).apply()
+        changes++
+    }
+
+    fun make(context: Context, name: String, firstChannel: String?): Mine {
+        val mine = Mine(PREFIX + System.currentTimeMillis().toString(36), name.trim().ifBlank { "My channels" }, listOfNotNull(firstChannel))
+        save(context, all(context) + mine)
+        return mine
+    }
+
+    fun remove(context: Context, id: String) = save(context, all(context).filter { it.id != id })
+
+    fun toggle(context: Context, id: String, channel: String) = save(context, all(context).map { m ->
+        if (m.id != id) m else m.copy(channels = if (channel in m.channels) m.channels - channel else m.channels + channel)
+    })
+
+    fun export(context: Context): String = prefs(context).getString("all", "").orEmpty()
+    fun import(context: Context, text: String) {
+        prefs(context).edit().putString("all", text).apply()
+        changes++
+    }
+}
+
+/** Names the user gave channels, by channel id. Kept on this device. */
+object Renames {
+    var changes by mutableIntStateOf(0)
+        private set
+
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("renames", Context.MODE_PRIVATE)
+
+    fun all(context: Context): Map<String, String> = prefs(context).all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
+
+    /** Gives every one of [channelIds] the name [name]; an empty name puts the provider's back. */
+    fun set(context: Context, channelIds: List<String>, name: String) {
+        val edit = prefs(context).edit()
+        for (id in channelIds) if (name.isBlank()) edit.remove(id) else edit.putString(id, name.trim())
+        edit.apply()
+        changes++
+    }
+
+    fun export(context: Context): String = all(context).entries.joinToString("\n") { it.key + "\u0001" + it.value }
+    fun import(context: Context, text: String) {
+        val edit = prefs(context).edit().clear()
+        for (line in text.split('\n')) line.split('\u0001').takeIf { it.size == 2 }?.let { edit.putString(it[0], it[1]) }
+        edit.apply()
+        changes++
+    }
+}
+
+/**
+ * The remote's spare buttons (Guide, and the red, green, yellow and blue ones some remotes have): each can open a
+ * part of KueTV. Kept on this device.
+ */
+object SpareKeys {
+    class Spare(val code: Int, val name: String)
+
+    val keys = listOf(
+        Spare(android.view.KeyEvent.KEYCODE_GUIDE, "Guide button"),
+        Spare(android.view.KeyEvent.KEYCODE_PROG_RED, "Red button"),
+        Spare(android.view.KeyEvent.KEYCODE_PROG_GREEN, "Green button"),
+        Spare(android.view.KeyEvent.KEYCODE_PROG_YELLOW, "Yellow button"),
+        Spare(android.view.KeyEvent.KEYCODE_PROG_BLUE, "Blue button"),
+    )
+
+    /** What a button can do. The names match the menu's. */
+    val actions = listOf("Nothing", "Home", "Search", "Live TV", "TV Guide", "Catch-up", "Films", "Series", "Recordings", "Settings")
+
+    private fun prefs(context: Context) = context.getSharedPreferences("choices", Context.MODE_PRIVATE)
+
+    /** The part of KueTV a spare button has just asked for; taken by the screen that opens it. */
+    var asked by androidx.compose.runtime.mutableStateOf<String?>(null)
+
+    /** A spare button pressed: true when it is set to do something, which is then asked for. */
+    fun pressed(context: Context, code: Int): Boolean {
+        if (keys.none { it.code == code }) return false
+        val what = action(context, code)
+        if (what == "Nothing") return false
+        asked = what
+        return true
+    }
+
+    fun action(context: Context, code: Int): String =
+        prefs(context).getString("spare.$code", if (code == android.view.KeyEvent.KEYCODE_GUIDE) "TV Guide" else "Nothing").orEmpty()
+
+    fun next(context: Context, code: Int) {
+        val now = action(context, code)
+        prefs(context).edit().putString("spare.$code", actions[(actions.indexOf(now) + 1) % actions.size]).apply()
+        Choices.touch()
     }
 }

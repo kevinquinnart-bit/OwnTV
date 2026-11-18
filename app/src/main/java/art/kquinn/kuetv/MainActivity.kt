@@ -178,6 +178,15 @@ class MainActivity : ComponentActivity() {
         }.onFailure { Report.note("Player", "couldn't go to a small picture: " + it.message) }
     }
 
+    // A spare button on the remote (Guide, red, green, yellow, blue), when set in Settings to open part of KueTV.
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (SpareKeys.keys.any { it.code == event.keyCode } && SpareKeys.action(this, event.keyCode) != "Nothing") {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) SpareKeys.pressed(this, event.keyCode)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         Pip.inPip = isInPictureInPictureMode
@@ -214,6 +223,10 @@ private fun App() {
     var playing by remember { mutableStateOf<Playing?>(null) }
     // Multiview: several live channels at once, from the player.
     var multi by remember { mutableStateOf<Playing?>(null) }
+    // A spare button asking for part of KueTV: whatever is playing closes first.
+    LaunchedEffect(SpareKeys.asked) {
+        if (SpareKeys.asked != null) { playing = null; multi = null }
+    }
     // What the browsing screen was showing, kept while the player covers it, so closing the player
     // comes back to the same list, at the same place, on the row or poster that was playing.
     val browse = remember(account, reload) { BrowseState(saved = Place.read(context)) }
@@ -238,10 +251,11 @@ private fun App() {
     // A film or episode that can play from an add-on or from the provider's own copy, waiting for the user to pick.
     var choice by remember { mutableStateOf<Playing?>(null) }
     // What the lists show: everything the provider sent, less the categories chosen to be hidden.
-    val shownLibrary = remember(library, Choices.changes, kids) {
+    val shownLibrary = remember(library, Choices.changes, kids, Renames.changes) {
         // A kids profile: adult categories hidden too.
         val adult: (List<Category>) -> Set<String> = { cats -> if (kids) cats.filter { Profiles.isAdult(it.name) }.mapTo(HashSet()) { it.id } else emptySet() }
-        library?.without(
+        // Channels given names of the user's own.
+        library?.renamed(Renames.all(context))?.without(
             Choices.hidden(context, "live") + adult(library.liveCategories),
             Choices.hidden(context, "film") + adult(library.filmCategories),
             Choices.hidden(context, "show") + adult(library.showCategories),
@@ -300,6 +314,8 @@ private fun App() {
                 "vpn" to Vpn.details(context).let { d -> d.user + "\u0002" + d.pass + "\u0002" + d.config },
                 "watched" to Watched.export(context),
                 "recent" to Recent.export(context),
+                "mycategories" to MyCategories.export(context),
+                "renames" to Renames.export(context),
             )
         }
         val take: (String, String) -> Unit = { name, body ->
@@ -333,6 +349,8 @@ private fun App() {
                 "vpn" -> body.split('\u0002', limit = 3).takeIf { it.size == 3 }?.let { Vpn.adopt(context, it[2], it[0], it[1]) }
                 "watched" -> Watched.import(context, body)
                 "recent" -> Recent.import(context, body)
+                "mycategories" -> MyCategories.import(context, body)
+                "renames" -> Renames.import(context, body)
             }
         }
     LaunchedEffect(Screen.visible, pairKey) {
@@ -1336,7 +1354,9 @@ private fun MainScreen(
     }
     // A category that has just been hidden can't stay the one being shown.
     LaunchedEffect(library) {
-        if (state.liveCategory != ALL && state.liveCategory != FAVOURITES && state.liveCategory != RECENT && library.liveCategories.none { it.id == state.liveCategory }) state.liveCategory = ALL
+        if (state.liveCategory != ALL && state.liveCategory != FAVOURITES && state.liveCategory != RECENT && !state.liveCategory.startsWith(MyCategories.PREFIX) &&
+            library.liveCategories.none { it.id == state.liveCategory }
+        ) state.liveCategory = ALL
         // A catalogue isn't one of the provider's categories, and is left alone.
         if (state.filmCategory != ALL && state.filmCategory != FAVOURITES && !state.filmCategory.startsWith(Catalogue.PREFIX) && library.filmCategories.none { it.id == state.filmCategory }) state.filmCategory = ALL
         if (state.showCategory != ALL && state.showCategory != FAVOURITES && !state.showCategory.startsWith(Catalogue.PREFIX) && library.showCategories.none { it.id == state.showCategory }) state.showCategory = ALL
@@ -1453,6 +1473,12 @@ private fun MainScreen(
 
     val phone = LocalPhone.current
     // The chosen section's screen. Where it sits is decided underneath, by TV or phone.
+    // A spare button on the remote asked for a part of KueTV.
+    LaunchedEffect(SpareKeys.asked) {
+        val asked = SpareKeys.asked ?: return@LaunchedEffect
+        SpareKeys.asked = null
+        Section.entries.firstOrNull { it.label == asked }?.let { section = it }
+    }
     val body: @Composable Pane.() -> Unit = {
         when (section) {
             Section.HOME -> HomeScreen(
@@ -1464,7 +1490,10 @@ private fun MainScreen(
                 },
             )
             Section.LIVE -> {
-                Categories(listOf(Category(RECENT, "🕘 Recently watched")) + library.liveCategories, liveCategory, state.liveCategoryList) {
+                var menuChannel by remember { mutableStateOf<ChannelGroup?>(null) }
+                val profileNow = Profiles.changes
+                val mine = remember(MyCategories.changes, profileNow) { MyCategories.all(context) }
+                Categories(listOf(Category(RECENT, "🕘 Recently watched")) + mine.map { Category(it.id, "📁 " + it.name) } + library.liveCategories, liveCategory, state.liveCategoryList) {
                     if (it != state.liveCategory) {
                         state.liveCategory = it
                         scope.launch { state.channelList.scrollToItem(0) }
@@ -1472,8 +1501,11 @@ private fun MainScreen(
                 }
                 // One row for each channel: its 4K, FHD, HD and SD versions are kept together behind it.
                 val recentNow = if (liveCategory == RECENT) Recent.changes else -1
-                val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null, if (liveCategory == FAVOURITES) favourites.order else null, recentNow) {
-                    when (liveCategory) {
+                val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null, if (liveCategory == FAVOURITES) favourites.order else null, recentNow, mine) {
+                    when {
+                        // One of the user's own categories: its channels in the order they were added.
+                        liveCategory.startsWith(MyCategories.PREFIX) -> mine.firstOrNull { it.id == liveCategory }?.channels.orEmpty().mapNotNull { id -> library.groups.firstOrNull { it.id == id } }
+                        else -> when (liveCategory) {
                         ALL -> library.groups
                         RECENT -> Recent.pick(library.groups, Recent.all(context)) { g -> g.versions.map { it.channel.url } }
                         // Favourites in the user's own order.
@@ -1481,6 +1513,7 @@ private fun MainScreen(
                             .sortedBy { g -> favourites.rank(g.versions.map { Favourites.key(it.channel, login) }) }
                         Library.FREE_ALL -> library.groups.filter { g -> g.versions.any { it.free } }
                         else -> library.groups.filter { g -> g.versions.any { it.channel.categoryId == liveCategory } }
+                        }
                     }
                 }
                 val playables = remember(shown) { shown.map { livePlayable(it, library.account, library.serverAheadSec) } }
@@ -1497,6 +1530,10 @@ private fun MainScreen(
                             list.add(to, list.removeAt(from))
                             favourites.putInOrder(list.map { Favourites.key(it.versions[0].channel, login) })
                         }
+                    }
+                    // Hold OK on a channel: what can be done with it, in a short list.
+                    menuChannel?.let { ch ->
+                        ChannelMenu(ch, login, favourites, mine, onClose = { menuChannel = null })
                     }
                     // A channel number typed on the remote's number keys: a moment after the last key, the remote goes to that row.
                     var typed by remember { mutableStateOf("") }
@@ -1523,7 +1560,7 @@ private fun MainScreen(
                                 typed.isNotEmpty() -> "Channel $typed…"
                                 sorting && state.picked != null -> "Moving. " + if (phone) "Tap where it should go." else "▲ ▼ to move it, OK to put it down."
                                 sorting -> (if (phone) "Tap a channel to pick it up." else "OK on a channel to pick it up.") + " Back when done."
-                                else -> (if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint()
+                                else -> (if (shown.size == 1) "1 channel" else "${shown.size} channels") + menuHint()
                             },
                         )
                         if (sortable) {
@@ -1574,7 +1611,7 @@ private fun MainScreen(
                                     (if (key == resumeKey) Modifier.focusRequester(resume) else Modifier).then(if (i == jumpTo) Modifier.focusRequester(jumpFocus) else Modifier),
                                     chosen = isPicked,
                                     onFocus = { state.liveOn = channel },
-                                    onHold = if (sorting) null else ({ favourites.toggleAll(favKeys) }),
+                                    onHold = if (sorting) null else ({ menuChannel = channel }),
                                     leading = { Logo(channel.logo) },
                                     below = nowLine(library.account, channel.versions[channel.start].channel.id, channel.name),
                                 )
@@ -1703,7 +1740,8 @@ private fun MainScreen(
                 val savedProviders = remember(Providers.changes) { Providers.all(context) }
                 val profile = remember(Profiles.changes) { Profiles.current(context) }
                 val parts = listOf(
-                    "Your things" to "History, profiles · using " + profile.name + if (profile.kids) " (kids)" else "",
+                    "Your things" to "History, profiles · using " + profile.picture + (if (profile.picture.isEmpty()) "" else " ") + profile.name + if (profile.kids) " (kids)" else "",
+                    "Favourites" to "Every channel, film and series you have starred",
                     "Your provider" to "Provider details" + (if (savedProviders.size > 1) " (" + savedProviders.size + " saved)" else "") + ", reload, categories, free channel lists ($freeCount)",
                     "Films and series" to "Add-ons (" + addOns.size + "), Stremio account",
                     "Watching" to "Subtitles, pause and rewind, text size",
@@ -1734,6 +1772,31 @@ private fun MainScreen(
                     val first: () -> Modifier = { if (given) Modifier else { given = true; Modifier.focusRequester(pageFirst) } }
                     val sub: @Composable (String) -> Unit = { Box(Modifier.padding(top = 14.dp)) { Heading(it) } }
                     when (page) {
+                        "Favourites" -> {
+                            val favChannels = library.groups.filter { g -> g.versions.any { Favourites.key(it.channel, login) in favs } }
+                                .sortedBy { g -> favourites.rank(g.versions.map { Favourites.key(it.channel, login) }) }
+                            val favFilms = library.films.filter { Favourites.key(it, login) in favs }
+                            val favShows = library.shows.filter { Favourites.key(it) in favs }
+                            if (favChannels.isEmpty() && favFilms.isEmpty() && favShows.isEmpty()) Note("Nothing starred yet. Hold OK on a channel, film or series to star it.")
+                            var given = false
+                            val firstOne: () -> Modifier = { if (given) Modifier else { given = true; first() } }
+                            if (favChannels.isNotEmpty()) sub("Channels")
+                            val livePlayables = remember(favChannels) { favChannels.map { livePlayable(it, library.account, library.serverAheadSec) } }
+                            favChannels.forEachIndexed { i, g ->
+                                FocusRow(g.name, { onPlay(livePlayables, i, true, "fav:" + g.id) }, firstOne(), look = Look.OTHER, leading = { Logo(g.logo) },
+                                    below = "Hold OK to take off", onHold = { favourites.toggleAll(g.versions.map { Favourites.key(it.channel, login) }) })
+                            }
+                            if (favFilms.isNotEmpty()) sub("Films")
+                            for (f in favFilms) {
+                                FocusRow(f.name, { onPlay(listOf(Playable(f.name, f.url, find = finder("movie", f.name, null, null), poster = f.poster)), 0, false, "fav:" + f.id) }, firstOne(),
+                                    look = Look.OTHER, below = "Hold OK to take off", onHold = { favourites.toggle(Favourites.key(f, login)) })
+                            }
+                            if (favShows.isNotEmpty()) sub("Series")
+                            for (sh in favShows) {
+                                FocusRow(sh.name, { state.openShow = sh; section = Section.SERIES }, firstOne(),
+                                    look = Look.OTHER, below = "Hold OK to take off", onHold = { favourites.toggle(Favourites.key(sh)) })
+                            }
+                        }
                         "Your things" -> YourThingsPage(first, sub) { e ->
                             when (e.kind) {
                                 History.LIVE -> {
@@ -1822,6 +1885,11 @@ private fun MainScreen(
                             if (!phone) {
                                 val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
                                 FocusRow("Small TV while browsing: " + if (smallTv) "on" else "off", { Choices.smallTv(context, !smallTv) }, look = Look.OTHER)
+                            }
+                            sub("The remote's spare buttons")
+                            val spareNow = Choices.changes
+                            for (k in SpareKeys.keys) {
+                                FocusRow(k.name + ": " + (if (spareNow >= 0) SpareKeys.action(context, k.code) else ""), { SpareKeys.next(context, k.code) }, look = Look.OTHER, below = "OK to change · only on remotes that have it")
                             }
                             sub("Screen")
                             val textSize = remember(Choices.changes) { Choices.textSize(context) }
@@ -5226,7 +5294,7 @@ private fun YourThingsPage(first: () -> Modifier, sub: @Composable (String) -> U
             for (p in profiles) {
                 val using = p.id == current.id
                 FocusRow(
-                    (if (using) "● " else "") + p.name + (if (p.kids) " · kids" else "") + (if (p.pin.isNotEmpty()) " · PIN" else ""),
+                    (if (using) "● " else "") + (if (p.picture.isEmpty()) "" else p.picture + " ") + p.name + (if (p.kids) " · kids" else "") + (if (p.pin.isNotEmpty()) " · PIN" else ""),
                     {
                         when {
                             using -> Unit
@@ -5244,6 +5312,7 @@ private fun YourThingsPage(first: () -> Modifier, sub: @Composable (String) -> U
                     onHold = if (using || p.id.isEmpty()) null else ({ Profiles.remove(context, p.id); said = Status("Removed " + p.name + ".", Status.OK) }),
                 )
             }
+            FocusRow("Picture for " + current.name + ": " + current.picture.ifEmpty { "none" }, { Profiles.nextPicture(context, current.id) }, look = Look.OTHER, below = "OK for the next one")
             FocusRow("Add a profile", { adding = false; said = null }, look = Look.OTHER)
             FocusRow("Add a kids profile", { adding = true; newName = "Kids"; said = null }, look = Look.OTHER)
             FocusRow(if (current.pin.isEmpty()) "Set a PIN for " + current.name else "Change or remove " + current.name + "'s PIN", { settingPin = true; said = null }, look = Look.OTHER)
@@ -5261,4 +5330,64 @@ private fun YourThingsPage(first: () -> Modifier, sub: @Composable (String) -> U
         )
     }
     if (history.isNotEmpty()) FocusRow("Clear history", { History.clear(context) }, look = Look.OTHER, below = "Only this profile's")
+}
+
+/**
+ * Hold OK on a channel in Live TV: what can be done with it. Favourite or not; in or out of each of the user's own
+ * categories, or a new one made with it; or a name of the user's own. Back, or a choice, closes it.
+ */
+@Composable
+private fun ChannelMenu(channel: ChannelGroup, login: Boolean, favourites: Favourites, mine: List<MyCategories.Mine>, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val favKeys = channel.versions.map { Favourites.key(it.channel, login) }
+    val favourite = favKeys.any { it in favourites.keys }
+    // Typing a name: for a new category (true), or for the channel (false); null while not typing.
+    var naming by remember { mutableStateOf<Boolean?>(null) }
+    var typed by remember { mutableStateOf("") }
+    val first = remember { FocusRequester() }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
+        LaunchedEffect(naming) {
+            withFrameNanos { }
+            runCatching { first.requestFocus() }
+        }
+        // The OK that opened this is still held down when it appears: only a fresh press counts.
+        val armed = remember { booleanArrayOf(false) }
+        Column(
+            Modifier.width(500.dp).background(Color(0xFF0E1626), RoundedCornerShape(18.dp)).padding(14.dp)
+                .verticalScroll(rememberScrollState())
+                .onPreviewKeyEvent { e ->
+                    if (armed[0]) return@onPreviewKeyEvent false
+                    if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) { armed[0] = true; false } else true
+                },
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(channel.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, bottom = 6.dp))
+            when (naming) {
+                null -> {
+                    FocusRow(if (favourite) "★ Remove from favourites" else "★ Add to favourites", { favourites.toggleAll(favKeys); onClose() }, Modifier.focusRequester(first), look = Look.OTHER)
+                    for (m in mine) {
+                        val inIt = channel.id in m.channels
+                        FocusRow((if (inIt) "Take out of " else "Add to ") + "📁 " + m.name, { MyCategories.toggle(context, m.id, channel.id); onClose() }, look = Look.OTHER)
+                    }
+                    FocusRow("New category with this channel", { typed = ""; naming = true }, look = Look.OTHER)
+                    FocusRow("Rename this channel", { typed = channel.name; naming = false }, look = Look.OTHER)
+                    FocusRow("Close", onClose, look = Look.OTHER)
+                }
+                else -> {
+                    val forCategory = naming == true
+                    Field(if (forCategory) "The new category's name" else "The channel's name (empty puts your provider's back)", typed, modifier = Modifier.focusRequester(first)) { typed = it.take(40) }
+                    FocusRow(if (forCategory) "Make the category" else "Save the name", {
+                        if (forCategory) {
+                            val made = MyCategories.make(context, typed, channel.id)
+                            android.widget.Toast.makeText(context, "Made 📁 " + made.name + ". It is in Live TV's categories.", android.widget.Toast.LENGTH_LONG).show()
+                        } else {
+                            Renames.set(context, channel.versions.map { it.channel.id }, typed)
+                        }
+                        onClose()
+                    }, look = Look.MAIN)
+                    FocusRow("Cancel", { naming = null }, look = Look.OTHER)
+                }
+            }
+        }
+    }
 }

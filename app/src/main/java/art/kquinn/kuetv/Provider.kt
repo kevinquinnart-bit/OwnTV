@@ -104,6 +104,15 @@ class Library(
         )
     }
 
+    /** The same lists with channels given the names the user chose for them (by channel id). */
+    fun renamed(names: Map<String, String>): Library {
+        if (names.isEmpty()) return this
+        return Library(
+            liveCategories, channels.map { c -> names[c.id]?.let { c.copy(name = it) } ?: c },
+            filmCategories, films, showCategories, shows, account, serverAheadSec,
+        )
+    }
+
     /** The same lists with each kind's categories in the user's own order (one not in it goes after, as sent). */
     fun inOrder(liveOrder: List<String>, filmOrder: List<String>, showOrder: List<String>): Library {
         if (liveOrder.isEmpty() && filmOrder.isEmpty() && showOrder.isEmpty()) return this
