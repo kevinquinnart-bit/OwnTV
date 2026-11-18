@@ -58,6 +58,8 @@ android {
             // Every part of the engine is kept: leaving one out (0.1.67 to 0.1.71 left out its speed test, which
             // it loads on starting) stops the VPN dead. The build checks they are all in the app.
             useLegacyPackaging = true
+            // Only ARM devices (Fire TV and phones). VLC's parts for PC-type (x86) chips would add about 40 MB for nothing.
+            excludes += listOf("lib/x86/**", "lib/x86_64/**")
         }
     }
     buildFeatures {
@@ -77,6 +79,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
     // Protected (DRM) channels mostly come as DASH (.mpd).
     implementation("androidx.media3:media3-exoplayer-dash:1.11.1")
+    // VLC, the second player, for streams the usual one can't manage.
+    implementation("org.videolan.android:libvlc-all:3.6.5")
     // The player fetches through OkHttp when a DNS server of the user's choosing is set.
     implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")

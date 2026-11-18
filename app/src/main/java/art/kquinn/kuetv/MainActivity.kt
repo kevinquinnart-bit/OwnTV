@@ -204,7 +204,7 @@ private object Resumes {
 }
 
 /** What is playing: the list it came from (so ▲ ▼ can change channel), where in it, and its kind. */
-private class Playing(val items: List<Playable>, val index: Int, val live: Boolean)
+private class Playing(val items: List<Playable>, val index: Int, val live: Boolean, val vlc: Boolean = false)
 
 @Composable
 private fun App() {
@@ -602,12 +602,16 @@ private fun App() {
                     onWatch = { i -> multi = null; playing = Playing(m.items, i, true) },
                 )
             }
+            now != null && (now.vlc || PlayerEngine.vlc(context)) -> androidx.compose.runtime.key(now) {
+                VlcScreen(now.items, now.index, now.live, onClose = { playing = null })
+            }
             now != null -> androidx.compose.runtime.key(now) {
                 PlayerScreen(
                     now.items, now.index, now.live,
                     onClose = { playing = null },
                     onFromStart = { programme -> playing = Playing(listOf(programme), 0, false) },
                     onMultiview = { items, index -> playing = null; multi = Playing(items, index, true) },
+                    onVlc = { items, index -> playing = Playing(items, index, now.live, vlc = true) },
                     lists = library?.takeIf { now.live }?.let { lib ->
                         val play: (List<ChannelGroup>) -> List<Playable> = { groups -> groups.map { livePlayable(it, lib.account, lib.serverAheadSec) } }
                         listOf(
@@ -1917,6 +1921,11 @@ private fun MainScreen(
                             FocusRow(
                                 "Picture quality: " + PictureQuality.names[quality], { PictureQuality.set(context, (quality + 1) % PictureQuality.names.size) }, look = Look.OTHER,
                                 below = "Less detail uses less internet, for a slow connection · OK to change",
+                            )
+                            val engine = if (engineNow >= 0) PlayerEngine.get(context) else 0
+                            FocusRow(
+                                "Player: " + PlayerEngine.names[engine], { PlayerEngine.set(context, (engine + 1) % PlayerEngine.names.size) }, look = Look.OTHER,
+                                below = "VLC plays some streams the standard one can't, but without pause and rewind, recording or add-ons",
                             )
                             if (!phone) {
                                 val matchRate = engineNow >= 0 && FrameRate.on(context)

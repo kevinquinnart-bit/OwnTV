@@ -274,6 +274,8 @@ fun PlayerScreen(
     onMultiview: ((List<Playable>, Int) -> Unit)? = null,
     /** Live: other lists of channels to pick from in the list over the picture (Favourites, Recently watched, All). */
     lists: List<Pair<String, () -> List<Playable>>> = emptyList(),
+    /** Plays these with VLC instead, from this one. */
+    onVlc: ((List<Playable>, Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val phone = LocalPhone.current
@@ -950,6 +952,7 @@ fun PlayerScreen(
         "Play in another player",
         "Sleep timer: " + SleepTimer.words(),
         "Picture: " + if (soundOnly) "off, sound only" else "on",
+        "Play with VLC, inside KueTV",
     )
     val optionHints = listOf(
         if (phone) "Tap for the next sound" else "OK for the next sound",
@@ -958,6 +961,7 @@ fun PlayerScreen(
         "VLC, MX Player or another video app, if one is on this device",
         if (phone) "Tap for 15 min, 30 min … 2 hours, then off" else "OK for 15 min, 30 min … 2 hours, then off",
         "Off keeps the sound only, for a commentary or the news",
+        "For a stream that won't play here",
     )
     val nextSound: () -> Unit = {
         if (sounds.size > 1) {
@@ -986,6 +990,7 @@ fun PlayerScreen(
             }
             4 -> SleepTimer.next()
             5 -> soundOnly = !soundOnly
+            6 -> if (onVlc != null) { keepPlace(); onVlc(items.toList(), index) } else say("VLC isn't available here.")
         }
     }
     // OK on a row of the list over the picture: a list's row shows that list; a channel's row watches it.
