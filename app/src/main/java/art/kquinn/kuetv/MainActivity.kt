@@ -209,7 +209,8 @@ class MainActivity : ComponentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         // On a TV, Home (or another app) closes KueTV completely: nothing stays running or showing in a corner.
-        if (isTv(this) && !launching) {
+        // As the TV's home screen, KueTV stays: it is what Home comes back to.
+        if (isTv(this) && !launching && !Launcher.isHome(this)) {
             Report.note("App", "closed on leaving")
             finishAndRemoveTask()
             return
@@ -1604,6 +1605,9 @@ private fun MainScreen(
         panels.menuWanted = false
     }
     // Back from any section goes to Home. A page open inside a section (a channel's guide, a series) closes first.
+    // As the TV's home screen, Back on Home has nowhere to go: KueTV stays.
+    val isHome = remember { Launcher.isHome(context) }
+    BackHandler(enabled = section == Section.HOME && isHome) { }
     BackHandler(enabled = section != Section.HOME) {
         state.cameFrom = section
         section = Section.HOME
@@ -4313,7 +4317,12 @@ private fun HomeScreen(
                 last?.let { l -> library.groups.firstOrNull { g -> g.versions.any { it.channel.url == l.url } } ?: library.groups.firstOrNull { it.name == l.name } }
             }
             val shownHero = hero ?: (lastGroup ?: channels.firstOrNull())?.let { HomeHero.OnChannel(it) }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            // The banner of what is trending on Netflix, Prime Video, iPlayer and the rest, in place of Amazon's.
+            // Until it has been fetched (or with no internet): the channel last watched, as before.
+            LaunchedEffect(Unit) { Trending.load(context) }
+            val slides = Trending.slides
+            if (slides.isNotEmpty()) TrendingBanner(slides, clock, Modifier.fillMaxWidth().height(184.dp))
+            else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         KueLogo(30.dp, 24.sp)
@@ -4424,6 +4433,25 @@ private fun HomeScreen(
             }
         }
         } },
+        // TV: every app on the TV, with the TV's own settings at the end, as on Freely. KueTV can be the TV's
+        // home screen, so this is the way to Freely, Prime Video and the rest.
+        { if (!phone) Column(verticalArrangement = blockSpacing) {
+            val apps by produceState(emptyList<DeviceApps.App>()) { value = withContext(Dispatchers.IO) { DeviceApps.list(context) } }
+            Heading("Your apps")
+            LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
+                itemsIndexed(apps, key = { _, a -> a.packageName }) { _, a ->
+                    HomeCard({ TvAppsOnDevice.open(context, a.packageName) }, Modifier.width(150.dp), 16f / 9f, a.name, null) {
+                        a.picture?.let { androidx.compose.foundation.Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(8.dp)) }
+                            ?: Text(a.name, color = Soft, fontSize = 14.sp, maxLines = 2, modifier = Modifier.padding(8.dp))
+                    }
+                }
+                item(key = "tv-settings") {
+                    HomeCard({ Launcher.openTvSettings(context) }, Modifier.width(150.dp), 16f / 9f, "TV settings", null) {
+                        SectionIcon(Section.SETTINGS, AccentInk, Modifier.size(44.dp))
+                    }
+                }
+            }
+        } },
         // Favourite films and series, each in a row of posters. Hold OK takes one off.
         { Column(verticalArrangement = blockSpacing) {
             val favFilms = remember(library, favs) { library.films.filter { Favourites.key(it, login) in favs } }
@@ -4507,6 +4535,68 @@ private fun <T> PosterRow(
             ) {
                 if (poster(item).isNotBlank()) AsyncImage(model = poster(item), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 else Text(name(item), color = Soft, fontSize = 14.sp, maxLines = 4, modifier = Modifier.padding(8.dp))
+            }
+        }
+    }
+}
+
+/**
+ * The banner across the top of Home on a TV, in place of Amazon's: what is trending on each streaming service,
+ * a title at a time, with its picture. It moves on by itself every eight seconds; with the remote on it,
+ * ◀ ▶ go back and on, and OK opens that service's app.
+ */
+@Composable
+private fun TrendingBanner(slides: List<Trending.Slide>, clock: String, modifier: Modifier) {
+    val context = LocalContext.current
+    var at by remember { mutableIntStateOf(0) }
+    var focused by remember { mutableStateOf(false) }
+    var moved by remember { mutableIntStateOf(0) }
+    LaunchedEffect(slides.size, moved) {
+        while (true) {
+            delay(8_000)
+            at = (at + 1) % slides.size
+        }
+    }
+    val slide = slides[at.coerceIn(0, slides.size - 1)]
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier.clip(shape).background(Panel)
+            .then(if (focused) Modifier.border(3.dp, Accent, shape) else Modifier)
+            .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { e ->
+                if (!focused || (e.key != Key.DirectionLeft && e.key != Key.DirectionRight)) return@onPreviewKeyEvent false
+                if (e.type == KeyEventType.KeyDown) {
+                    at = (at + if (e.key == Key.DirectionLeft) slides.size - 1 else 1) % slides.size
+                    moved++
+                }
+                true
+            }
+            .press({ Trending.open(context, slide.service) }, null),
+    ) {
+        androidx.compose.animation.Crossfade(slide, label = "banner") { s ->
+            Box(Modifier.fillMaxSize()) {
+                // The picture fills the right two thirds and fades into the panel on its left.
+                AsyncImage(model = s.picture, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxHeight().fillMaxWidth(0.66f).align(Alignment.CenterEnd))
+                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(0f to Panel, 0.36f to Panel, 0.62f to Panel.copy(alpha = 0f))))
+                Column(Modifier.fillMaxHeight().fillMaxWidth(0.52f).padding(start = 20.dp, top = 14.dp, bottom = 12.dp, end = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        KueLogo(24.dp, 17.sp)
+                        Spacer(Modifier.width(14.dp))
+                        Text(clock, color = Soft, fontSize = 14.sp, maxLines = 1)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Trending · " + s.service, color = AccentInk, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(s.title, color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (s.about.isNotBlank()) Text(s.about, color = Soft, fontSize = 15.sp, lineHeight = 20.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                    Spacer(Modifier.weight(1f))
+                    if (focused) Text("◀ ▶ more · OK opens the app", color = Soft, fontSize = 13.sp, maxLines = 1)
+                }
+            }
+        }
+        // Where this one is among them: a dot for each, along the bottom right.
+        Row(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            slides.indices.forEach { i ->
+                Box(Modifier.size(if (i == at) 8.dp else 6.dp).clip(RoundedCornerShape(50)).background(if (i == at) Accent else Ink.copy(alpha = 0.5f)))
             }
         }
     }

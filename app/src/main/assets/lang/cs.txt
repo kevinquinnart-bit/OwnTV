@@ -833,3 +833,8 @@
 836=Přiblížit
 837=Jazyk
 838=Vlastní slova KueTV. OK pro další jazyk
+839=Populární
+840=Vaše aplikace
+841=Nastavení TV
+842=další
+843=OK otevře aplikaci

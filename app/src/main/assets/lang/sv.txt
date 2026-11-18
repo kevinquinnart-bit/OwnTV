@@ -833,3 +833,8 @@
 836=Zooma
 837=Språk
 838=KueTV:s egna ord. OK för nästa språk
+839=Populärt nu
+840=Dina appar
+841=TV-inställningar
+842=mer
+843=OK öppnar appen

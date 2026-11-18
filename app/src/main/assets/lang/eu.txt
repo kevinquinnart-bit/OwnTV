@@ -833,3 +833,8 @@
 836=Zooma
 837=Hizkuntza
 838=KueTV-ren hitzak. OK hurrengo hizkuntzarako
+839=Joeran
+840=Zure aplikazioak
+841=Telebistaren ezarpenak
+842=gehiago
+843=OK sakatuta aplikazioa irekitzen da

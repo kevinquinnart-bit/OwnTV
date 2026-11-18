@@ -833,3 +833,8 @@
 836=Nagyítás
 837=Nyelv
 838=A KueTV saját szavai. OK a következő nyelvhez
+839=Felkapott
+840=Alkalmazásaid
+841=TV-beállítások
+842=továbbiak
+843=Az OK megnyitja az alkalmazást

@@ -833,3 +833,8 @@
 836=Powiększ
 837=Język
 838=Własne słowa KueTV. OK dla następnego języka
+839=Na czasie
+840=Twoje aplikacje
+841=Ustawienia telewizora
+842=więcej
+843=OK otwiera aplikację

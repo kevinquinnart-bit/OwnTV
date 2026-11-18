@@ -833,3 +833,8 @@
 836=Zoomer
 837=Langue
 838=Les mots de KueTV. OK pour la langue suivante
+839=Tendances
+840=Vos applis
+841=Paramètres du téléviseur
+842=plus
+843=OK ouvre l’appli

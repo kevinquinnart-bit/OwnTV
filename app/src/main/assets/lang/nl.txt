@@ -833,3 +833,8 @@
 836=Zoomen
 837=Taal
 838=De eigen woorden van KueTV. OK voor de volgende taal
+839=Trending
+840=Jouw apps
+841=Tv-instellingen
+842=meer
+843=OK opent de app

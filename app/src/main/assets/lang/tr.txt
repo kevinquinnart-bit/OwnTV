@@ -833,3 +833,8 @@
 836=Yakınlaştır
 837=Dil
 838=KueTV'nin kendi sözcükleri. Sonraki dil için OK
+839=Trend olanlar
+840=Uygulamaların
+841=TV ayarları
+842=daha fazla
+843=OK uygulamayı açar

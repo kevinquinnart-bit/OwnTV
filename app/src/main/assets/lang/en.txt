@@ -836,3 +836,8 @@ Your TV and phone share the list and this sign-in when they keep in step.
 Zoom
 Language
 KueTV's own words. OK for the next language
+Trending
+Your apps
+TV settings
+more
+OK opens the app
