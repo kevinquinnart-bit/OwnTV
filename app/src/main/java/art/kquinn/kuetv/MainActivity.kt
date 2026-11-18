@@ -925,6 +925,8 @@ private enum class Section(val label: String) { HOME("Home"), SEARCH("Search"), 
 
 private const val ALL = "\u0000all"
 private const val FAVOURITES = "\u0000favourites"
+/** Live TV's "Recently watched": the channels watched lately, newest first. */
+private const val RECENT = "\u0000recent"
 
 // "All" and "Favourites" are known inside the app by marks that can't be written to the device's
 // storage as they are, so they are kept under these plain words instead.
@@ -1058,6 +1060,9 @@ private fun KueLogo(markSize: Dp, textSize: androidx.compose.ui.unit.TextUnit, m
 /** Where the TV Guide (or Catch-up) is: the category, the channel opened, and any date-and-time step. */
 private class ChannelPick {
     var category by mutableStateOf(ALL)
+
+    /** The TV Guide's day: 0 today, 1 tomorrow, -1 yesterday. */
+    var guideDay = 0
     val categoryList = LazyListState()
     val channelList = LazyListState()
     val programmeList = LazyListState()
@@ -1098,7 +1103,7 @@ private fun MainScreen(
     }
     // A category that has just been hidden can't stay the one being shown.
     LaunchedEffect(library) {
-        if (state.liveCategory != ALL && state.liveCategory != FAVOURITES && library.liveCategories.none { it.id == state.liveCategory }) state.liveCategory = ALL
+        if (state.liveCategory != ALL && state.liveCategory != FAVOURITES && state.liveCategory != RECENT && library.liveCategories.none { it.id == state.liveCategory }) state.liveCategory = ALL
         // A catalogue isn't one of the provider's categories, and is left alone.
         if (state.filmCategory != ALL && state.filmCategory != FAVOURITES && !state.filmCategory.startsWith(Catalogue.PREFIX) && library.filmCategories.none { it.id == state.filmCategory }) state.filmCategory = ALL
         if (state.showCategory != ALL && state.showCategory != FAVOURITES && !state.showCategory.startsWith(Catalogue.PREFIX) && library.showCategories.none { it.id == state.showCategory }) state.showCategory = ALL
@@ -1219,16 +1224,18 @@ private fun MainScreen(
         when (section) {
             Section.HOME -> HomeScreen(library, state, favourites, homeFocus, resume, onPlay, openFromHome, carryOn, fill())
             Section.LIVE -> {
-                Categories(library.liveCategories, liveCategory, state.liveCategoryList) {
+                Categories(listOf(Category(RECENT, "🕘 Recently watched")) + library.liveCategories, liveCategory, state.liveCategoryList) {
                     if (it != state.liveCategory) {
                         state.liveCategory = it
                         scope.launch { state.channelList.scrollToItem(0) }
                     }
                 }
                 // One row for each channel: its 4K, FHD, HD and SD versions are kept together behind it.
-                val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null, if (liveCategory == FAVOURITES) favourites.order else null) {
+                val recentNow = if (liveCategory == RECENT) Recent.changes else -1
+                val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null, if (liveCategory == FAVOURITES) favourites.order else null, recentNow) {
                     when (liveCategory) {
                         ALL -> library.groups
+                        RECENT -> Recent.pick(library.groups, Recent.all(context)) { g -> g.versions.map { it.channel.url } }
                         // Favourites in the user's own order.
                         FAVOURITES -> library.groups.filter { g -> g.versions.any { Favourites.key(it.channel, login) in favs } }
                             .sortedBy { g -> favourites.rank(g.versions.map { Favourites.key(it.channel, login) }) }
@@ -1251,9 +1258,29 @@ private fun MainScreen(
                             favourites.putInOrder(list.map { Favourites.key(it.versions[0].channel, login) })
                         }
                     }
+                    // A channel number typed on the remote's number keys: a moment after the last key, the remote goes to that row.
+                    var typed by remember { mutableStateOf("") }
+                    var jumpTo by remember { mutableIntStateOf(-1) }
+                    val jumpFocus = remember { FocusRequester() }
+                    LaunchedEffect(typed) {
+                        if (typed.isEmpty()) return@LaunchedEffect
+                        delay(1_500)
+                        val n = typed.toIntOrNull() ?: 0
+                        typed = ""
+                        if (n in 1..shown.size) {
+                            state.channelList.scrollToItem((n - 3).coerceAtLeast(0))
+                            jumpTo = n - 1
+                            withFrameNanos { }
+                            withFrameNanos { }
+                            runCatching { jumpFocus.requestFocus() }
+                        } else {
+                            android.widget.Toast.makeText(context, "There is no channel $n in this list. It has ${shown.size}.", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
                     Column(m) {
                         Heading(
                             when {
+                                typed.isNotEmpty() -> "Channel $typed…"
                                 sorting && state.picked != null -> "Moving. " + if (phone) "Tap where it should go." else "▲ ▼ to move it, OK to put it down."
                                 sorting -> (if (phone) "Tap a channel to pick it up." else "OK on a channel to pick it up.") + " Back when done."
                                 else -> (if (shown.size == 1) "1 channel" else "${shown.size} channels") + holdHint()
@@ -1268,6 +1295,12 @@ private fun MainScreen(
                         }
                         LazyColumn(
                             Modifier.fillMaxSize().focusRestorer().onPreviewKeyEvent { e ->
+                                // The number keys: a channel by its place in the list.
+                                val digit = digitOf(e.nativeKeyEvent.keyCode)
+                                if (digit >= 0 && !sorting) {
+                                    if (e.type == KeyEventType.KeyDown && typed.length < 4) typed += digit
+                                    return@onPreviewKeyEvent true
+                                }
                                 // A picked-up channel moves with ▲ ▼, and the remote stays on it.
                                 if (!sorting || state.picked == null) return@onPreviewKeyEvent false
                                 if (e.key != Key.DirectionUp && e.key != Key.DirectionDown) return@onPreviewKeyEvent false
@@ -1298,7 +1331,7 @@ private fun MainScreen(
                                             else -> { moveTo(i); state.picked = null }
                                         }
                                     },
-                                    if (key == resumeKey) Modifier.focusRequester(resume) else Modifier,
+                                    (if (key == resumeKey) Modifier.focusRequester(resume) else Modifier).then(if (i == jumpTo) Modifier.focusRequester(jumpFocus) else Modifier),
                                     chosen = isPicked,
                                     onFocus = { state.liveOn = channel },
                                     onHold = if (sorting) null else ({ favourites.toggleAll(favKeys) }),
@@ -3003,14 +3036,22 @@ private fun Pane.GuideGrid(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val scale = LocalTextScale.current
     val opened = remember { System.currentTimeMillis() }
-    val start = remember { opened - opened % (30 * 60_000L) - GRID_EARLIER_MIN * 60_000L }
+    // The day shown: 0 today, from two hours ago; another day from its midnight. Up to a week ahead.
+    var day by remember { mutableIntStateOf(pick.guideDay) }
+    var toNow by remember { mutableIntStateOf(0) }
+    val start = remember(day) { guideStart(opened, day) }
     val end = start + GRID_SPAN_MIN * 60_000L
     val total = (GRID_SPAN_MIN * GRID_DP_PER_MIN).dp
     val across: (Long) -> Dp = { ms -> (ms / 60_000f * GRID_DP_PER_MIN).dp }
     val strip = rememberScrollState()
-    LaunchedEffect(Unit) {
-        // Open on now, with a little of what came before showing.
-        strip.scrollTo(with(density) { across(opened - start - 20 * 60_000L).roundToPx() })
+    LaunchedEffect(day, toNow) {
+        pick.guideDay = day
+        // Once the grid has been laid out (until then it can't be moved along): today opens on now, with a little
+        // of what came before showing; another day at the same time of day.
+        withFrameNanos { }
+        withFrameNanos { }
+        val target = if (day == 0) opened - start - 20 * 60_000L else (opened - midnightOf(opened, 0)) - 20 * 60_000L
+        strip.scrollTo(with(density) { across(target.coerceAtLeast(0L)).roundToPx() })
     }
     val timed = remember(TimedStore.changes) { TimedStore.all(context) }
     val reminders = remember(Reminders.changes) { Reminders.all(context) }
@@ -3030,6 +3071,11 @@ private fun Pane.GuideGrid(
             PreviewPicture(onChannel, Modifier.width(GUIDE_PICTURE_WIDTH).testTag("guide picture"))
         }
         Spacer(Modifier.height(8.dp))
+        // Jump to now, and the days: yesterday (for catch-up) to six days ahead.
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GuideChip("Jump to now", false) { day = 0; toNow++ }
+            for (d in GUIDE_DAYS) GuideChip(dayName(opened, d), d == day) { day = d }
+        }
         Row {
             // The day at the left edge of the grid, as it moves sideways: Today, Tomorrow, or the day's name.
             val leftMs = start + (with(density) { strip.value.toDp() }.value / GRID_DP_PER_MIN * 60_000L).toLong()
@@ -3118,6 +3164,52 @@ private fun Pane.GuideGrid(
             }
         }
     }
+}
+
+/** The days the TV Guide offers, from today: yesterday, for catch-up, to six days ahead. */
+private val GUIDE_DAYS = -1..6
+
+/** Where the TV Guide's grid starts for [day] (0 today): today two hours before now, on the half hour; another day at its midnight. */
+internal fun guideStart(now: Long, day: Int): Long =
+    if (day == 0) now - now % (30 * 60_000L) - GRID_EARLIER_MIN * 60_000L else midnightOf(now, day)
+
+/** Midnight at the start of the day [day] days from the one [now] is in, on this device's clock. */
+internal fun midnightOf(now: Long, day: Int): Long {
+    return java.util.Calendar.getInstance().apply {
+        timeInMillis = now
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+        add(java.util.Calendar.DAY_OF_YEAR, day)
+    }.timeInMillis
+}
+
+/** "Yesterday", "Today", "Tomorrow", or "Fri 20". */
+internal fun dayName(now: Long, day: Int): String = when (day) {
+    -1 -> "Yesterday"
+    0 -> "Today"
+    1 -> "Tomorrow"
+    else -> java.text.SimpleDateFormat("EEE d", java.util.Locale.UK).format(java.util.Date(midnightOf(now, day)))
+}
+
+/** A small button above the TV Guide's grid: a day, or Jump to now. */
+@Composable
+private fun GuideChip(text: String, chosen: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Text(
+        text,
+        color = if (focused || chosen) Color.Black else Color.White,
+        fontSize = 15.sp,
+        fontWeight = if (focused || chosen) FontWeight.Bold else FontWeight.Normal,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (focused) Accent else if (chosen) Color(0xFFB9C2D3) else Panel)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 5.dp),
+    )
 }
 
 /** The width of the picture in the TV Guide's top right corner. */

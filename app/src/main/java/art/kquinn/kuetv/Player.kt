@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -166,7 +167,7 @@ private class Control(
 )
 
 /** The pictures drawn on the player's buttons. */
-private enum class Icon { BACK, PLAY, PAUSE, ON, FROM_START, RECORD, STOP, PICTURE, SUBS_ON, SUBS_OFF, OPTIONS, LIVE }
+private enum class Icon { BACK, PLAY, PAUSE, ON, FROM_START, RECORD, STOP, PICTURE, SUBS_ON, SUBS_OFF, OPTIONS, LIST, LIVE }
 
 /** How much one key-repeat of a held wind button adds: faster the longer it is held. Public for the tests. */
 fun windSpeed(repeats: Int): Int = when {
@@ -308,6 +309,12 @@ fun PlayerScreen(
     var sounds by remember { mutableStateOf<List<SoundChoice>>(emptyList()) }
     var shape by remember { mutableIntStateOf(PictureShape.saved(context)) }
     var syncMs by remember { mutableIntStateOf(0) }
+    // Live: the list of channels over the picture (◀ opens it), and the row the remote is on in it.
+    var channelList by remember { mutableStateOf(false) }
+    var listPick by remember { mutableIntStateOf(0) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // A channel number being typed on the remote's number keys; it is gone to a moment after the last key.
+    var typed by remember { mutableStateOf("") }
     // The control buttons in the name box: brought up by OK on a TV (◀ ▶ then move along them), always there on a phone.
     var controls by remember { mutableStateOf(false) }
     var pick by remember { mutableIntStateOf(0) }
@@ -395,6 +402,7 @@ fun PlayerScreen(
         keepPlace()
         val wasRecording = finishRecording()
         upNext = -1
+        channelList = false
         // A sound picked for the last one doesn't carry over: the next starts on its own first choice.
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_AUDIO).build()
         index = next
@@ -682,6 +690,27 @@ fun PlayerScreen(
             keepPlace()
         }
     }
+    // A live channel stayed on for a little while goes on Live TV's "Recently watched".
+    LaunchedEffect(index) {
+        if (!live) return@LaunchedEffect
+        val key = items.getOrNull(index)?.key ?: return@LaunchedEffect
+        delay(RECENT_AFTER_MS)
+        Recent.add(context, key)
+    }
+    // A number typed on the remote: a moment after the last key, that channel in the list.
+    LaunchedEffect(typed) {
+        if (typed.isEmpty()) return@LaunchedEffect
+        delay(TYPED_WAIT_MS)
+        val n = typed.toIntOrNull() ?: 0
+        typed = ""
+        if (n in 1..items.size) go(n - 1) else say("There is no channel $n in this list. It has " + items.size + ".")
+    }
+    // The list of channels follows the remote, keeping a few rows above the one it is on.
+    LaunchedEffect(channelList, listPick) {
+        if (!channelList) return@LaunchedEffect
+        val visible = listState.layoutInfo.visibleItemsInfo
+        if (visible.isEmpty() || listPick <= visible.first().index || listPick >= visible.last().index) listState.scrollToItem((listPick - 3).coerceAtLeast(0))
+    }
     // The next episode or programme: a few seconds to see what it is, then it starts. OK starts it now, Back stays here.
     LaunchedEffect(upNext) {
         if (upNext < 0) return@LaunchedEffect
@@ -867,6 +896,12 @@ fun PlayerScreen(
             2 -> setSync(0)
         }
     }
+    val openList: () -> Unit = {
+        channelList = true
+        listPick = index
+        controls = false
+        nameVisible = false
+    }
     val openOptions: () -> Unit = {
         options = true
         optionRow = 0
@@ -884,6 +919,7 @@ fun PlayerScreen(
             pictureButton?.let { add(it) }
             add(subsButton)
             add(Control("Options", Icon.OPTIONS, act = openOptions))
+            if (items.size > 1) add(Control("Channels", Icon.LIST, act = openList))
             // Always last: LIVE, drawn on the right of the box. Behind live, it jumps to what is on now.
             add(Control(if (isBehind || paused) "GO LIVE" else "● LIVE", Icon.LIVE) { if (isBehind || paused) { player.play(); reload += 1 } })
         } else {
@@ -904,6 +940,8 @@ fun PlayerScreen(
         // With the box up (the buttons or not), Back only puts it away. With it gone, Back closes the player.
         if (upNext >= 0) {
             upNext = -1
+        } else if (channelList) {
+            channelList = false
         } else if (options) {
             options = false
         } else if (nameVisible) {
@@ -996,6 +1034,30 @@ fun PlayerScreen(
                             }
                             return@onPreviewKeyEvent true
                         }
+                        // The remote's number keys: a channel by its number in the list, live only.
+                        val digit = digitOf(e.nativeKeyEvent.keyCode)
+                        if (live && digit >= 0) {
+                            if (e.type == KeyEventType.KeyDown && typed.length < 4) typed += digit
+                            return@onPreviewKeyEvent true
+                        }
+                        // The list of channels: ▲ ▼ along it, CH+ CH− a page at a time, OK watches, ▶ puts it away.
+                        if (channelList) {
+                            val moves = listOf(Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight, Key.ChannelUp, Key.ChannelDown)
+                            if (!ok && e.key !in moves) return@onPreviewKeyEvent false
+                            if (e.type == KeyEventType.KeyDown) {
+                                val last = items.size - 1
+                                when (e.key) {
+                                    Key.DirectionUp -> listPick = (listPick - 1).coerceAtLeast(0)
+                                    Key.DirectionDown -> listPick = (listPick + 1).coerceAtMost(last)
+                                    Key.ChannelUp -> listPick = (listPick - LIST_PAGE).coerceAtLeast(0)
+                                    Key.ChannelDown -> listPick = (listPick + LIST_PAGE).coerceAtMost(last)
+                                    Key.DirectionRight -> channelList = false
+                                    Key.DirectionLeft -> {}
+                                    else -> if (listPick == index) channelList = false else go(listPick)
+                                }
+                            }
+                            return@onPreviewKeyEvent true
+                        }
                         val buttonsUp = controls && nameVisible && buttons.isNotEmpty()
                         // Winding: the rewind and fast-forward keys, OK on a wind button, and for a film left and right.
                         // A press winds one step when it is let go; held down, it winds faster and faster until let go.
@@ -1065,9 +1127,8 @@ fun PlayerScreen(
                                 showName += 1
                                 true
                             } else {
-                                val count = versions.size
-                                val next = if (e.key == Key.DirectionLeft) stream - 1 else stream + 1
-                                if (count > 1) { if (next in 0 until count) change(next, null) else showName += 1 }
+                                // Live: ◀ opens the list of channels; ▶ does nothing here (it puts the list away).
+                                if (live && e.key == Key.DirectionLeft && items.size > 1) openList()
                                 true
                             }
                             else -> false
@@ -1160,7 +1221,7 @@ fun PlayerScreen(
                     // The keys, small, on a TV while the buttons aren't in use.
                     if (!phone && !controls) {
                         Text(
-                            if (live) "OK buttons  ·  ▲ ▼ channel" + (if (versions.size > 1) "  ·  ◀ ▶ picture" else "") + "  ·  ≡ record"
+                            if (live) "OK buttons  ·  ▲ ▼ channel" + (if (items.size > 1) "  ·  ◀ channels" else "") + "  ·  ≡ record"
                             else "OK buttons  ·  ◀ ▶ wind, hold to go faster",
                             color = soft, fontSize = 14.sp, maxLines = 1,
                         )
@@ -1298,6 +1359,53 @@ fun PlayerScreen(
                     }
                 }
                 if (phone && live && items.size > 1) Text("Swipe up or down to change channel", color = soft, fontSize = 15.sp, modifier = Modifier.padding(top = 10.dp))
+            }
+        }
+        // A channel number being typed, large, in the top right corner.
+        if (typed.isNotEmpty()) {
+            Text(
+                typed, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopEnd).padding(if (phone) 16.dp else 36.dp)
+                    .background(Color(0xE60E1626), RoundedCornerShape(14.dp)).padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+        }
+        // The list of channels, down the left of the picture.
+        if (channelList) {
+            Column(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight()
+                    .padding(if (phone) 12.dp else 30.dp)
+                    .width(if (phone) 300.dp else 440.dp)
+                    .background(Color(0xF00E1626), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 10.dp, vertical = 12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, bottom = 6.dp)) {
+                    Text("Channels", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    if (phone) PlayerChip("Close") { channelList = false }
+                }
+                if (!phone) Text("▲ ▼ move  ·  CH+ CH− a page  ·  OK watch  ·  ▶ close", color = Color(0xFFB9C2D3), fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp, bottom = 6.dp))
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().weight(1f), state = listState) {
+                    this.items(items.size) { i ->
+                        val on = !phone && i == listPick
+                        val playing = i == index
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .background(if (on) Color(0xFFFFD23F) else if (playing) Color(0xFF263A63) else Color.Transparent, RoundedCornerShape(8.dp))
+                                .then(if (phone) Modifier.clickable { if (i == index) channelList = false else go(i) } else Modifier)
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text((i + 1).toString(), color = if (on) Color.Black else Color(0xFFB9C2D3), fontSize = 16.sp, modifier = Modifier.width(52.dp))
+                            Text(
+                                (if (playing) "▶ " else "") + items[i].name, color = if (on) Color.Black else Color.White, fontSize = 18.sp,
+                                fontWeight = if (on || playing) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         }
         // The next episode or programme, counting down in the top right corner.
@@ -1480,6 +1588,7 @@ private fun ButtonIcon(b: Control, color: Color) {
                 Icon.RECORD -> drawCircle(Color(0xFFE53935), radius = w * 0.34f)
                 Icon.STOP -> drawRect(Color(0xFFE53935), Offset(w * 0.2f, h * 0.2f), Size(w * 0.6f, h * 0.6f))
                 Icon.OPTIONS -> for (x in listOf(0.18f, 0.5f, 0.82f)) drawCircle(color, radius = w * 0.1f, center = Offset(w * x, h * 0.5f))
+                Icon.LIST -> for (y in listOf(0.22f, 0.5f, 0.78f)) drawRect(color, Offset(w * 0.12f, h * y - h * 0.06f), Size(w * 0.76f, h * 0.12f))
                 else -> {}
             }
         }
@@ -1500,3 +1609,12 @@ private fun PlayerChip(text: String, main: Boolean = false, onClick: () -> Unit)
             .padding(horizontal = 16.dp, vertical = 8.dp),
     )
 }
+
+/** How long a live channel is watched before it goes on "Recently watched". */
+private const val RECENT_AFTER_MS = 10_000L
+
+/** How long after the last number key the channel typed is gone to. */
+private const val TYPED_WAIT_MS = 1_500L
+
+/** How many rows CH+ and CH− move the list of channels by. */
+private const val LIST_PAGE = 8

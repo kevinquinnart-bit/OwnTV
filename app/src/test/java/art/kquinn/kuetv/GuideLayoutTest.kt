@@ -71,8 +71,12 @@ class GuideLayoutTest {
         assertTrue("the grid runs to the right of the screen, under the picture (it ends at ${grid[2]} dp of 960)", grid[2] > 880f)
 
         // Into the grid: ▶ from the menu opens the categories, ▶ again goes into the grid, ▶ moves along a row.
+        assertTrue("the days and Jump to now sit above the grid", shown("Jump to now") && shown("Tomorrow"))
+        // ▶ ▶ into the guide (onto the days, or the grid), ▼ ▼ down into the grid, then ▶ along a row.
         press(Key.DirectionRight)
         press(Key.DirectionRight)
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
         press(Key.DirectionRight)
         assertTrue(
             "moving along the grid describes that programme along the top",
