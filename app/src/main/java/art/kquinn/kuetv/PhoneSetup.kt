@@ -21,6 +21,8 @@ class PhoneSetup(
     private val freeList: Boolean = false,
     /** Given: the page asks for a Stremio email and password instead, and they arrive here. */
     private val onStremio: ((email: String, password: String) -> Unit)? = null,
+    /** Given: the page asks for a VPN's OpenVPN file (its text, or a link to it) and login instead, and they arrive here. */
+    private val onVpn: ((config: String, link: String, user: String, pass: String) -> Unit)? = null,
     private val onDetails: (server: String, user: String, pass: String, playlist: String) -> Unit,
 ) {
     @Volatile private var socket: ServerSocket? = null
@@ -64,7 +66,8 @@ class PhoneSetup(
             if (header.startsWith("content-length:", ignoreCase = true)) length = header.substringAfter(':').trim().toIntOrNull() ?: 0
         }
         if (first.startsWith("POST")) {
-            val body = CharArray(length.coerceIn(0, 20_000))
+            // An OpenVPN file sent from the phone, with its certificates, runs to tens of thousands of characters.
+            val body = CharArray(length.coerceIn(0, 400_000))
             var read = 0
             while (read < body.size) {
                 val n = input.read(body, read, body.size - read)
@@ -75,7 +78,10 @@ class PhoneSetup(
                 val at = pair.indexOf('=')
                 if (at < 0) null else URLDecoder.decode(pair.substring(0, at), "UTF-8") to URLDecoder.decode(pair.substring(at + 1), "UTF-8")
             }.toMap()
-            if (onStremio != null) {
+            if (onVpn != null) {
+                onVpn.invoke(fields["config"].orEmpty(), fields["link"].orEmpty(), fields["user"].orEmpty(), fields["pass"].orEmpty())
+                send(client, page("<h1>Sent to your TV</h1><p>The TV says whether it could read the file. You can close this page.</p>"))
+            } else if (onStremio != null) {
                 onStremio.invoke(fields["email"].orEmpty(), fields["password"].orEmpty())
                 send(client, page("<h1>Sent to your TV</h1><p>The TV says whether Stremio accepted it. You can close this page.</p>"))
             } else if (onAddOn != null) {
@@ -86,7 +92,7 @@ class PhoneSetup(
                 send(client, page("<h1>Sent to your TV</h1><p>You can close this page.</p>"))
             }
         } else {
-            send(client, page(if (onStremio != null) STREMIO_FORM else if (onAddOn == null) FORM else if (freeList) FREE_FORM else ADDON_FORM))
+            send(client, page(if (onVpn != null) VPN_FORM else if (onStremio != null) STREMIO_FORM else if (onAddOn == null) FORM else if (freeList) FREE_FORM else ADDON_FORM))
         }
     }
 
@@ -126,6 +132,21 @@ class PhoneSetup(
             "<label>Stremio password</label><input name=\"password\" type=\"password\">" +
             "<button type=\"submit\">Send to TV</button></form>"
 
+        private const val VPN_FORM = "<h1>KueTV: your VPN</h1>" +
+            "<p>Choose the OpenVPN file your VPN company gave you (it ends in .ovpn), or paste a link to it. Then the username and password that go with it.</p>" +
+            "<form id=\"f\" method=\"post\" action=\"/\">" +
+            "<label>OpenVPN file (.ovpn)</label><input type=\"file\" id=\"file\">" +
+            "<textarea name=\"config\" id=\"config\" style=\"display:none\"></textarea>" +
+            "<p>Or a link to the file (a .ovpn, or a .zip with one in it):</p>" +
+            "<label>Link</label><input name=\"link\" autocapitalize=\"none\" autocorrect=\"off\">" +
+            "<hr><label>VPN username</label><input name=\"user\" autocapitalize=\"none\" autocorrect=\"off\">" +
+            "<label>VPN password</label><input name=\"pass\" autocapitalize=\"none\" autocorrect=\"off\">" +
+            "<button type=\"submit\">Send to TV</button></form>" +
+            // The chosen file is read on the phone and sent as text with the rest.
+            "<script>document.getElementById('f').onsubmit=function(e){var f=document.getElementById('file').files[0];" +
+            "if(!f)return true;e.preventDefault();var r=new FileReader();r.onload=function(){" +
+            "document.getElementById('config').value=r.result;document.getElementById('f').submit();};r.readAsText(f);return false;};</script>"
+
         private const val FREE_FORM = "<h1>KueTV: add a free channel list</h1>" +
             "<p>Paste the list's link here. It usually ends in .m3u or .m3u8. An add-on's link works here too.</p>" +
             "<form method=\"post\" action=\"/\">" +
@@ -143,16 +164,25 @@ class PhoneSetup(
 
         fun localAddress(): String? = activeAddress() ?: anyAddress()
 
-        /** The device's address on the network it is using now: its Wi-Fi, or its cable. */
+        /**
+         * The device's address on the home network it is using now: its Wi-Fi, or its cable. With a VPN on, the
+         * VPN is the network in use, so the home network beside it is looked for instead: the VPN's own address
+         * can't be reached by the phone or the other device.
+         */
         private fun activeAddress(): String? = runCatching {
             val manager = app?.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return null
-            val links = manager.getLinkProperties(manager.activeNetwork ?: return null) ?: return null
-            links.linkAddresses.map { it.address }.firstOrNull { it is Inet4Address && it.isSiteLocalAddress }?.hostAddress
+            val home = (listOfNotNull(manager.activeNetwork) + manager.allNetworks).distinct().filter { n ->
+                manager.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == false
+            }
+            home.firstNotNullOfOrNull { n ->
+                manager.getLinkProperties(n)?.linkAddresses?.map { it.address }?.firstOrNull { it is Inet4Address && it.isSiteLocalAddress }?.hostAddress
+            }
         }.getOrNull()
 
         private fun anyAddress(): String? = runCatching {
             NetworkInterface.getNetworkInterfaces().toList()
-                .filter { it.isUp && !it.isLoopback }
+                // The VPN's own connection ("tun") isn't the home network.
+                .filter { it.isUp && !it.isLoopback && !it.name.startsWith("tun") }
                 .flatMap { it.inetAddresses.toList() }
                 .firstOrNull { it is Inet4Address && it.isSiteLocalAddress }
                 ?.hostAddress

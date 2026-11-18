@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Copying recordings to Google Drive carries on after the screens are closed. -->
@@ -17,6 +18,10 @@
     <!-- Asking the TV which aerial channels it has, for the report. Many TVs refuse this to apps they didn't come with. -->
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
 
+    <!-- The VPN engine asks for these for features KueTV doesn't use: listing every app, and reading files. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
@@ -32,13 +37,33 @@
         </intent>
     </queries>
 
+    <!--
+      The VPN engine (OpenVPN for Android) starts up with the app: it sets up its notices and its link from
+      the VPN, which runs on its own, to KueTV's screens. KueTV's own name, picture and look are kept.
+    -->
     <application
+        android:name="de.blinkt.openvpn.core.ICSOpenVPNApplication"
         android:allowBackup="true"
         android:banner="@drawable/kuetv_banner"
         android:icon="@drawable/kuetv_mark"
+        android:roundIcon="@drawable/kuetv_mark"
         android:label="@string/app_name"
         android:theme="@style/KueTheme"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        tools:replace="android:allowBackup,android:icon,android:roundIcon,android:label,android:theme">
+
+        <!-- The VPN engine's ways for other apps to control it, and to start it with the device: not wanted here. -->
+        <service android:name="de.blinkt.openvpn.api.ExternalOpenVPNService" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.api.GrantPermissionsActivity" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.api.ConfirmDialog" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.api.RemoteAction" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.ConnectVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.DisconnectVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.PauseVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.ResumeVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.SetDefaultVPN" tools:node="remove" />
+        <receiver android:name="de.blinkt.openvpn.OnBootReceiver" tools:node="remove" />
+
         <activity
             android:name=".MainActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout"

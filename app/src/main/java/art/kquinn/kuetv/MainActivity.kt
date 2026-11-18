@@ -234,6 +234,19 @@ private fun App() {
     }
     // A newer version downloaded last time is no longer needed once the app starts afresh.
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updates.tidy(context); ShiftBuffer.tidy(context) } }
+    // The VPN: what it is doing, for its page; and on opening, connect it if that was chosen.
+    LaunchedEffect(Unit) {
+        Vpn.listen()
+        if (!Vpn.connectOnOpen(context) || Vpn.details(context).isEmpty) return@LaunchedEffect
+        // The engine says how it is a moment after the app opens; a VPN already on is left alone.
+        delay(1_500)
+        if (Vpn.isOn || Vpn.isTrying) return@LaunchedEffect
+        if (Vpn.permissionAsk(context) != null) {
+            Report.note("VPN", "not connected on opening: the device's permission for KueTV's VPN hasn't been given yet")
+            return@LaunchedEffect
+        }
+        runCatching { Vpn.start(context) }.onFailure { Report.note("VPN", "not connected on opening: " + it.message) }
+    }
     // Keeping in step with a paired device: while KueTV is on screen, this device answers the other when it
     // asks, and every minute asks the other what it has, taking each part that was changed more recently there.
     val pairKey = remember(Sync.changes) { Sync.key(context) }
@@ -254,6 +267,7 @@ private fun App() {
                 "subtitles" to Choices.subtitles(context).toString() + "\n" + Choices.subtitleLang(context),
                 "places" to Positions.export(context),
                 "reminders" to Reminders.all(context).sortedBy { it.id }.joinToString("\n") { it.toJson() },
+                "vpn" to Vpn.details(context).let { d -> d.user + "\u0002" + d.pass + "\u0002" + d.config },
             )
         }
         val take: (String, String) -> Unit = { name, body ->
@@ -284,6 +298,7 @@ private fun App() {
                 }
                 "places" -> Positions.import(context, body)
                 "reminders" -> Reminders.replaceAll(context, lines.mapNotNull { Reminder.fromJson(it) })
+                "vpn" -> body.split('\u0002', limit = 3).takeIf { it.size == 3 }?.let { Vpn.adopt(context, it[2], it[0], it[1]) }
             }
         }
         val server = SyncServer(pairKey)
@@ -488,6 +503,7 @@ private fun App() {
             })
             driveSignIn -> DriveSignInScreen(onDone = { driveSignIn = false })
             stremioOpen -> StremioScreen(onDone = { stremioOpen = false })
+            Vpn.screenOpen -> VpnScreen(onDone = { Vpn.screenOpen = false })
             addLinkOpen -> AddLinkScreen(onDone = { addLinkOpen = false })
             addOnsOpen -> AddOnsScreen(onDone = { addOnsOpen = false })
             reportOpen -> ReportScreen(onDone = { reportOpen = false })
@@ -1389,6 +1405,7 @@ private fun MainScreen(
                     "Watching" to "Subtitles, pause and rewind, text size",
                     "Recordings" to "Google Drive: " + when { !drive.isSetUp -> "not set up"; drive.signedIn -> "signed in"; else -> "not signed in" },
                     "TV and phone" to "Copy the set-up, keep in step: " + if (paired) "on" else "off",
+                    "VPN" to remember(Vpn.changes, Vpn.level) { vpnLine(context) },
                     "Help" to "Health check" + (if (notWorking == 0) "" else ": $notWorking not working") + ", report, updates · version " + BuildConfig.VERSION_NAME,
                 )
                 Column(
@@ -1400,7 +1417,8 @@ private fun MainScreen(
                         Heading("Settings")
                         parts.forEach { (name, summary) ->
                             FocusRow(
-                                name, { leftFrom[0] = null; state.settingsPage = name },
+                                // The VPN has a page of its own, opened straight away.
+                                name, { if (name == "VPN") Vpn.screenOpen = true else { leftFrom[0] = null; state.settingsPage = name } },
                                 if (name == leftFrom[0]) Modifier.focusRequester(backTo) else Modifier,
                                 look = Look.OTHER, below = summary,
                             )
@@ -1473,7 +1491,7 @@ private fun MainScreen(
                                 )
                                 // What was last taken from the other device, so it can be seen working.
                                 Note(Sync.lastTook.ifEmpty { "Nothing taken from the other device since opening: they already matched, or haven't met." })
-                                Note("What keeps in step: provider details, favourites and their order, add-ons, free channel lists, hidden categories, subtitles, the Stremio sign-in, Carry on watching, and reminders. Both devices need KueTV open on the same Wi-Fi.")
+                                Note("What keeps in step: provider details, favourites and their order, add-ons, free channel lists, hidden categories and their order, subtitles, the Stremio sign-in, the VPN details, Carry on watching, and reminders. Both devices need KueTV open on the same Wi-Fi.")
                             } else {
                                 Note("Off. Send the set-up from one device to the other to turn it on.")
                             }
@@ -4109,6 +4127,193 @@ private fun StremioScreen(onDone: () -> Unit) {
             FocusRow("‹ Back", onDone, look = Look.OTHER)
         }
     }
+}
+
+/** The VPN in a few words, for the Settings list. */
+private fun vpnLine(context: android.content.Context): String = when {
+    Vpn.details(context).isEmpty -> "Not set up"
+    Vpn.isOn -> "On"
+    Vpn.isTrying -> "Connecting…"
+    else -> "Off"
+} + if (Vpn.connectOnOpen(context)) " · connects when KueTV opens" else ""
+
+/** How the VPN is, in plain words, and whether that is good, under way, or a problem. */
+private fun vpnStatus(level: de.blinkt.openvpn.core.ConnectionStatus): Status = when (level) {
+    de.blinkt.openvpn.core.ConnectionStatus.LEVEL_CONNECTED -> Status("VPN on.", Status.OK)
+    de.blinkt.openvpn.core.ConnectionStatus.LEVEL_START,
+    de.blinkt.openvpn.core.ConnectionStatus.LEVEL_CONNECTING_NO_SERVER_REPLY_YET,
+    de.blinkt.openvpn.core.ConnectionStatus.LEVEL_CONNECTING_SERVER_REPLIED -> Status("Connecting…", Status.BUSY)
+    de.blinkt.openvpn.core.ConnectionStatus.LEVEL_WAITING_FOR_USER_INPUT -> Status("The VPN is asking for a username and password. Add them with the file.", Status.WARN)
+    de.blinkt.openvpn.core.ConnectionStatus.LEVEL_AUTH_FAILED ->
+        Status("The VPN refused the username or password. If the account has run out, make a new one and add it here again.", Status.FAIL)
+    de.blinkt.openvpn.core.ConnectionStatus.LEVEL_NONETWORK -> Status("Waiting for the internet.", Status.WARN)
+    de.blinkt.openvpn.core.ConnectionStatus.LEVEL_VPNPAUSED -> Status("The VPN is paused.", Status.WARN)
+    else -> Status("VPN off.", Status.INFO)
+}
+
+/**
+ * Settings › VPN. With no details yet: where to get them, and the boxes for them (easiest from the phone).
+ * With details: Connect or Disconnect, where the device appears to be, connecting on opening, and changing
+ * or removing the details. The box at the top always says how the VPN is.
+ */
+@Composable
+private fun VpnScreen(onDone: () -> Unit) {
+    val context = LocalContext.current
+    val phone = LocalPhone.current
+    val scope = rememberCoroutineScope()
+    val details = remember(Vpn.changes) { Vpn.details(context) }
+    var editing by remember { mutableStateOf(false) }
+    val adding = details.isEmpty || editing
+    var link by remember { mutableStateOf("") }
+    var user by remember(details) { mutableStateOf(details.user) }
+    var pass by remember(details) { mutableStateOf(details.pass) }
+    var said by remember { mutableStateOf<Status?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var where by remember { mutableStateOf<String?>(null) }
+    var phoneAddress by remember { mutableStateOf<String?>(null) }
+    BackHandler { if (editing) editing = false else onDone() }
+
+    /** Keeps a file's text, or a link's, with the login, and says whether it could be read. */
+    val keep: (String, String, String, String) -> Unit = { config, typedLink, u, p ->
+        if (!busy) {
+            busy = true
+            said = Status("Reading the file…", Status.BUSY)
+            scope.launch {
+                said = try {
+                    val text = withContext(Dispatchers.IO) { if (config.isNotBlank()) config else Vpn.fetch(typedLink) }
+                    val reading = Vpn.keep(context, text, u, p)
+                    editing = false
+                    link = ""
+                    Report.note("VPN", "details added: server " + reading.server + if (reading.wantsLogin) ", with a login" else "")
+                    if (reading.wantsLogin && (u.isBlank() || p.isBlank())) {
+                        Status("Kept the file for " + reading.server + ". It needs a username and password too: add them before connecting.", Status.WARN)
+                    } else {
+                        Status("Kept. Server: " + reading.server + ". Choose Connect.", Status.OK)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Vpn.VpnProblem) {
+                    Status(e.message.orEmpty(), Status.FAIL)
+                }
+                busy = false
+            }
+        }
+    }
+    val connect: () -> Unit = {
+        try {
+            Vpn.start(context)
+            said = null
+            where = null
+        } catch (e: Vpn.VpnProblem) {
+            said = Status(e.message.orEmpty(), Status.FAIL)
+        }
+    }
+    val permission = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) connect()
+        else said = Status("The device wasn't given permission for KueTV's VPN, so it can't connect. Choose Connect to be asked again.", Status.FAIL)
+    }
+    val connectOrAsk: () -> Unit = {
+        val ask = Vpn.permissionAsk(context)
+        if (ask != null) {
+            said = Status("The device asks once whether KueTV may run a VPN. Choose OK.", Status.INFO)
+            permission.launch(ask)
+        } else {
+            connect()
+        }
+    }
+    // Phone: the file can be picked from the phone itself.
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            runCatching { Vpn.fromFile(context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }) }
+                .onSuccess { keep(it, "", user, pass) }
+                .onFailure { said = Status(it.message ?: "Couldn't read that file.", Status.FAIL) }
+        }
+    }
+    val checkWhere: () -> Unit = {
+        if (!busy) {
+            busy = true
+            where = "Checking…"
+            scope.launch {
+                val found = withContext(Dispatchers.IO) {
+                    runCatching { Vpn.where().toString() }.getOrElse { "Couldn't check: " + (it.message ?: "no answer") }
+                }
+                where = found
+                Report.note("VPN", "where this device appears to be: $found")
+                busy = false
+            }
+        }
+    }
+    // When the VPN comes on, check where the device now appears to be.
+    LaunchedEffect(Vpn.level) { if (Vpn.isOn) checkWhere() }
+    // A TV also answers the phone while the details are being added, so they can be sent from there.
+    DisposableEffect(adding) {
+        val main = Handler(Looper.getMainLooper())
+        val server = if (phone || !adding) null else PhoneSetup(onVpn = { c, l, u, p -> main.post { user = u; pass = p; keep(c, l, u, p) } }) { _, _, _, _ -> }
+        phoneAddress = server?.start()
+        onDispose { server?.stop() }
+    }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(adding) {
+        withFrameNanos { }
+        withFrameNanos { }
+        if (!phone) runCatching { first.requestFocus() }
+    }
+    val device = if (phone) "phone" else "TV"
+    if (adding) {
+        Page(
+            "VPN",
+            "Add the OpenVPN file from your VPN company, and the username and password that go with it. While the VPN is on it covers the whole $device.",
+            said ?: if (details.isEmpty) null else vpnStatus(Vpn.level),
+        ) {
+            phoneAddress?.let { address -> InfoPanel("Easiest: on your phone, on the same Wi-Fi, open $address. Choose the file there and type the username and password.") }
+            if (phone) FocusRow("Choose the OpenVPN file on this phone", { pick.launch("*/*") }, Modifier.focusRequester(first), look = Look.MAIN)
+            Field("Or a link to the file", link, modifier = if (phone) Modifier else Modifier.focusRequester(first)) { link = it }
+            FocusRow("Use VPN Jantit's Dublin server (Ireland 1)", { link = "https://www.vpnjantit.com/download-openvpn.php?server=ie1" }, look = Look.OTHER, below = "Fills in the link to its file. Then type the login you made on their page.")
+            Field("VPN username", user) { user = it }
+            Field("VPN password", pass, secret = true) { pass = it }
+            FocusRow(if (busy) "Reading…" else "Add the link with this username and password", { keep("", link, user, pass) }, look = Look.MAIN)
+            if (!details.isEmpty) FocusRow("Keep the file I have, with this username and password", { keep(details.config, "", user, pass) }, look = Look.OTHER)
+            Heading("Where to get a free Irish one")
+            InfoPanel(
+                "VPN Jantit has a free server in Dublin. On their page, make an account for the server called Ireland 1:\n" +
+                    "https://www.vpnjantit.com/create-free-account?server=ie1&type=OpenVPN\n" +
+                    "Then choose \"Use VPN Jantit's Dublin server\" above, and type the username and password exactly as their page shows them.\n" +
+                    "A free account there lasts 7 days. When it runs out, KueTV says so: make a new one and add it here again.",
+            )
+            FocusRow(if (details.isEmpty) "‹ Back" else "‹ Back, without changing anything", { if (editing) editing = false else onDone() }, look = Look.OTHER)
+        }
+    } else {
+        val server = remember(details) { runCatching { Vpn.read(details.config).server }.getOrDefault("?") }
+        val auto = remember(Vpn.changes) { Vpn.connectOnOpen(context) }
+        Page("VPN", "Server: $server. While the VPN is on it covers the whole $device.", said ?: vpnStatus(Vpn.level)) {
+            if (Vpn.isOn || Vpn.isTrying) {
+                FocusRow("Disconnect", { Vpn.stop(context); said = null }, Modifier.focusRequester(first), look = Look.MAIN)
+            } else {
+                FocusRow("Connect", connectOrAsk, Modifier.focusRequester(first), look = Look.MAIN)
+            }
+            FocusRow("Where the $device appears to be: " + (where ?: "press to check"), checkWhere, look = Look.OTHER)
+            FocusRow("Connect when KueTV opens: " + if (auto) "on" else "off", { Vpn.connectOnOpen(context, !auto) }, look = Look.OTHER)
+            FocusRow("Change the VPN file or login", { editing = true; said = null }, look = Look.OTHER)
+            FocusRow("Remove the VPN details", {
+                if (Vpn.isOn || Vpn.isTrying) Vpn.stop(context)
+                Vpn.forget(context)
+                said = Status("Removed.", Status.OK)
+            }, look = Look.OTHER)
+            Heading("How it works")
+            InfoPanel(
+                "While the VPN is on, everything on this $device goes through it, not just KueTV.\n" +
+                    "Your home Wi-Fi stays reachable, so the phone page and keeping in step still work.\n" +
+                    "A free account that runs out shows here as refused: make a new one and add it again.",
+            )
+            FocusRow("‹ Back", onDone, look = Look.OTHER)
+        }
+    }
+}
+
+/** For the automatic checks only: the VPN page as a TV shows it. */
+@Composable
+internal fun VpnForChecks() {
+    VpnScreen(onDone = {})
 }
 
 /**

@@ -52,6 +52,14 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
+    packaging {
+        jniLibs {
+            // The VPN engine runs OpenVPN as a program of its own, which the device can only start when unpacked.
+            useLegacyPackaging = true
+            // Parts of the engine KueTV doesn't use: the OpenVPN 3 engine and a speed test.
+            excludes += setOf("**/libovpn3.so", "**/libosslspeedtest.so")
+        }
+    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -76,6 +84,11 @@ dependencies {
     implementation("org.libtorrent4j:libtorrent4j:2.1.0-39")
     implementation("org.libtorrent4j:libtorrent4j-android-arm:2.1.0-39")
     implementation("org.libtorrent4j:libtorrent4j-android-arm64:2.1.0-39")
+    // The VPN engine: OpenVPN for Android (Arne Schwabe, GPL v2), built as a library by the "VPN engine" job
+    // on the vpn-engine branch, from its 0.7.69 source. It needs these two at the versions it was built with.
+    implementation(files("libs/openvpn-engine.aar"))
+    implementation("androidx.core:core:1.19.0")
+    implementation("androidx.annotation:annotation:1.10.0")
     testImplementation("junit:junit:4.13.2")
     // The checks that press remote keys on the real screens, on a pretend TV, without a device.
     testImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
