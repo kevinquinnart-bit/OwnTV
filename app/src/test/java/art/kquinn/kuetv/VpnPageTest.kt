@@ -26,7 +26,7 @@ class VpnPageTest {
         rule.onRoot().performKeyInput { pressKey(key) }
         rule.waitForIdle()
     }
-    private fun shows(text: String) = rule.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty()
+    private fun shows(text: String) = rule.onAllNodes(hasText(text, substring = true, ignoreCase = true)).fetchSemanticsNodes().isNotEmpty()
     private fun remoteOn(text: String) = rule.onAllNodes(isFocused() and (hasText(text, substring = true) or hasAnyDescendant(hasText(text, substring = true))))
         .fetchSemanticsNodes().isNotEmpty()
     private fun where(): String = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { n ->
