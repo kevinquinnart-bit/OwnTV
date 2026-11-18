@@ -35,6 +35,12 @@ class WatchingTest {
     }
     private fun shown(text: String) = rule.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty()
 
+    /** The words on the Options row the remote is on, for the message when a step fails. */
+    private fun onRow(): String = rule.onAllNodes(androidx.compose.ui.test.hasTestTag("option on"), useUnmergedTree = true).fetchSemanticsNodes()
+        .flatMap { n -> rule.onAllNodes(androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag("option on")), useUnmergedTree = true).fetchSemanticsNodes() }
+        .mapNotNull { it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString(" ") }
+        .joinToString(" | ").ifEmpty { "no row" }
+
     @Test fun optionsOpenFromTheButtonsAndChangeThePictureShape() {
         rule.mainClock.autoAdvance = false
         var closed = 0
@@ -52,9 +58,10 @@ class WatchingTest {
         press(Key.DirectionCenter)
         assertTrue("OK on the shape row moves it on to Stretch", shown("Picture shape: Stretch"))
         press(Key.DirectionDown)
+        assertTrue("▼ moves onto the sync row · remote on: " + onRow(), onRow().contains("Sound sync"))
         press(Key.DirectionRight)
         press(Key.DirectionRight)
-        assertTrue("▶ ▶ on the sync row: sound 100 ms later", shown("Sound 100 ms later"))
+        assertTrue("▶ ▶ on the sync row: sound 100 ms later · remote on: " + onRow(), shown("Sound 100 ms later"))
         press(Key.DirectionCenter)
         assertTrue("OK on the sync row: back to on time", shown("Sound sync: On time"))
         back()

@@ -54,6 +54,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1336,6 +1337,7 @@ fun PlayerScreen(
                     Column(
                         Modifier
                             .fillMaxWidth()
+                            .testTag(if (on) "option on" else "option")
                             .background(if (on) Color(0xFFFFD23F) else Color(0xFF16213A), RoundedCornerShape(10.dp))
                             .then(if (phone) Modifier.clickable { optionAct(i) } else Modifier)
                             .padding(horizontal = 14.dp, vertical = 10.dp),
