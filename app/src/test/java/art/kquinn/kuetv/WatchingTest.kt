@@ -36,7 +36,19 @@ class WatchingTest {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         pass(300)
     }
-    private fun shown(text: String) = rule.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty()
+    private fun shownNow(text: String) = rule.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty()
+
+    /** True once [check] holds, giving the screen up to 3 seconds of pretend time to catch up with the last press. */
+    private fun soon(check: () -> Boolean): Boolean {
+        repeat(30) {
+            if (check()) return true
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            pass(100)
+        }
+        return check()
+    }
+
+    private fun shown(text: String) = soon { shownNow(text) }
 
     /** The words on the Options row the remote is on, for the message when a step fails. */
     private fun onRow(): String = rule.onAllNodes(androidx.compose.ui.test.hasTestTag("option on"), useUnmergedTree = true).fetchSemanticsNodes()
@@ -62,14 +74,14 @@ class WatchingTest {
         assertTrue("OK on the shape row moves it on to Stretch", shown("Picture shape: Stretch"))
         assertTrue("the player keeps the remote after the shape changes", rule.onAllNodes(androidx.compose.ui.test.hasTestTag("player") and androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty())
         press(Key.DirectionDown)
-        assertTrue("▼ moves onto the sync row · remote on: " + onRow(), onRow().contains("Sound sync"))
+        assertTrue("▼ moves onto the sync row · remote on: " + onRow(), soon { onRow().contains("Sound sync") })
         press(Key.DirectionRight)
         press(Key.DirectionRight)
         assertTrue("▶ ▶ on the sync row: sound 100 ms later · remote on: " + onRow(), shown("Sound 100 ms later"))
         press(Key.DirectionCenter)
         assertTrue("OK on the sync row: back to on time", shown("Sound sync: On time"))
         back()
-        assertTrue("Back puts the panel away", !shown("Picture shape"))
+        assertTrue("Back puts the panel away", soon { !shownNow("Picture shape") })
         assertEquals("…and stays in the player", 0, closed)
     }
 
@@ -84,7 +96,7 @@ class WatchingTest {
         press(Key.DirectionCenter)
         press(Key.DirectionDown)
         press(Key.DirectionDown)
-        assertTrue("▼ ▼ moves onto the sync row · remote on: " + onRow(), onRow().contains("Sound sync"))
+        assertTrue("▼ ▼ moves onto the sync row · remote on: " + onRow(), soon { onRow().contains("Sound sync") })
         press(Key.DirectionRight)
         press(Key.DirectionRight)
         assertTrue("▶ ▶ on the sync row: sound 100 ms later · remote on: " + onRow(), shown("Sound 100 ms later"))
@@ -101,7 +113,7 @@ class WatchingTest {
         press(Key.DirectionCenter)
         press(Key.DirectionCenter)
         press(Key.DirectionDown)
-        assertTrue("after OK on the sound row, ▼ still moves · remote on: " + onRow(), onRow().contains("Picture shape"))
+        assertTrue("after OK on the sound row, ▼ still moves · remote on: " + onRow(), soon { onRow().contains("Picture shape") })
     }
 
     @Test fun soundSyncMovesThePlaceAndLeavesNotKnownAlone() {
