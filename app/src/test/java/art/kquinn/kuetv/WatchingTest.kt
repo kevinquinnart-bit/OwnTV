@@ -25,13 +25,16 @@ class WatchingTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     private fun pass(ms: Long) = rule.mainClock.advanceTimeBy(ms)
+    // A press, then the change is handed on (it waits on the main thread's queue) and the screen is drawn again.
     private fun press(key: Key) {
         rule.onRoot().performKeyInput { pressKey(key) }
-        pass(200)
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        pass(300)
     }
     private fun back() {
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
-        pass(200)
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        pass(300)
     }
     private fun shown(text: String) = rule.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty()
 
