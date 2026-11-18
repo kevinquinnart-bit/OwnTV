@@ -971,6 +971,7 @@ fun PlayerScreen(
             .background(Color.Black)
             .then(
                 Modifier
+                    .testTag("player")
                     .focusRequester(focus)
                     .focusable()
                     .onPreviewKeyEvent { e ->

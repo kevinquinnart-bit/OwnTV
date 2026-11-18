@@ -57,6 +57,7 @@ class WatchingTest {
         press(Key.DirectionDown)
         press(Key.DirectionCenter)
         assertTrue("OK on the shape row moves it on to Stretch", shown("Picture shape: Stretch"))
+        assertTrue("the player keeps the remote after the shape changes", rule.onAllNodes(androidx.compose.ui.test.hasTestTag("player") and androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty())
         press(Key.DirectionDown)
         assertTrue("▼ moves onto the sync row · remote on: " + onRow(), onRow().contains("Sound sync"))
         press(Key.DirectionRight)
@@ -67,6 +68,23 @@ class WatchingTest {
         back()
         assertTrue("Back puts the panel away", !shown("Picture shape"))
         assertEquals("…and stays in the player", 0, closed)
+    }
+
+    @Test fun theSyncRowTakesLeftAndRight() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { PlayerScreen(listOf(Playable("A Film", "http://films.example/1.mp4")), 0, live = false, onClose = {}) }
+        pass(300)
+        press(Key.DirectionCenter)
+        press(Key.DirectionRight)
+        press(Key.DirectionRight)
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        assertTrue("▼ ▼ moves onto the sync row · remote on: " + onRow(), onRow().contains("Sound sync"))
+        press(Key.DirectionRight)
+        press(Key.DirectionRight)
+        assertTrue("▶ ▶ on the sync row: sound 100 ms later · remote on: " + onRow(), shown("Sound 100 ms later"))
     }
 
     @Test fun soundSyncMovesThePlaceAndLeavesNotKnownAlone() {
