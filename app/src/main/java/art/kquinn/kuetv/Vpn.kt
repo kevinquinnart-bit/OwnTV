@@ -60,6 +60,7 @@ object Vpn {
 
     /** How many of the engine's ordinary lines have gone into the Report since Connect was pressed. */
     @Volatile private var logged = 0
+    @Volatile private var lastLine = ""
 
     /** The details: the OpenVPN file's text, and the login that goes with it. */
     class Details(val config: String, val user: String, val pass: String) {
@@ -115,6 +116,23 @@ object Vpn {
             profile.mAuthenticationType == VpnProfile.TYPE_USERPASS_PKCS12 ||
             profile.mAuthenticationType == VpnProfile.TYPE_USERPASS_KEYSTORE
         return Reading(server, wantsLogin)
+    }
+
+    /** The engine's list of its settings at the start of each try: indented lines under two headings. */
+    private fun isSettingsDump(text: String) =
+        text.startsWith(" ") || text.startsWith("\t") || text.startsWith("Current Parameter Settings") || text.startsWith("Connection profiles")
+
+    /** What an OpenVPN file asks for, without its certificates and keys: each option's line, for the Report. */
+    fun options(config: String): List<String> {
+        var inBlock = false
+        return config.lines().map { it.trim() }.filter { line ->
+            when {
+                line.startsWith("<") && !line.startsWith("</") -> { inBlock = true; false }
+                line.startsWith("</") -> { inBlock = false; false }
+                inBlock || line.isEmpty() || line.startsWith("#") || line.startsWith(";") -> false
+                else -> true
+            }
+        }
     }
 
     private fun parse(config: String): VpnProfile {
@@ -188,6 +206,8 @@ object Vpn {
         startedMs = System.currentTimeMillis()
         logged = 0
         Report.note("VPN", "connecting to " + profile.mConnections.firstOrNull()?.mServerName.orEmpty())
+        // What the file asks for (no certificates or keys), so a server that won't finish connecting can be matched to it.
+        options(details.config).joinToString(" | ").chunked(380).forEach { Report.note("VPN file", it) }
         VPNLaunchHelper.startOpenVpn(profile, context, "KueTV", true)
     }
 
@@ -225,9 +245,11 @@ object Vpn {
             val text = runCatching { item.getString(app) }.getOrDefault("?")
             if (level == VpnStatus.LogLevel.ERROR || level == VpnStatus.LogLevel.WARNING) {
                 Report.note("VPN engine", (if (level == VpnStatus.LogLevel.ERROR) "error: " else "warning: ") + text)
-            } else if (level == VpnStatus.LogLevel.INFO && startedMs > 0 && logged < 60) {
-                // The engine's ordinary lines after Connect show how far a connection got; the first 60 are kept.
+            } else if (level == VpnStatus.LogLevel.INFO && startedMs > 0 && logged < 200 && text != lastLine && !isSettingsDump(text)) {
+                // The engine's ordinary lines after Connect show how far a connection got, and why a try failed.
+                // Its long list of settings is left out, so the lines that matter aren't crowded out.
                 logged++
+                lastLine = text
                 Report.note("VPN engine", text)
             }
         }

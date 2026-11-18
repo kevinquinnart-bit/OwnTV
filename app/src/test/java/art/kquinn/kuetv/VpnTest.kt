@@ -74,4 +74,10 @@ class VpnTest {
         Vpn.forget(app)
         assertTrue(Vpn.details(app).isEmpty)
     }
+
+    @Test fun theFilesOptionsAreListedWithoutItsCertificates() {
+        val listed = Vpn.options(file)
+        assertTrue(listed.toString(), "remote ie1.example-vpn.com 1194" in listed && "cipher AES-256-CBC" in listed && "auth-user-pass" in listed)
+        assertTrue("no certificate line is listed: " + listed, listed.none { it.contains("CERTIFICATE") || it.startsWith("MII") || it.startsWith("<") })
+    }
 }
