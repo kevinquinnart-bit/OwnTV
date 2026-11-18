@@ -78,6 +78,11 @@ object Choices {
     var changes by mutableIntStateOf(0)
         private set
 
+    /** Says a choice kept elsewhere has changed, so screens showing it follow. */
+    fun touch() {
+        changes++
+    }
+
     /** The categories the user has chosen not to see, for "live", "film" or "show". */
     /** The user's own order for a kind's categories ("live", "film", "show"), by id; empty for the order as sent. */
     fun order(context: Context, kind: String): List<String> = prefs(context).getString("order.$kind", "").orEmpty().split('\n').filter { it.isNotEmpty() }

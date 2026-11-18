@@ -88,5 +88,20 @@ fun openTrailer(context: Context, trailer: String): Boolean {
     return false
 }
 
+/** Plays [url] in another video app (VLC, MX Player…). False when there is none, or it can't be played elsewhere. */
+fun openElsewhere(context: Context, url: String, title: String): Boolean {
+    if (url.isBlank() || url.startsWith("magnet:") || url.startsWith(Playable.NO_ADDRESS)) return false
+    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+        .setDataAndType(android.net.Uri.parse(url), "video/*")
+        .putExtra("title", title)
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    return try {
+        context.startActivity(intent)
+        true
+    } catch (e: android.content.ActivityNotFoundException) {
+        false
+    }
+}
+
 /** The YouTube video's id in a trailer as providers give it: the id itself, or a watch, short or embed address. */
 fun trailerId(trailer: String): String = trailer.trim().let { t -> Regex("(?:v=|youtu\\.be/|embed/)([A-Za-z0-9_-]{6,})").find(t)?.groupValues?.get(1) ?: t }

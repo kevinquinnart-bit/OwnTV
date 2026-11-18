@@ -27,13 +27,23 @@ object NowNext {
         kept[channelId] = System.currentTimeMillis() to guide
     }
 
-    suspend fun get(account: Account, channelId: String): List<Programme> {
-        // A channel from a free list isn't one the provider has a guide for.
-        if (channelId.startsWith(Library.FREE)) return emptyList()
+    /**
+     * A channel's guide from the provider. When the provider has none for it (or it is a free channel, which the
+     * provider doesn't know), the free UK and Irish guides are looked in, by the channel's [name].
+     */
+    suspend fun get(account: Account, channelId: String, name: String = ""): List<Programme> {
+        if (channelId.startsWith(Library.FREE)) return FreeGuides.lookup(name)
         cached(channelId)?.let { return it }
         return gate.withPermit {
-            cached(channelId) ?: withContext(Dispatchers.IO) { Provider.guide(account, channelId) }.also { kept[channelId] = System.currentTimeMillis() to it }
+            cached(channelId) ?: withContext(Dispatchers.IO) { Provider.guide(account, channelId) }
+                .ifEmpty { FreeGuides.lookup(name) }
+                .also { kept[channelId] = System.currentTimeMillis() to it }
         }
+    }
+
+    /** Forgets the channels found to have no guide, so they are asked again once the free guides have been read. */
+    fun forgetEmpty() {
+        kept.entries.removeIf { it.value.second.isEmpty() }
     }
 
     /** "Now: The News · Next 21:00: Film", or null when the guide has nothing for this moment. */

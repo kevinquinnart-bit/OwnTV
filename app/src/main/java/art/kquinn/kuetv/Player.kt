@@ -167,7 +167,7 @@ private class Control(
 )
 
 /** The pictures drawn on the player's buttons. */
-private enum class Icon { BACK, PLAY, PAUSE, ON, FROM_START, RECORD, STOP, PICTURE, SUBS_ON, SUBS_OFF, OPTIONS, LIST, LIVE }
+private enum class Icon { BACK, PLAY, PAUSE, ON, FROM_START, RECORD, STOP, PICTURE, SUBS_ON, SUBS_OFF, OPTIONS, LIST, MULTI, LIVE }
 
 /** How much one key-repeat of a held wind button adds: faster the longer it is held. Public for the tests. */
 fun windSpeed(repeats: Int): Int = when {
@@ -268,6 +268,8 @@ fun PlayerScreen(
     onClose: () -> Unit,
     /** Plays the programme on now from its start, through catch-up, in place of the live channel. */
     onFromStart: ((Playable) -> Unit)? = null,
+    /** Live: opens Multiview on these channels, starting with the one playing. */
+    onMultiview: ((List<Playable>, Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val phone = LocalPhone.current
@@ -735,6 +737,11 @@ fun PlayerScreen(
         SoundSync.offsetUs = syncMs * 1_000L
     }
     DisposableEffect(Unit) { onDispose { SoundSync.offsetUs = 0L } }
+    // While something plays, leaving KueTV (Home) can shrink it to a small picture in the corner, where the device allows.
+    DisposableEffect(Unit) {
+        Pip.wanted = Pip.on(context)
+        onDispose { Pip.wanted = false }
+    }
     // After a drop: wait a moment, then pick the stream up again.
     LaunchedEffect(retryTick) {
         if (retryTick == 0) return@LaunchedEffect
@@ -878,11 +885,13 @@ fun PlayerScreen(
         },
         "Picture shape: " + PictureShape.names[shape],
         "Sound sync: " + SoundSync.words(syncMs),
+        "Play in another player",
     )
     val optionHints = listOf(
         if (phone) "Tap for the next sound" else "OK for the next sound",
         if (phone) "Tap for the next shape: Fit, Stretch, Zoom" else "OK for the next shape: Fit, Stretch, Zoom",
         if (phone) "− sound earlier · + sound later · tap the words for on time" else "◀ sound earlier · ▶ sound later · OK back to on time",
+        "VLC, MX Player or another video app, if one is on this device",
     )
     val nextSound: () -> Unit = {
         if (sounds.size > 1) {
@@ -901,6 +910,14 @@ fun PlayerScreen(
             0 -> nextSound()
             1 -> { shape = (shape + 1) % PictureShape.names.size; PictureShape.save(context, shape) }
             2 -> setSync(0)
+            3 -> {
+                val item = items.getOrNull(index)
+                val url = streamsAt(index).getOrNull(stream)?.url ?: item?.url.orEmpty()
+                // It plays there instead, so KueTV lets go of the provider's connection.
+                if (item != null && openElsewhere(context, url, item.name)) onClose()
+                else say(if (url.startsWith("magnet:")) "A torrent can't be played in another player." else "There is no other video player on this device. VLC or MX Player can be installed from the app store.")
+                options = false
+            }
         }
     }
     val openList: () -> Unit = {
@@ -927,6 +944,7 @@ fun PlayerScreen(
             add(subsButton)
             add(Control("Options", Icon.OPTIONS, act = openOptions))
             if (items.size > 1) add(Control("Channels", Icon.LIST, act = openList))
+            if (items.size > 1 && onMultiview != null) add(Control("Multiview", Icon.MULTI) { onMultiview(items.toList(), index) })
             // Always last: LIVE, drawn on the right of the box. Behind live, it jumps to what is on now.
             add(Control(if (isBehind || paused) "GO LIVE" else "● LIVE", Icon.LIVE) { if (isBehind || paused) { player.play(); reload += 1 } })
         } else {
@@ -1206,284 +1224,287 @@ fun PlayerScreen(
                     .pointerInput(Unit) { detectTapGestures(onTap = { if (nameVisible) { nameVisible = false; controls = false } else showName += 1 }) },
             )
         }
-        val title = items.getOrNull(index)?.name.orEmpty()
-        if (nameVisible || note != null) {
-            Column(
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(if (phone) 16.dp else 36.dp)
-                    .fillMaxWidth()
-                    .background(Color(0xE60E1626), RoundedCornerShape(14.dp))
-                    // Phone: a tap on the box (not on a button) puts it away.
-                    .then(if (phone) Modifier.pointerInput(Unit) { detectTapGestures(onTap = { nameVisible = false; controls = false }) } else Modifier)
-                    .padding(horizontal = 22.dp, vertical = 16.dp),
-            ) {
-                val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
-                val soft = Color(0xFFB9C2D3)
-                // The name, with the time on the right.
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                    Text("   " + clock.format(java.util.Date(clockNow)), color = soft, fontSize = 22.sp, maxLines = 1)
-                    Spacer(Modifier.weight(1f))
-                    // The keys, small, on a TV while the buttons aren't in use.
-                    if (!phone && !controls) {
-                        Text(
-                            if (live) "OK buttons  ·  ▲ ▼ channel" + (if (items.size > 1) "  ·  ◀ channels" else "") + "  ·  ≡ record"
-                            else "OK buttons  ·  ◀ ▶ wind, hold to go faster",
-                            color = soft, fontSize = 14.sp, maxLines = 1,
-                        )
-                    }
-                }
-                if (onNow != null) {
-                    Text(
-                        "Now · " + clock.format(java.util.Date(onNow.startMs)) + " to " + clock.format(java.util.Date(onNow.stopMs)),
-                        color = Color(0xFFFFD23F), fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp),
-                    )
-                    Text(onNow.title.ifBlank { "No title" }, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    // The whole description, not cut short.
-                    // TV: the whole description. Phone: three lines, so the box doesn't fill the screen.
-                    if (onNow.description.isNotBlank()) Text(onNow.description, color = soft, fontSize = 18.sp, maxLines = if (phone) 3 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                }
-                if (nextUp != null) {
-                    Text(
-                        "Next · " + clock.format(java.util.Date(nextUp.startMs)) + " · " + nextUp.title.ifBlank { "No title" },
-                        color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp),
-                    )
-                    // A line or two about what is on next.
-                    if (nextUp.description.isNotBlank()) Text(nextUp.description, color = soft, fontSize = 16.sp, maxLines = if (phone) 1 else 2, overflow = TextOverflow.Ellipsis)
-                }
-                // A film, a recording or catch-up: how far through, along a bar. On a phone the bar can be tapped or dragged.
-                if (!live) {
-                    tick
-                    val length = player.duration.takeIf { it > 0 }
-                    val at = (player.currentPosition + held).coerceAtLeast(0L).let { if (length != null) it.coerceAtMost(length) else it }
-                    val clockOf: (Long) -> String = { ms ->
-                        val sec = ms / 1000
-                        if (sec >= 3600) "%d:%02d:%02d".format(sec / 3600, sec / 60 % 60, sec % 60) else "%d:%02d".format(sec / 60, sec % 60)
-                    }
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(clockOf(at), color = Color.White, fontSize = 16.sp)
-                        Box(
-                            Modifier.weight(1f).padding(horizontal = 12.dp).height(if (phone) 22.dp else 8.dp)
-                                .then(
-                                    if (phone && length != null) Modifier.pointerInput(length) {
-                                        detectTapGestures { p -> player.seekTo((length * (p.x / size.width)).toLong()); showName += 1 }
-                                    } else Modifier,
-                                ),
-                            contentAlignment = Alignment.CenterStart,
-                        ) {
-                            Box(Modifier.fillMaxWidth().height(8.dp).background(Color(0x44FFFFFF), RoundedCornerShape(4.dp)))
-                            if (length != null) Box(Modifier.fillMaxWidth((at.toFloat() / length).coerceIn(0f, 1f)).height(8.dp).background(Color(0xFFFFD23F), RoundedCornerShape(4.dp)))
-                        }
-                        Text(if (length != null) "-" + clockOf((length - at).coerceAtLeast(0)) else "", color = soft, fontSize = 16.sp)
-                    }
-                }
-                moved?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
-                note?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
-                // The bottom of the box, across its whole width: the buttons, each with how things stand for it
-                // written just above it, and the LIVE button on the right. On a TV the remote moves onto them with OK.
-                Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
-                    Row(
-                        Modifier.weight(1f).then(if (phone) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
-                        horizontalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 6.dp),
-                        verticalAlignment = Alignment.Bottom,
-                    ) {
-                        buttons.forEachIndexed { i, b ->
-                            if (b.icon == Icon.LIVE) return@forEachIndexed
-                            val on = !phone && controls && i == pick.coerceIn(0, buttons.size - 1)
-                            val touch = if (!phone) Modifier else Modifier.pointerInput(b.label) {
-                                if (b.seek == 0) {
-                                    detectTapGestures(onTap = { b.act(); if (!options) showName += 1 })
-                                } else {
-                                    detectTapGestures(onPress = {
-                                        // Held: wind faster and faster until let go. A quick tap winds one step.
-                                        held = 0L
-                                        val winding = windScope.launch {
-                                            delay(400)
-                                            var n = 0
-                                            while (true) {
-                                                heldSpeed = windSpeed(n)
-                                                held += b.seek * (windStep / 4) * heldSpeed
-                                                showName += 1
-                                                n++
-                                                delay(50)
-                                            }
-                                        }
-                                        tryAwaitRelease()
-                                        winding.cancel()
-                                        if (held == 0L) b.act() else windBy(held)
-                                        held = 0L
-                                    })
-                                }
-                            }
-                            // Winding with this button held: how far, and how fast, in place of its usual note.
-                            val winding = held != 0L && b.seek != 0 && (held < 0) == (b.seek < 0)
-                            val status = if (winding) windWords(held) + if (heldSpeed > 1) " ×$heldSpeed" else "" else b.status
-                            Column(
-                                (if (phone) Modifier.width(84.dp) else Modifier.weight(1f)).then(touch),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                // Kept the same height on every button, so the pictures line up.
-                                Box(Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.BottomCenter) {
-                                    if (status.isNotEmpty()) {
-                                        Text(
-                                            status, color = if (winding) Color(0xFFFFD23F) else if (b.icon == Icon.STOP) Color(0xFFFF6B5E) else soft,
-                                            fontSize = 12.sp, fontWeight = if (winding) FontWeight.Bold else FontWeight.Normal, lineHeight = 14.sp,
-                                            maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        )
-                                    }
-                                }
-                                Box(
-                                    Modifier.padding(top = 4.dp).size(if (phone) 50.dp else 52.dp).background(if (on) Color(0xFFFFD23F) else Color(0xFF16213A), CircleShape),
-                                    contentAlignment = Alignment.Center,
-                                ) { ButtonIcon(b, if (on) Color.Black else Color.White) }
-                                Text(
-                                    b.label, color = if (on) Color(0xFFFFD23F) else Color.White, fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp),
-                                )
-                            }
-                        }
-                    }
-                    // LIVE: red while at live; behind live it says GO LIVE, and choosing it jumps to what is on now.
-                    val liveControl = buttons.lastOrNull { it.icon == Icon.LIVE }
-                    if (liveControl != null) {
-                        Spacer(Modifier.width(16.dp))
-                        val atLive = !(isBehind || paused)
-                        val liveOn = !phone && controls && pick.coerceIn(0, buttons.size - 1) == buttons.indexOf(liveControl)
-                        Text(
-                            liveControl.label,
-                            color = if (liveOn) Color.Black else Color.White,
-                            fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-                            modifier = Modifier
-                                .padding(bottom = 22.dp)
-                                .background(
-                                    when { liveOn -> Color(0xFFFFD23F); atLive -> Color(0xFFD32F2F); else -> Color(0xFF3A4660) },
-                                    RoundedCornerShape(10.dp),
-                                )
-                                .then(if (phone) Modifier.clickable { liveControl.act(); showName += 1 } else Modifier)
-                                .padding(horizontal = 18.dp, vertical = 10.dp),
-                        )
-                    }
-                }
-                if (phone && live && items.size > 1) Text("Swipe up or down to change channel", color = soft, fontSize = 15.sp, modifier = Modifier.padding(top = 10.dp))
-            }
-        }
-        // A channel number being typed, large, in the top right corner.
-        if (typed.isNotEmpty()) {
-            Text(
-                typed, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.TopEnd).padding(if (phone) 16.dp else 36.dp)
-                    .background(Color(0xE60E1626), RoundedCornerShape(14.dp)).padding(horizontal = 24.dp, vertical = 8.dp),
-            )
-        }
-        // The list of channels, down the left of the picture.
-        if (channelList) {
-            Column(
-                Modifier
-                    .align(Alignment.CenterStart)
-                    .fillMaxHeight()
-                    .padding(if (phone) 12.dp else 30.dp)
-                    .width(if (phone) 300.dp else 440.dp)
-                    .background(Color(0xF00E1626), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 10.dp, vertical = 12.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, bottom = 6.dp)) {
-                    Text("Channels", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    if (phone) PlayerChip("Close") { channelList = false }
-                }
-                if (!phone) Text("▲ ▼ move  ·  CH+ CH− a page  ·  OK watch  ·  ▶ close", color = Color(0xFFB9C2D3), fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp, bottom = 6.dp))
-                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().weight(1f), state = listState) {
-                    this.items(items.size) { i ->
-                        val on = !phone && i == listPick
-                        val playing = i == index
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp)
-                                .background(if (on) Color(0xFFFFD23F) else if (playing) Color(0xFF263A63) else Color.Transparent, RoundedCornerShape(8.dp))
-                                .then(if (phone) Modifier.clickable { if (i == index) channelList = false else go(i) } else Modifier)
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text((i + 1).toString(), color = if (on) Color.Black else Color(0xFFB9C2D3), fontSize = 16.sp, modifier = Modifier.width(52.dp))
+        // In the small picture-in-picture window: the picture only.
+        if (!Pip.inPip) {
+            val title = items.getOrNull(index)?.name.orEmpty()
+            if (nameVisible || note != null) {
+                Column(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(if (phone) 16.dp else 36.dp)
+                        .fillMaxWidth()
+                        .background(Color(0xE60E1626), RoundedCornerShape(14.dp))
+                        // Phone: a tap on the box (not on a button) puts it away.
+                        .then(if (phone) Modifier.pointerInput(Unit) { detectTapGestures(onTap = { nameVisible = false; controls = false }) } else Modifier)
+                        .padding(horizontal = 22.dp, vertical = 16.dp),
+                ) {
+                    val clock = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+                    val soft = Color(0xFFB9C2D3)
+                    // The name, with the time on the right.
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Text("   " + clock.format(java.util.Date(clockNow)), color = soft, fontSize = 22.sp, maxLines = 1)
+                        Spacer(Modifier.weight(1f))
+                        // The keys, small, on a TV while the buttons aren't in use.
+                        if (!phone && !controls) {
                             Text(
-                                (if (playing) "▶ " else "") + items[i].name, color = if (on) Color.Black else Color.White, fontSize = 18.sp,
-                                fontWeight = if (on || playing) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                if (live) "OK buttons  ·  ▲ ▼ channel" + (if (items.size > 1) "  ·  ◀ channels" else "") + "  ·  ≡ record"
+                                else "OK buttons  ·  ◀ ▶ wind, hold to go faster",
+                                color = soft, fontSize = 14.sp, maxLines = 1,
                             )
                         }
                     }
-                }
-            }
-        }
-        // The next episode or programme, counting down in the top right corner.
-        if (upNext >= 0) {
-            Column(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(if (phone) 16.dp else 36.dp)
-                    .widthIn(max = 460.dp)
-                    .background(Color(0xF00E1626), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-            ) {
-                Text("Next", color = Color(0xFFFFD23F), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text(items.getOrNull(upNext)?.name.orEmpty(), color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("Starts in $upNextIn s", color = Color(0xFFB9C2D3), fontSize = 17.sp, modifier = Modifier.padding(top = 4.dp))
-                if (phone) {
-                    Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PlayerChip("Play now", main = true) { go(upNext) }
-                        PlayerChip("Stay here") { upNext = -1 }
+                    if (onNow != null) {
+                        Text(
+                            "Now · " + clock.format(java.util.Date(onNow.startMs)) + " to " + clock.format(java.util.Date(onNow.stopMs)),
+                            color = Color(0xFFFFD23F), fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp),
+                        )
+                        Text(onNow.title.ifBlank { "No title" }, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                        // The whole description, not cut short.
+                        // TV: the whole description. Phone: three lines, so the box doesn't fill the screen.
+                        if (onNow.description.isNotBlank()) Text(onNow.description, color = soft, fontSize = 18.sp, maxLines = if (phone) 3 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                     }
-                } else {
-                    Text("OK play now  ·  BACK stay here", color = Color(0xFFB9C2D3), fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
-                }
-            }
-        }
-        // Options: the sound, the picture's shape and the sound sync, on the right of the screen.
-        if (options) {
-            Column(
-                Modifier
-                    .align(if (phone) Alignment.BottomCenter else Alignment.CenterEnd)
-                    .padding(if (phone) 16.dp else 36.dp)
-                    .then(if (phone) Modifier.fillMaxWidth() else Modifier.width(480.dp))
-                    .background(Color(0xF00E1626), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text("Options", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
-                optionRows.forEachIndexed { i, words ->
-                    val on = !phone && i == optionRow
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .testTag(if (on) "option on" else "option")
-                            .background(if (on) Color(0xFFFFD23F) else Color(0xFF16213A), RoundedCornerShape(10.dp))
-                            .then(if (phone) Modifier.clickable { optionAct(i) } else Modifier)
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(words, color = if (on) Color.Black else Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            if (phone && i == 2) {
-                                PlayerChip("−") { setSync(syncMs - SoundSync.STEP_MS) }
-                                Spacer(Modifier.width(8.dp))
-                                PlayerChip("+") { setSync(syncMs + SoundSync.STEP_MS) }
+                    if (nextUp != null) {
+                        Text(
+                            "Next · " + clock.format(java.util.Date(nextUp.startMs)) + " · " + nextUp.title.ifBlank { "No title" },
+                            color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp),
+                        )
+                        // A line or two about what is on next.
+                        if (nextUp.description.isNotBlank()) Text(nextUp.description, color = soft, fontSize = 16.sp, maxLines = if (phone) 1 else 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    // A film, a recording or catch-up: how far through, along a bar. On a phone the bar can be tapped or dragged.
+                    if (!live) {
+                        tick
+                        val length = player.duration.takeIf { it > 0 }
+                        val at = (player.currentPosition + held).coerceAtLeast(0L).let { if (length != null) it.coerceAtMost(length) else it }
+                        val clockOf: (Long) -> String = { ms ->
+                            val sec = ms / 1000
+                            if (sec >= 3600) "%d:%02d:%02d".format(sec / 3600, sec / 60 % 60, sec % 60) else "%d:%02d".format(sec / 60, sec % 60)
+                        }
+                        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(clockOf(at), color = Color.White, fontSize = 16.sp)
+                            Box(
+                                Modifier.weight(1f).padding(horizontal = 12.dp).height(if (phone) 22.dp else 8.dp)
+                                    .then(
+                                        if (phone && length != null) Modifier.pointerInput(length) {
+                                            detectTapGestures { p -> player.seekTo((length * (p.x / size.width)).toLong()); showName += 1 }
+                                        } else Modifier,
+                                    ),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                Box(Modifier.fillMaxWidth().height(8.dp).background(Color(0x44FFFFFF), RoundedCornerShape(4.dp)))
+                                if (length != null) Box(Modifier.fillMaxWidth((at.toFloat() / length).coerceIn(0f, 1f)).height(8.dp).background(Color(0xFFFFD23F), RoundedCornerShape(4.dp)))
+                            }
+                            Text(if (length != null) "-" + clockOf((length - at).coerceAtLeast(0)) else "", color = soft, fontSize = 16.sp)
+                        }
+                    }
+                    moved?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
+                    note?.let { Text(it, color = Color(0xFFFFD23F), fontSize = 20.sp, modifier = Modifier.padding(top = 8.dp)) }
+                    // The bottom of the box, across its whole width: the buttons, each with how things stand for it
+                    // written just above it, and the LIVE button on the right. On a TV the remote moves onto them with OK.
+                    Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
+                        Row(
+                            Modifier.weight(1f).then(if (phone) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
+                            horizontalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 6.dp),
+                            verticalAlignment = Alignment.Bottom,
+                        ) {
+                            buttons.forEachIndexed { i, b ->
+                                if (b.icon == Icon.LIVE) return@forEachIndexed
+                                val on = !phone && controls && i == pick.coerceIn(0, buttons.size - 1)
+                                val touch = if (!phone) Modifier else Modifier.pointerInput(b.label) {
+                                    if (b.seek == 0) {
+                                        detectTapGestures(onTap = { b.act(); if (!options) showName += 1 })
+                                    } else {
+                                        detectTapGestures(onPress = {
+                                            // Held: wind faster and faster until let go. A quick tap winds one step.
+                                            held = 0L
+                                            val winding = windScope.launch {
+                                                delay(400)
+                                                var n = 0
+                                                while (true) {
+                                                    heldSpeed = windSpeed(n)
+                                                    held += b.seek * (windStep / 4) * heldSpeed
+                                                    showName += 1
+                                                    n++
+                                                    delay(50)
+                                                }
+                                            }
+                                            tryAwaitRelease()
+                                            winding.cancel()
+                                            if (held == 0L) b.act() else windBy(held)
+                                            held = 0L
+                                        })
+                                    }
+                                }
+                                // Winding with this button held: how far, and how fast, in place of its usual note.
+                                val winding = held != 0L && b.seek != 0 && (held < 0) == (b.seek < 0)
+                                val status = if (winding) windWords(held) + if (heldSpeed > 1) " ×$heldSpeed" else "" else b.status
+                                Column(
+                                    (if (phone) Modifier.width(84.dp) else Modifier.weight(1f)).then(touch),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    // Kept the same height on every button, so the pictures line up.
+                                    Box(Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.BottomCenter) {
+                                        if (status.isNotEmpty()) {
+                                            Text(
+                                                status, color = if (winding) Color(0xFFFFD23F) else if (b.icon == Icon.STOP) Color(0xFFFF6B5E) else soft,
+                                                fontSize = 12.sp, fontWeight = if (winding) FontWeight.Bold else FontWeight.Normal, lineHeight = 14.sp,
+                                                maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            )
+                                        }
+                                    }
+                                    Box(
+                                        Modifier.padding(top = 4.dp).size(if (phone) 50.dp else 52.dp).background(if (on) Color(0xFFFFD23F) else Color(0xFF16213A), CircleShape),
+                                        contentAlignment = Alignment.Center,
+                                    ) { ButtonIcon(b, if (on) Color.Black else Color.White) }
+                                    Text(
+                                        b.label, color = if (on) Color(0xFFFFD23F) else Color.White, fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp),
+                                    )
+                                }
                             }
                         }
-                        Text(optionHints[i], color = if (on) Color.Black else Color(0xFFB9C2D3), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // LIVE: red while at live; behind live it says GO LIVE, and choosing it jumps to what is on now.
+                        val liveControl = buttons.lastOrNull { it.icon == Icon.LIVE }
+                        if (liveControl != null) {
+                            Spacer(Modifier.width(16.dp))
+                            val atLive = !(isBehind || paused)
+                            val liveOn = !phone && controls && pick.coerceIn(0, buttons.size - 1) == buttons.indexOf(liveControl)
+                            Text(
+                                liveControl.label,
+                                color = if (liveOn) Color.Black else Color.White,
+                                fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                                modifier = Modifier
+                                    .padding(bottom = 22.dp)
+                                    .background(
+                                        when { liveOn -> Color(0xFFFFD23F); atLive -> Color(0xFFD32F2F); else -> Color(0xFF3A4660) },
+                                        RoundedCornerShape(10.dp),
+                                    )
+                                    .then(if (phone) Modifier.clickable { liveControl.act(); showName += 1 } else Modifier)
+                                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                            )
+                        }
+                    }
+                    if (phone && live && items.size > 1) Text("Swipe up or down to change channel", color = soft, fontSize = 15.sp, modifier = Modifier.padding(top = 10.dp))
+                }
+            }
+            // A channel number being typed, large, in the top right corner.
+            if (typed.isNotEmpty()) {
+                Text(
+                    typed, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(if (phone) 16.dp else 36.dp)
+                        .background(Color(0xE60E1626), RoundedCornerShape(14.dp)).padding(horizontal = 24.dp, vertical = 8.dp),
+                )
+            }
+            // The list of channels, down the left of the picture.
+            if (channelList) {
+                Column(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .padding(if (phone) 12.dp else 30.dp)
+                        .width(if (phone) 300.dp else 440.dp)
+                        .background(Color(0xF00E1626), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 10.dp, vertical = 12.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, bottom = 6.dp)) {
+                        Text("Channels", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        if (phone) PlayerChip("Close") { channelList = false }
+                    }
+                    if (!phone) Text("▲ ▼ move  ·  CH+ CH− a page  ·  OK watch  ·  ▶ close", color = Color(0xFFB9C2D3), fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp, bottom = 6.dp))
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().weight(1f), state = listState) {
+                        this.items(items.size) { i ->
+                            val on = !phone && i == listPick
+                            val playing = i == index
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp)
+                                    .background(if (on) Color(0xFFFFD23F) else if (playing) Color(0xFF263A63) else Color.Transparent, RoundedCornerShape(8.dp))
+                                    .then(if (phone) Modifier.clickable { if (i == index) channelList = false else go(i) } else Modifier)
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text((i + 1).toString(), color = if (on) Color.Black else Color(0xFFB9C2D3), fontSize = 16.sp, modifier = Modifier.width(52.dp))
+                                Text(
+                                    (if (playing) "▶ " else "") + items[i].name, color = if (on) Color.Black else Color.White, fontSize = 18.sp,
+                                    fontWeight = if (on || playing) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
                     }
                 }
-                if (!phone) Text("BACK close", color = Color(0xFFB9C2D3), fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp, top = 2.dp))
-                else PlayerChip("Close") { options = false }
             }
-        }
-        if (recording) {
-            Text(
-                "● REC", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(if (phone) 16.dp else 36.dp)
-                    .background(Color(0xCCB3261E), RoundedCornerShape(10.dp))
-                    .padding(horizontal = 12.dp, vertical = 5.dp),
-            )
+            // The next episode or programme, counting down in the top right corner.
+            if (upNext >= 0) {
+                Column(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(if (phone) 16.dp else 36.dp)
+                        .widthIn(max = 460.dp)
+                        .background(Color(0xF00E1626), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                ) {
+                    Text("Next", color = Color(0xFFFFD23F), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(items.getOrNull(upNext)?.name.orEmpty(), color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("Starts in $upNextIn s", color = Color(0xFFB9C2D3), fontSize = 17.sp, modifier = Modifier.padding(top = 4.dp))
+                    if (phone) {
+                        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            PlayerChip("Play now", main = true) { go(upNext) }
+                            PlayerChip("Stay here") { upNext = -1 }
+                        }
+                    } else {
+                        Text("OK play now  ·  BACK stay here", color = Color(0xFFB9C2D3), fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            }
+            // Options: the sound, the picture's shape and the sound sync, on the right of the screen.
+            if (options) {
+                Column(
+                    Modifier
+                        .align(if (phone) Alignment.BottomCenter else Alignment.CenterEnd)
+                        .padding(if (phone) 16.dp else 36.dp)
+                        .then(if (phone) Modifier.fillMaxWidth() else Modifier.width(480.dp))
+                        .background(Color(0xF00E1626), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("Options", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
+                    optionRows.forEachIndexed { i, words ->
+                        val on = !phone && i == optionRow
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .testTag(if (on) "option on" else "option")
+                                .background(if (on) Color(0xFFFFD23F) else Color(0xFF16213A), RoundedCornerShape(10.dp))
+                                .then(if (phone) Modifier.clickable { optionAct(i) } else Modifier)
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(words, color = if (on) Color.Black else Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                if (phone && i == 2) {
+                                    PlayerChip("−") { setSync(syncMs - SoundSync.STEP_MS) }
+                                    Spacer(Modifier.width(8.dp))
+                                    PlayerChip("+") { setSync(syncMs + SoundSync.STEP_MS) }
+                                }
+                            }
+                            Text(optionHints[i], color = if (on) Color.Black else Color(0xFFB9C2D3), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    if (!phone) Text("BACK close", color = Color(0xFFB9C2D3), fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp, top = 2.dp))
+                    else PlayerChip("Close") { options = false }
+                }
+            }
+            if (recording) {
+                Text(
+                    "● REC", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(if (phone) 16.dp else 36.dp)
+                        .background(Color(0xCCB3261E), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                )
+            }
         }
     }
 }
@@ -1596,6 +1617,7 @@ private fun ButtonIcon(b: Control, color: Color) {
                 Icon.STOP -> drawRect(Color(0xFFE53935), Offset(w * 0.2f, h * 0.2f), Size(w * 0.6f, h * 0.6f))
                 Icon.OPTIONS -> for (x in listOf(0.18f, 0.5f, 0.82f)) drawCircle(color, radius = w * 0.1f, center = Offset(w * x, h * 0.5f))
                 Icon.LIST -> for (y in listOf(0.22f, 0.5f, 0.78f)) drawRect(color, Offset(w * 0.12f, h * y - h * 0.06f), Size(w * 0.76f, h * 0.12f))
+                Icon.MULTI -> for (x in listOf(0.1f, 0.54f)) for (y in listOf(0.14f, 0.54f)) drawRect(color, Offset(w * x, h * y), Size(w * 0.36f, h * 0.32f))
                 else -> {}
             }
         }
@@ -1625,3 +1647,16 @@ private const val TYPED_WAIT_MS = 1_500L
 
 /** How many rows CH+ and CH− move the list of channels by. */
 private const val LIST_PAGE = 8
+
+/** Picture-in-picture: whether leaving KueTV now should shrink what is playing to a corner, and whether it has. */
+object Pip {
+    @Volatile var wanted = false
+    var inPip by mutableStateOf(false)
+
+    private fun prefs(context: android.content.Context) = context.getSharedPreferences("player", android.content.Context.MODE_PRIVATE)
+    fun on(context: android.content.Context): Boolean = prefs(context).getBoolean("pip", true)
+    fun on(context: android.content.Context, value: Boolean) {
+        prefs(context).edit().putBoolean("pip", value).apply()
+        Choices.touch()
+    }
+}

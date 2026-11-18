@@ -168,6 +168,20 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         Screen.visible = false
     }
+
+    // Leaving KueTV (Home) while something plays: it carries on in a small picture in the corner, where the device allows.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!Pip.wanted || !packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
+        runCatching {
+            enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9)).build())
+        }.onFailure { Report.note("Player", "couldn't go to a small picture: " + it.message) }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        Pip.inPip = isInPictureInPictureMode
+    }
 }
 
 /** Goes up each time KueTV comes back to the front, for example back from another app or the app store. */
@@ -198,6 +212,8 @@ private fun App() {
     var problem by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var playing by remember { mutableStateOf<Playing?>(null) }
+    // Multiview: several live channels at once, from the player.
+    var multi by remember { mutableStateOf<Playing?>(null) }
     // What the browsing screen was showing, kept while the player covers it, so closing the player
     // comes back to the same list, at the same place, on the row or poster that was playing.
     val browse = remember(account, reload) { BrowseState(saved = Place.read(context)) }
@@ -401,6 +417,15 @@ private fun App() {
         delay(30_000)
         driveNote = backUpNow()
     }
+    // The free UK and Irish guides: read once the lists are in, for the channels the provider has no guide for.
+    val guidesOn = remember(FreeGuides.changes) { FreeGuides.sources.count { FreeGuides.isOn(context, it.id) } }
+    LaunchedEffect(library?.groups?.size, guidesOn, Resumes.count) {
+        val lib = library ?: return@LaunchedEffect
+        if (guidesOn == 0) return@LaunchedEffect
+        delay(15_000)
+        withContext(Dispatchers.IO) { runCatching { FreeGuides.refresh(context, lib.groups.map { it.name }) } }
+        NowNext.forgetEmpty()
+    }
     // Provider details that have loaded are kept on the list, to switch back to later.
     LaunchedEffect(loaded != null, account) { if (loaded != null) Providers.keep(context, account) }
     // On opening, when signed in to Stremio: its add-ons brought in, and ones taken out of Stremio taken out here.
@@ -519,11 +544,20 @@ private fun App() {
         when {
             // Only the player is on screen while it plays, so no key can reach the lists behind it.
             // A fresh player for each thing played, so "From the start" begins clean in place of the live channel.
+            multi != null -> {
+                val m = multi!!
+                MultiviewScreen(
+                    m.items, m.index,
+                    onClose = { multi = null },
+                    onWatch = { i -> multi = null; playing = Playing(m.items, i, true) },
+                )
+            }
             now != null -> androidx.compose.runtime.key(now) {
                 PlayerScreen(
                     now.items, now.index, now.live,
                     onClose = { playing = null },
                     onFromStart = { programme -> playing = Playing(listOf(programme), 0, false) },
+                    onMultiview = { items, index -> playing = null; multi = Playing(items, index, true) },
                 )
             }
             choice != null -> {
@@ -1042,6 +1076,8 @@ private fun TitleMenu(
     watched: Boolean,
     trailer: String?,
     askTrailer: (suspend () -> String?)?,
+    /** The provider's own copy, for "Play in another player"; empty when there is none. */
+    playUrl: String,
     onPlay: () -> Unit,
     onFavourite: () -> Unit,
     onWatched: () -> Unit,
@@ -1072,6 +1108,12 @@ private fun TitleMenu(
             FocusRow("Play", { onClose(); onPlay() }, Modifier.focusRequester(first), look = Look.MAIN)
             FocusRow(if (favourite) "★ Remove from favourites" else "★ Add to favourites", { onFavourite(); onClose() }, look = Look.OTHER)
             FocusRow(if (watched) "Mark as not watched" else "✓ Mark as watched", { onWatched(); onClose() }, look = Look.OTHER)
+            if (playUrl.isNotBlank()) {
+                FocusRow("Play in another player", {
+                    onClose()
+                    if (!openElsewhere(context, playUrl, name)) android.widget.Toast.makeText(context, "There is no other video player on this device. VLC or MX Player can be installed from the app store.", android.widget.Toast.LENGTH_LONG).show()
+                }, look = Look.OTHER)
+            }
             val t = found
             if (!t.isNullOrBlank()) {
                 FocusRow("▶ Watch the trailer", {
@@ -1486,7 +1528,7 @@ private fun MainScreen(
                                     onFocus = { state.liveOn = channel },
                                     onHold = if (sorting) null else ({ favourites.toggleAll(favKeys) }),
                                     leading = { Logo(channel.logo) },
-                                    below = nowLine(library.account, channel.versions[channel.start].channel.id),
+                                    below = nowLine(library.account, channel.versions[channel.start].channel.id, channel.name),
                                 )
                             }
                         }
@@ -1533,6 +1575,7 @@ private fun MainScreen(
                         watched = Watched.isWatched(context, film.url),
                         trailer = state.filmAbout[film.id]?.trailer,
                         askTrailer = library.account?.let { account -> suspend { Provider.filmAbout(account, film.id).also { state.filmAbout[film.id] = it }.trailer } },
+                        playUrl = film.url,
                         onPlay = { onPlay(listOf(Playable(film.name, film.url, find = finder("movie", film.name, null, null), poster = film.poster)), 0, false, "film:" + film.id) },
                         onFavourite = { favourites.toggle(favKey) },
                         onWatched = { Watched.set(context, film.url, !Watched.isWatched(context, film.url)) },
@@ -1676,6 +1719,16 @@ private fun MainScreen(
                             FocusRow("Categories: show, hide and order" + if (hiddenCount == 0) "" else " ($hiddenCount hidden)", onCategories, look = Look.OTHER)
                             sub("Backup")
                             FocusRow("Free channel lists ($freeCount)", onFree, look = Look.OTHER, below = "Free channels, tried when your provider's won't play")
+                            sub("Free TV guides")
+                            val guidesNow = FreeGuides.changes
+                            for (g in FreeGuides.sources) {
+                                val on = guidesNow >= 0 && FreeGuides.isOn(context, g.id)
+                                FocusRow(g.name + ": " + if (on) "on" else "off", { FreeGuides.setOn(context, g.id, !on) }, look = Look.OTHER)
+                            }
+                            Note(
+                                "Used for channels your provider has no guide for, and for free channels. " +
+                                    if (FreeGuides.lastFetchedMs(context) == 0L) "Not read yet." else FreeGuides.matched.toString() + " of your channels have one.",
+                            )
                         }
                         "Films and series" -> {
                             // Three jobs, three screens.
@@ -1700,6 +1753,11 @@ private fun MainScreen(
                             val textSize = remember(Choices.changes) { Choices.textSize(context) }
                             FocusRow("Text size: " + Choices.textSizeNames[textSize], { Choices.textSize(context, (textSize + 1) % 3) }, look = Look.OTHER)
                             FocusRow("Reset text size, subtitles and small TV", { Choices.resetDisplay(context) }, look = Look.OTHER)
+                            val pipOn = remember(Choices.changes) { Pip.on(context) }
+                            FocusRow(
+                                "Small picture when you leave KueTV: " + if (pipOn) "on" else "off", { Pip.on(context, !pipOn) }, look = Look.OTHER,
+                                below = "What is playing carries on in a corner when you press Home, where the device allows it",
+                            )
                         }
                         "Google Drive" -> {
                             when {
@@ -2078,7 +2136,7 @@ private fun Pane.ChannelGuide(
                     { openPage(channel) },
                     if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
                     leading = { Logo(channel.logo) },
-                    below = if (catchUp) null else nowLine(account, channel.versions[channel.start].channel.id),
+                    below = if (catchUp) null else nowLine(account, channel.versions[channel.start].channel.id, channel.name),
                 )
             }
         }
@@ -3234,7 +3292,7 @@ private fun livePlayable(group: ChannelGroup, account: Account?, serverAheadSec:
     val kept = group.versions.firstOrNull { it.channel.catchupDays > 0 }?.channel
     return Playable(
         group.name, first.url, group.versions.map { Stream(it.label, it.channel.url) }, group.start,
-        guide = if (account == null) null else ({ NowNext.get(account, first.id) }),
+        guide = if (account == null) null else ({ NowNext.get(account, first.id, group.name) }),
         fromStart = if (account == null || kept == null) null else ({ programme ->
             catchupPlayable(group.name, account, kept.id, programme, serverAheadSec)
         }),
@@ -3262,13 +3320,14 @@ internal fun catchupPlayable(channelName: String, account: Account, channelId: S
  * so rows that are only passing by while the list is scrolled don't.
  */
 @Composable
-private fun nowLine(account: Account?, channelId: String): String? {
-    if (account == null) return null
+private fun nowLine(account: Account?, channelId: String, name: String = ""): String? {
+    // With no provider login, only the free guides can say what is on.
+    if (account == null) return remember(channelId, FreeGuides.changes) { NowNext.line(FreeGuides.lookup(name), System.currentTimeMillis()) }
     val line by keyedState(channelId, { NowNext.cached(channelId)?.let { NowNext.line(it, System.currentTimeMillis()) } }) {
         if (value != null) return@keyedState
         delay(500)
         value = try {
-            NowNext.line(NowNext.get(account, channelId), System.currentTimeMillis())
+            NowNext.line(NowNext.get(account, channelId, name), System.currentTimeMillis())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -3374,7 +3433,7 @@ private fun Pane.GuideGrid(
                     if (value != null) return@keyedState
                     delay(500)
                     value = try {
-                        NowNext.get(account, first.id)
+                        NowNext.get(account, first.id, channel.name)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -3922,7 +3981,7 @@ private fun HomeScreen(
                             fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
                         )
                         Text(
-                            nowLine(library.account, channel.versions[channel.start].channel.id).orEmpty(),
+                            nowLine(library.account, channel.versions[channel.start].channel.id, channel.name).orEmpty(),
                             color = if (focused) Color.Black else Soft, fontSize = if (phone) 12.sp else 14.sp,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
                         )
@@ -4204,7 +4263,7 @@ private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: M
     val guide by keyedState(id, { NowNext.cached(id) }) {
         if (value != null || account == null) return@keyedState
         value = try {
-            NowNext.get(account, id)
+            NowNext.get(account, id, group.name)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
