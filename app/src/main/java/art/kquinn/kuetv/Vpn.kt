@@ -50,6 +50,17 @@ object Vpn {
     var detail by mutableStateOf("")
         private set
 
+    /** The engine's name for the step it is on while connecting, such as WAIT or AUTH. */
+    var step by mutableStateOf("")
+        private set
+
+    /** When Connect was last pressed, so a connection that never finishes can be said to be stuck. */
+    var startedMs by mutableStateOf(0L)
+        private set
+
+    /** How many of the engine's ordinary lines have gone into the Report since Connect was pressed. */
+    @Volatile private var logged = 0
+
     /** The details: the OpenVPN file's text, and the login that goes with it. */
     class Details(val config: String, val user: String, val pass: String) {
         val isEmpty: Boolean get() = config.isBlank()
@@ -174,6 +185,8 @@ object Vpn {
         if (problem != de.blinkt.openvpn.R.string.no_error_found) throw VpnProblem(context.getString(problem))
         if (profile.needUserPWInput(null, null) != 0) throw VpnProblem("This VPN needs a username and password. Add them with the file.")
         ProfileManager.setTemporaryProfile(context, profile)
+        startedMs = System.currentTimeMillis()
+        logged = 0
         Report.note("VPN", "connecting to " + profile.mConnections.firstOrNull()?.mServerName.orEmpty())
         VPNLaunchHelper.startOpenVpn(profile, context, "KueTV", true)
     }
@@ -209,8 +222,13 @@ object Vpn {
         val app = context.applicationContext
         VpnStatus.addLogListener { item ->
             val level = runCatching { item.logLevel }.getOrNull()
+            val text = runCatching { item.getString(app) }.getOrDefault("?")
             if (level == VpnStatus.LogLevel.ERROR || level == VpnStatus.LogLevel.WARNING) {
-                Report.note("VPN engine", (if (level == VpnStatus.LogLevel.ERROR) "error: " else "warning: ") + runCatching { item.getString(app) }.getOrDefault("?"))
+                Report.note("VPN engine", (if (level == VpnStatus.LogLevel.ERROR) "error: " else "warning: ") + text)
+            } else if (level == VpnStatus.LogLevel.INFO && startedMs > 0 && logged < 60) {
+                // The engine's ordinary lines after Connect show how far a connection got; the first 60 are kept.
+                logged++
+                Report.note("VPN engine", text)
             }
         }
         val main = Handler(Looper.getMainLooper())
@@ -218,8 +236,11 @@ object Vpn {
             override fun updateState(state: String?, logmessage: String?, localizedResId: Int, level: ConnectionStatus?, intent: Intent?) {
                 val now = level ?: return
                 main.post {
-                    if (now != this@Vpn.level) Report.note("VPN", now.name.removePrefix("LEVEL_").lowercase().replace('_', ' ') + (if (logmessage.isNullOrBlank()) "" else " · " + logmessage))
+                    if (now != this@Vpn.level || state.orEmpty() != step) {
+                        Report.note("VPN", now.name.removePrefix("LEVEL_").lowercase().replace('_', ' ') + " · step " + state.orEmpty() + (if (logmessage.isNullOrBlank()) "" else " · " + logmessage))
+                    }
                     this@Vpn.level = now
+                    step = state.orEmpty()
                     detail = logmessage.orEmpty()
                 }
             }

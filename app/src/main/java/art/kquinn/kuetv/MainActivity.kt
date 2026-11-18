@@ -576,7 +576,7 @@ private fun ReminderPopUp(reminder: Reminder, onWatch: () -> Unit, onClose: () -
             (if (started) "Started at " else "Starting at ") + clock.format(java.util.Date(reminder.startMs)) + " on " + reminder.channel,
             color = Accent, fontSize = 17.sp, fontWeight = FontWeight.Bold,
         )
-        Text(reminder.title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(reminder.title, color = Color.White, fontSize = Sizes.ROW, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
         if (phone) {
             Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
@@ -639,7 +639,7 @@ private fun FocusRow(
     look: Look = Look.ROW,
     /** A second, smaller line under the first: what is on a channel, say. */
     below: String? = null,
-    textSize: androidx.compose.ui.unit.TextUnit = 21.sp,
+    textSize: androidx.compose.ui.unit.TextUnit = Sizes.ROW,
     /** The room above and below the words. The side menu uses less, so all of it fits on the screen. */
     padV: Dp = 12.dp,
 ) {
@@ -685,7 +685,7 @@ private fun FocusRow(
             if (below != null) {
                 Text(
                     // Dark on yellow, light on dark: the main button is yellow even when the remote isn't on it.
-                    below, color = if (focused || button == Look.MAIN) Color(0xFF2B2B2B) else Soft, fontSize = 16.sp, maxLines = if (phoneRow) 3 else 1,
+                    below, color = if (focused || button == Look.MAIN) Color(0xFF2B2B2B) else Soft, fontSize = Sizes.SUB, maxLines = if (phoneRow) 3 else 1,
                     overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
                     modifier = if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200) else Modifier,
                 )
@@ -754,7 +754,7 @@ private class Pane(private val row: RowScope?, private val column: ColumnScope?)
 
 @Composable
 private fun Heading(text: String) {
-    Text(text.uppercase(), color = Soft, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 8.dp))
+    Text(text.uppercase(), color = Soft, fontSize = Sizes.HEADING, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 8.dp))
 }
 
 @Composable
@@ -763,7 +763,7 @@ private fun LoadingScreen() {
         CircularProgressIndicator(color = Accent)
         Spacer(Modifier.height(22.dp))
         Text(
-            "Loading your channels and films…", color = Color.White, fontSize = 24.sp,
+            "Loading your channels and films…", color = Color.White, fontSize = Sizes.ROW,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         )
@@ -775,7 +775,7 @@ private fun ProblemScreen(message: String, onRetry: () -> Unit, onEdit: () -> Un
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     Column(Modifier.fillMaxSize().padding(horizontal = if (LocalPhone.current) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
-        Text(message, color = Color.White, fontSize = 26.sp, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
+        Text(message, color = Color.White, fontSize = Sizes.ROW, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
         FocusRow("Try again", onRetry, Modifier.focusRequester(first), look = Look.MAIN)
         Spacer(Modifier.height(8.dp))
         FocusRow("Change provider details", onEdit, look = Look.OTHER)
@@ -808,17 +808,17 @@ private fun SetupScreen(current: Account, canCancel: Boolean, onCancel: () -> Un
     if (canCancel) BackHandler { onCancel() }
 
     val intro: @Composable () -> Unit = {
-        Text("Set up KueTV", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+        Text("Set up KueTV", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(if (phone) 8.dp else 26.dp))
         val address = phoneAddress
         if (address != null) {
-            Text("Easiest: on your phone, open", color = Soft, fontSize = 22.sp)
-            Text(address, color = Accent, fontSize = 38.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 10.dp))
-            Text("and type your provider details there. Your phone must be on the same Wi-Fi as this TV.", color = Soft, fontSize = 20.sp)
+            Text("Easiest: on your phone, open", color = Soft, fontSize = Sizes.BODY)
+            Text(address, color = Accent, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 10.dp))
+            Text("and type your provider details there. Your phone must be on the same Wi-Fi as this TV.", color = Soft, fontSize = Sizes.BODY)
         } else {
-            Text(if (phone) "Type your provider details in the boxes below." else "Type your provider details in the boxes on the right.", color = Soft, fontSize = 22.sp)
+            Text(if (phone) "Type your provider details in the boxes below." else "Type your provider details in the boxes on the right.", color = Soft, fontSize = Sizes.BODY)
         }
-        warning?.let { Text(it, color = Accent, fontSize = 20.sp, modifier = Modifier.padding(top = if (phone) 10.dp else 26.dp)) }
+        warning?.let { Text(it, color = Accent, fontSize = Sizes.BODY, modifier = Modifier.padding(top = if (phone) 10.dp else 26.dp)) }
     }
     val form: @Composable () -> Unit = {
         // The keyboard's own button moves to the next box, and on the last one it saves.
@@ -1713,7 +1713,7 @@ private const val CHOOSING_DAY = -1L
 
 @Composable
 private fun Note(text: String) {
-    Text(text, color = Soft, fontSize = 22.sp, modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
+    Text(text, color = Soft, fontSize = Sizes.BODY, modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
 }
 
 /**
@@ -1978,7 +1978,7 @@ private fun ProgrammeRow(whenText: String, title: String, description: String, o
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(whenText, color = if (focused) Color.Black else Soft, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(title, color = if (focused) Color.Black else Color.White, fontSize = 22.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, color = if (focused) Color.Black else Color.White, fontSize = Sizes.ROW, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (focused && description.isNotBlank()) {
             Text(description, color = Color.Black, fontSize = 17.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
         }
@@ -2304,7 +2304,7 @@ private fun TvAppRow(title: String, line: String, icon: android.graphics.Bitmap?
             }
         }
         Column {
-            Text(title, color = if (focused) Color.Black else Color.White, fontSize = 22.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, color = if (focused) Color.Black else Color.White, fontSize = Sizes.ROW, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(line, color = if (focused) Color.Black else Soft, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -2498,11 +2498,11 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
         runCatching { first.requestFocus() }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
-        val line: @Composable (String) -> Unit = { Text(it, color = Soft, fontSize = 22.sp, modifier = Modifier.padding(start = 16.dp)) }
+        val line: @Composable (String) -> Unit = { Text(it, color = Soft, fontSize = Sizes.BODY, modifier = Modifier.padding(start = 16.dp)) }
         val big: @Composable (String) -> Unit = {
-            Text(it, color = Accent, fontSize = 38.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 14.dp))
+            Text(it, color = Accent, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 14.dp))
         }
-        Text("Google Drive", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 22.dp))
+        Text("Google Drive", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 22.dp))
         when {
             done -> {
                 line("Signed in" + if (drive.email.isBlank()) "." else " as " + drive.email + ".")
@@ -2511,7 +2511,7 @@ private fun DriveSignInScreen(onDone: () -> Unit) {
                 FocusRow("Done", onDone, Modifier.focusRequester(first), look = Look.MAIN)
             }
             problem != null -> {
-                Text(problem.orEmpty(), color = Color.White, fontSize = 26.sp, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
+                Text(problem.orEmpty(), color = Color.White, fontSize = Sizes.ROW, modifier = Modifier.padding(start = 16.dp, bottom = 26.dp))
                 FocusRow("Try again", { attempt++ }, Modifier.focusRequester(first), look = Look.MAIN)
                 Spacer(Modifier.height(8.dp))
                 FocusRow("Back", onDone, look = Look.OTHER)
@@ -2566,7 +2566,7 @@ private fun CopyChoiceScreen(name: String, onAddOn: () -> Unit, onProvider: () -
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 40.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(name, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp))
+        Text(name, color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp))
         Note("Which copy do you want to play?")
         Spacer(Modifier.height(8.dp))
         FocusRow("Add-on stream", onAddOn, if (last == 0) Modifier.focusRequester(first) else Modifier, look = if (last == 0) Look.MAIN else Look.OTHER)
@@ -2748,8 +2748,8 @@ private fun Page(title: String, intro: String, status: Status?, rows: @Composabl
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 200.dp, vertical = if (phone) 12.dp else 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(title, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp))
-        Text(intro, color = Soft, fontSize = 18.sp, modifier = Modifier.padding(start = 16.dp, bottom = 4.dp))
+        Text(title, color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp))
+        Text(intro, color = Soft, fontSize = Sizes.BODY, modifier = Modifier.padding(start = 16.dp, bottom = 4.dp))
         if (status != null) StatusBox(status)
         rows()
     }
@@ -2764,14 +2764,14 @@ private fun StatusBox(status: Status) {
     ) {
         Box(Modifier.padding(top = 6.dp).size(12.dp).background(statusColour(status.kind), CircleShape))
         Spacer(Modifier.width(12.dp))
-        Text(status.text, color = Color.White, fontSize = 18.sp)
+        Text(status.text, color = Color.White, fontSize = Sizes.BODY)
     }
 }
 
 /** A plain panel of information (not a message about something that happened). */
 @Composable
 private fun InfoPanel(text: String) {
-    Text(text, color = Color.White, fontSize = 18.sp, modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp))
+    Text(text, color = Color.White, fontSize = Sizes.BODY, modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp))
 }
 
 /** One part of an add-on, with a coloured dot for how it did. */
@@ -2844,13 +2844,13 @@ private fun SendSetUpScreen(account: Account, favourites: Favourites, onDone: ()
         runCatching { first.requestFocus() }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
-        Text("Send this set-up", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
+        Text("Send this set-up", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
         when {
             ready == false -> Note("This device isn't on a home network, so it can't send its set-up. Join the Wi-Fi and try again.")
             taken -> Note("Sent. The other device now has your provider details, favourites and add-ons. From now on the two keep in step by themselves when KueTV is open on both, on the same Wi-Fi.")
             else -> {
                 Note("On the other device, on the same Wi-Fi, open KueTV and choose \"Copy set-up from another device\". Then type this code there:")
-                Text(code, color = Accent, fontSize = 56.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 10.dp))
+                Text(code, color = Accent, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 10.dp))
                 Note("Keep this screen open until it says Sent.")
             }
         }
@@ -2894,7 +2894,7 @@ private fun TakeSetUpScreen(onDone: () -> Unit, onTaken: (SetUp) -> Unit) {
         }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 220.dp), verticalArrangement = Arrangement.Center) {
-        Text("Copy set-up from another device", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
+        Text("Copy set-up from another device", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 18.dp))
         Note("On the device that is already set up, open KueTV › Settings › \"Send this set-up to another device\". It shows a code. Type it here.")
         Note("This replaces the provider details, favourites and add-ons on this device.")
         Spacer(Modifier.height(14.dp))
@@ -3156,7 +3156,7 @@ private fun ReportScreen(onDone: () -> Unit) {
         if (!phone) runCatching { first.requestFocus() }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 120.dp, vertical = if (phone) 12.dp else 30.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Report for Claude", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text("Report for Claude", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Note("What the app did and what went wrong, most recent last. It holds no addresses, usernames or passwords.")
         if (phone) {
             FocusRow(if (copied) "Copied. Paste it into your chat with Claude." else "Copy the report", {
@@ -3168,7 +3168,7 @@ private fun ReportScreen(onDone: () -> Unit) {
             }, look = Look.MAIN)
         } else if (address != null) {
             Note("To send it: on your phone, on the same Wi-Fi, open")
-            Text(address.orEmpty(), color = Accent, fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+            Text(address.orEmpty(), color = Accent, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
             Note("and tap Copy there. Keep this screen open while you do.")
         } else {
             Note("This TV isn't on a home network, so the report can only be read here.")
@@ -3260,7 +3260,7 @@ private fun CategoriesScreen(library: Library, onDone: () -> Unit) {
         else -> null
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 160.dp, vertical = if (phone) 12.dp else 30.dp)) {
-        Text("Categories", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text("Categories", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Text(
             "Which show, and their order. " + (if (phone) "Tap" else "OK on") + " a category to hide it or show it again.",
             color = Soft, fontSize = 18.sp, modifier = Modifier.padding(start = 16.dp, bottom = 6.dp),
@@ -3631,7 +3631,7 @@ private fun UpdateOfferScreen(latest: Updates.Latest, onLater: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 40.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("A newer KueTV 2 is ready", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text("A newer KueTV 2 is ready", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Note("You have version " + BuildConfig.VERSION_NAME + ". Version " + latest.name + " is on the download.")
         Spacer(Modifier.height(8.dp))
         UpdateNow(latest, Modifier.focusRequester(first))
@@ -3678,7 +3678,7 @@ private fun AboutScreen(onDone: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 40.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("About KueTV 2", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text("About KueTV 2", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Note("Version " + BuildConfig.VERSION_NAME + ". It also checks for a newer version each time it opens.")
         Spacer(Modifier.height(8.dp))
         FocusRow(if (checking) "Checking…" else "Check for updates", check, Modifier.focusRequester(first), look = Look.MAIN)
@@ -3854,7 +3854,7 @@ private fun HealthScreen(account: Account, library: Library?, onDone: () -> Unit
         if (Health.lastRunMs == 0L) "" else java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.UK).format(java.util.Date(Health.lastRunMs))
     }
     Column(Modifier.fillMaxSize().padding(horizontal = if (phone) 12.dp else 140.dp, vertical = if (phone) 12.dp else 30.dp)) {
-        Text("Health check", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 6.dp))
+        Text("Health check", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, bottom = 6.dp))
         Note(if (running) "Checking everything. This takes up to a minute…" else Health.summary(results) + if (at.isEmpty()) "" else " · checked " + at)
         Spacer(Modifier.height(10.dp))
         LazyColumn(Modifier.fillMaxWidth().weight(1f).focusRestorer(), verticalArrangement = if (phone) Arrangement.spacedBy(6.dp) else Arrangement.Top) {
@@ -3879,7 +3879,7 @@ private fun HealthRow(title: String, detail: String, state: Int) {
             .focusable()
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        Text(title, color = when (state) { Check.WORKING -> Color.White; Check.DOUBT -> Accent; else -> Color(0xFFFF6B5E) }, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(title, color = when (state) { Check.WORKING -> Color.White; Check.DOUBT -> Accent; else -> Color(0xFFFF6B5E) }, fontSize = Sizes.ROW, fontWeight = FontWeight.Bold)
         Text(detail, color = Soft, fontSize = 16.sp)
     }
 }
@@ -4004,7 +4004,7 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) 12.dp else 220.dp, vertical = if (phone) 12.dp else 36.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("Free channel lists", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        Text("Free channel lists", color = Color.White, fontSize = Sizes.TITLE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
         Note("A backup for your provider. If a channel from your provider won't play, a free channel of the same name is tried next.")
         // What has been added can be watched straight away.
         if (lists.isNotEmpty()) {
@@ -4021,7 +4021,7 @@ private fun FreeListsScreen(channelCount: Int, onDone: () -> Unit, onWatch: () -
         Box(Modifier.padding(top = 10.dp)) { Heading("Or add any list by its link") }
         phoneAddress?.let { address ->
             Note("Easiest: on your phone, on the same Wi-Fi, open")
-            Text(address, color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+            Text(address, color = Accent, fontSize = Sizes.CODE, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
             Note("and paste the link there.")
         }
         Field("Channel list or add-on link", link, onDone = { add(link) }) { link = it }
@@ -4132,6 +4132,19 @@ private fun StremioScreen(onDone: () -> Unit) {
     }
 }
 
+/** The engine's step while connecting, in plain words. Empty for a step with nothing useful to say. */
+private fun vpnStep(step: String): String = when (step) {
+    "RESOLVE" -> "looking up the server"
+    "TCP_CONNECT", "CONNECTING" -> "reaching the server"
+    "WAIT" -> "waiting for the server to answer"
+    "AUTH" -> "checking the username and password"
+    "GET_CONFIG" -> "getting settings from the server"
+    "ASSIGN_IP", "ADD_ROUTES" -> "setting up the connection"
+    "RECONNECTING", "CONNECTRETRY" -> "trying again"
+    "NONETWORK" -> "waiting for the internet"
+    else -> ""
+}
+
 /** VPN Jantit's free Dublin server (Ireland 1): the link to its OpenVPN file. */
 private const val JANTIT_IRELAND = "https://www.vpnjantit.com/download-openvpn.php?server=ie1"
 
@@ -4148,7 +4161,15 @@ private fun vpnStatus(level: de.blinkt.openvpn.core.ConnectionStatus): Status = 
     de.blinkt.openvpn.core.ConnectionStatus.LEVEL_CONNECTED -> Status("VPN on.", Status.OK)
     de.blinkt.openvpn.core.ConnectionStatus.LEVEL_START,
     de.blinkt.openvpn.core.ConnectionStatus.LEVEL_CONNECTING_NO_SERVER_REPLY_YET,
-    de.blinkt.openvpn.core.ConnectionStatus.LEVEL_CONNECTING_SERVER_REPLIED -> Status("Connecting…", Status.BUSY)
+    de.blinkt.openvpn.core.ConnectionStatus.LEVEL_CONNECTING_SERVER_REPLIED -> {
+        val doing = vpnStep(Vpn.step)
+        val stuck = Vpn.startedMs > 0 && System.currentTimeMillis() - Vpn.startedMs > 45_000
+        Status(
+            "Connecting" + (if (doing.isEmpty()) "…" else ": $doing…") +
+                if (stuck) "\nStill not connected after 45 seconds. Send the Report lines starting \"VPN\" so the cause can be found." else "",
+            if (stuck) Status.WARN else Status.BUSY,
+        )
+    }
     de.blinkt.openvpn.core.ConnectionStatus.LEVEL_WAITING_FOR_USER_INPUT -> Status("The VPN is asking for a username and password. Add them with the file.", Status.WARN)
     de.blinkt.openvpn.core.ConnectionStatus.LEVEL_AUTH_FAILED ->
         Status("The VPN refused the username or password. If the account has run out, make a new one and add it here again.", Status.FAIL)
@@ -4299,7 +4320,11 @@ private fun VpnScreen(onDone: () -> Unit) {
     } else {
         val server = remember(details) { runCatching { Vpn.read(details.config).server }.getOrDefault("?") }
         val auto = remember(Vpn.changes) { Vpn.connectOnOpen(context) }
-        Page("VPN", "Server: $server. While the VPN is on it covers the whole $device.", said ?: vpnStatus(Vpn.level)) {
+        // While connecting, the box is looked at again every few seconds, so a connection that is stuck is said to be.
+        var tick by remember { mutableIntStateOf(0) }
+        LaunchedEffect(Vpn.isTrying) { while (Vpn.isTrying) { delay(5_000); tick++ } }
+        val shown = remember(tick, Vpn.level, Vpn.step) { vpnStatus(Vpn.level) }
+        Page("VPN", "Server: $server. While the VPN is on it covers the whole $device.", said ?: shown) {
             if (Vpn.isOn || Vpn.isTrying) {
                 FocusRow("Disconnect", { Vpn.stop(context); said = null }, Modifier.focusRequester(first), look = Look.MAIN)
             } else {
