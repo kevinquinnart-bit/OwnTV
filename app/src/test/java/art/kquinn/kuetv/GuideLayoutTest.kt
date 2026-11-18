@@ -65,10 +65,10 @@ class GuideLayoutTest {
         show()
         val picture = at("guide picture", tag = true)
         val channel = at("BBC One")
-        val lateFilm = at("Late Film")
+        val grid = at("guide grid", tag = true)
         assertTrue("the picture sits at the right of the screen (its right edge at ${picture[2]} dp of 960)", picture[2] > 880f)
         assertTrue("the picture sits above the grid (picture bottom ${picture[3]} dp, first channel top ${channel[1]} dp)", picture[3] <= channel[1])
-        assertTrue("the grid runs to the right of the screen, under the picture (it ends at ${lateFilm[2]} dp of 960)", lateFilm[2] > 880f)
+        assertTrue("the grid runs to the right of the screen, under the picture (it ends at ${grid[2]} dp of 960)", grid[2] > 880f)
 
         // Into the grid: ▶ from the menu opens the categories, ▶ again goes into the grid, ▶ moves along a row.
         press(Key.DirectionRight)

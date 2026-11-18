@@ -3035,7 +3035,7 @@ private fun Pane.GuideGrid(
                 }
             }
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = pick.channelList) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("guide grid"), state = pick.channelList) {
             itemsIndexed(shown, key = { _, c -> c.id }) { _, channel ->
                 val first = channel.versions[channel.start].channel
                 // null while it is being asked for. A row asks only after staying on screen for half a second.
