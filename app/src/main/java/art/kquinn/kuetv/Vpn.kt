@@ -202,10 +202,17 @@ object Vpn {
 
     private var listening = false
 
-    /** Listens to the engine, once, for as long as the app runs. */
-    fun listen() {
+    /** Listens to the engine, once, for as long as the app runs. Its warnings and errors go into the Report. */
+    fun listen(context: Context) {
         if (listening) return
         listening = true
+        val app = context.applicationContext
+        VpnStatus.addLogListener { item ->
+            val level = runCatching { item.logLevel }.getOrNull()
+            if (level == VpnStatus.LogLevel.ERROR || level == VpnStatus.LogLevel.WARNING) {
+                Report.note("VPN engine", (if (level == VpnStatus.LogLevel.ERROR) "error: " else "warning: ") + runCatching { item.getString(app) }.getOrDefault("?"))
+            }
+        }
         val main = Handler(Looper.getMainLooper())
         VpnStatus.addStateListener(object : VpnStatus.StateListener {
             override fun updateState(state: String?, logmessage: String?, localizedResId: Int, level: ConnectionStatus?, intent: Intent?) {

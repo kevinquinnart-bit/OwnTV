@@ -236,7 +236,7 @@ private fun App() {
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updates.tidy(context); ShiftBuffer.tidy(context) } }
     // The VPN: what it is doing, for its page; and on opening, connect it if that was chosen.
     LaunchedEffect(Unit) {
-        Vpn.listen()
+        Vpn.listen(context)
         if (!Vpn.connectOnOpen(context) || Vpn.details(context).isEmpty) return@LaunchedEffect
         // The engine says how it is a moment after the app opens; a VPN already on is left alone.
         delay(1_500)
@@ -682,7 +682,8 @@ private fun FocusRow(
             )
             if (below != null) {
                 Text(
-                    below, color = if (focused) Color.Black else Soft, fontSize = 16.sp, maxLines = 1,
+                    // Dark on yellow, light on dark: the main button is yellow even when the remote isn't on it.
+                    below, color = if (focused || button == Look.MAIN) Color(0xFF2B2B2B) else Soft, fontSize = 16.sp, maxLines = 1,
                     overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
                     modifier = if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200) else Modifier,
                 )

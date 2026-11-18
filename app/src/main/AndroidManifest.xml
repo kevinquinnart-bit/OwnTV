@@ -42,7 +42,7 @@
       the VPN, which runs on its own, to KueTV's screens. KueTV's own name, picture and look are kept.
     -->
     <application
-        android:name="de.blinkt.openvpn.core.ICSOpenVPNApplication"
+        android:name=".KueApp"
         android:allowBackup="true"
         android:banner="@drawable/kuetv_banner"
         android:icon="@drawable/kuetv_mark"
