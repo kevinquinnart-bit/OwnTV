@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   engine:
@@ -50,3 +50,13 @@ jobs:
         with:
           name: openvpn-engine
           path: ics/main/build/outputs/aar/*.aar
+
+      - name: Put it on its own download
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: vpn-engine
+          target_commitish: ${{ github.sha }}
+          name: KueTV VPN engine (OpenVPN for Android 0.7.69, as a library)
+          files: ics/main/build/outputs/aar/main-skeleton-ovpn2-release.aar
+          prerelease: true
+          make_latest: false
