@@ -135,14 +135,26 @@ object Vpn {
         }
     }
 
-    private fun parse(config: String): VpnProfile {
+    internal fun parse(config: String): VpnProfile {
         val parser = ConfigParser()
-        try {
+        val profile = try {
             parser.parseConfig(StringReader(config))
-            return parser.convertProfile()
+            parser.convertProfile()
         } catch (e: Exception) {
             throw VpnProblem("That isn't an OpenVPN file KueTV can read: " + (e.message ?: e.javaClass.simpleName) + ".")
         }
+        // An older server that only speaks the one cipher its file names (VPN Jantit's Dublin one: AES-128-CBC). The
+        // engine reads that line but doesn't offer the cipher to the server, so the server's settings were refused
+        // ("failed to negotiate cipher with server") and it never connected. Offer it after the usual modern ones,
+        // the same as the engine does for profiles of its own made before it changed.
+        if (profile.mDataCiphers.isNullOrEmpty() && !profile.mCipher.isNullOrEmpty() &&
+            profile.mCipher.uppercase() !in setOf("AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305")
+        ) {
+            profile.mDataCiphers = "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:" + profile.mCipher
+            // The oldest cipher of all needs the engine's older set of ciphers switched on.
+            if (profile.mCipher.uppercase() == "BF-CBC") profile.mUseLegacyProvider = true
+        }
+        return profile
     }
 
     /**

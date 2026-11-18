@@ -80,4 +80,15 @@ class VpnTest {
         assertTrue(listed.toString(), "remote ie1.example-vpn.com 1194" in listed && "cipher AES-256-CBC" in listed && "auth-user-pass" in listed)
         assertTrue("no certificate line is listed: " + listed, listed.none { it.contains("CERTIFICATE") || it.startsWith("MII") || it.startsWith("<") })
     }
+
+    @Test fun theFilesOwnCipherIsOfferedToTheServer() {
+        // VPN Jantit's Dublin file, as the Report showed it (its certificate left out here).
+        val jantit = "client\ndev tun\nproto udp\nremote ie1.vpnjantit.com 1194\nremote 85.159.229.7 1194\ndhcp-option DNS 8.8.8.8\n" +
+            "cipher AES-128-CBC\nauth SHA1\nresolv-retry infinite\nnobind\npersist-key\npersist-tun\nverb 3\nauth-user-pass\nroute-delay 2\nredirect-gateway\nfast-io\n"
+        assertEquals("AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:AES-128-CBC", Vpn.parse(jantit).mDataCiphers)
+        // A file that names its own list is left as it is.
+        assertEquals("AES-256-GCM", Vpn.parse(jantit + "data-ciphers AES-256-GCM\n").mDataCiphers)
+        // The oldest cipher also switches on the engine's older set.
+        assertTrue(Vpn.parse(jantit.replace("AES-128-CBC", "BF-CBC")).mUseLegacyProvider)
+    }
 }
