@@ -266,7 +266,8 @@ object Finder {
  * from a playlist link it is known by its address, because a playlist's numbering changes when it does.
  */
 class Favourites(context: Context) {
-    private val prefs = context.getSharedPreferences("favourites", Context.MODE_PRIVATE)
+    // Each profile has its own; Main's are kept where they always were.
+    private val prefs = context.getSharedPreferences(Profiles.scoped(context, "favourites"), Context.MODE_PRIVATE)
     var keys by androidx.compose.runtime.mutableStateOf(prefs.getStringSet("keys", emptySet()).orEmpty().toSet())
         private set
 

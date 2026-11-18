@@ -184,6 +184,8 @@ class Drive(
         return files.mapNotNull { row ->
             val o = runCatching { row.asJsonObject }.getOrNull() ?: return@mapNotNull null
             val id = o.text("id").ifEmpty { return@mapNotNull null }
+            // The backup is kept in the same folder; it isn't a recording.
+            if (o.text("name").endsWith(".json")) return@mapNotNull null
             Saved(id, o.text("name"), o.text("size").toLongOrNull() ?: 0)
         }
     }
@@ -193,6 +195,50 @@ class Drive(
         val body = JsonObject().apply { addProperty("trashed", true) }
         val a = send(authed("$api/drive/v3/files/$id").patch(body.toString().toRequestBody(jsonType)).build())
         if (a.code != 200) throw DriveProblem("Google Drive wouldn't delete that recording (" + a.code + ").")
+    }
+
+    // ------------------------------------------------------------------------------------------ the backup
+
+    /** A small file's id in the KueTV folder, by its name; null when there is none. */
+    private fun idOf(name: String): String? {
+        val query = java.net.URLEncoder.encode("name = '" + name.replace("'", "\\'") + "' and '" + folderId() + "' in parents and trashed = false", "UTF-8")
+        val a = send(authed("$api/drive/v3/files?q=$query&fields=files(id)").build())
+        if (a.code != 200) throw DriveProblem("Google Drive wouldn't look for the backup (" + a.code + ").")
+        return (a.json.get("files") as? JsonArray)?.firstOrNull()?.asJsonObject?.text("id")?.ifEmpty { null }
+    }
+
+    /** Writes a small text file into the KueTV folder, over the one of the same name if it is there. */
+    fun putText(name: String, text: String) {
+        val body = text.toRequestBody(jsonType)
+        val id = idOf(name)
+        val a = if (id != null) {
+            send(authed("$api/upload/drive/v3/files/$id?uploadType=media&fields=id").patch(body).build())
+        } else {
+            val meta = JsonObject().apply {
+                addProperty("name", name)
+                add("parents", JsonArray().apply { add(folderId()) })
+            }
+            val both = okhttp3.MultipartBody.Builder().setType("multipart/related".toMediaType())
+                .addPart(meta.toString().toRequestBody(jsonType))
+                .addPart(body)
+                .build()
+            send(authed("$api/upload/drive/v3/files?uploadType=multipart&fields=id").post(both).build())
+        }
+        if (a.code == 403 && a.json.toString().contains("storageQuotaExceeded")) throw DriveProblem("That Google Drive is full.")
+        if (a.code != 200) throw DriveProblem("Google Drive wouldn't take the backup (" + a.code + ").")
+    }
+
+    /** A small text file from the KueTV folder; null when there is none of that name. */
+    fun getText(name: String): String? {
+        val id = idOf(name) ?: return null
+        return try {
+            http.newCall(authed("$api/drive/v3/files/$id?alt=media").build()).execute().use { r ->
+                if (r.code != 200) throw DriveProblem("Google Drive wouldn't give the backup back (" + r.code + ").")
+                r.body.string()
+            }
+        } catch (e: java.io.IOException) {
+            throw DriveProblem("Couldn't reach Google. Check the internet connection.", offline = true)
+        }
     }
 
     /** The address a recording in Drive plays from; it must be asked for with [token]. */

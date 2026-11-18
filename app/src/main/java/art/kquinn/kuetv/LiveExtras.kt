@@ -13,7 +13,14 @@ object Recent {
     var changes by mutableIntStateOf(0)
         private set
 
-    private fun prefs(context: Context) = context.getSharedPreferences("recent", Context.MODE_PRIVATE)
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(Profiles.scoped(context, "recent"), Context.MODE_PRIVATE)
+
+    fun export(context: Context): String = all(context).joinToString("\n")
+
+    fun import(context: Context, text: String) {
+        prefs(context).edit().putString("live", text.split('\n').filter { it.isNotBlank() }.take(MOST).joinToString("\n")).apply()
+        changes++
+    }
 
     fun all(context: Context): List<String> = prefs(context).getString("live", "").orEmpty().split('\n').filter { it.isNotBlank() }
 

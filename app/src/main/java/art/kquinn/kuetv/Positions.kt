@@ -14,7 +14,7 @@ import androidx.compose.runtime.setValue
  * newest first, with their name and picture.
  */
 object Positions {
-    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("positions", Context.MODE_PRIVATE)
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(Profiles.scoped(context, "positions"), Context.MODE_PRIVATE)
     private fun key(url: String) = url.hashCode().toString()
     private const val LISTED = "w."
     private const val SEP = "\u0001"

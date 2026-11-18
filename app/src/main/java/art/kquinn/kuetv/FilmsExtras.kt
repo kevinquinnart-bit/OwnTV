@@ -14,8 +14,19 @@ object Watched {
     var changes by mutableIntStateOf(0)
         private set
 
-    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("watched", Context.MODE_PRIVATE)
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(Profiles.scoped(context, "watched"), Context.MODE_PRIVATE)
     private fun key(url: String) = url.hashCode().toString()
+
+    /** Every mark, written out for a backup or the other device. */
+    fun export(context: Context): String = prefs(context).all.keys.sorted().joinToString("\n")
+
+    /** Takes the marks from a backup or the other device, in place of these. */
+    fun import(context: Context, text: String) {
+        val edit = prefs(context).edit().clear()
+        for (k in text.split('\n')) if (k.isNotBlank()) edit.putBoolean(k, true)
+        edit.apply()
+        changes++
+    }
 
     fun isWatched(context: Context, url: String): Boolean = url.isNotBlank() && prefs(context).getBoolean(key(url), false)
 

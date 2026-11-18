@@ -462,6 +462,8 @@ fun PlayerScreen(
                             player.seekTo(place)
                         }
                     }
+                    // The first time this film, episode, catch-up or recording plays: it goes on History.
+                    if (!live && !started[0] && item != null) History.add(context, if (item.poster != null) History.FILM else History.OTHER, item.name, item.key, item.poster)
                     started[0] = true
                     if (item != null) Settled.played(item, stream, versions.size)
                 }
@@ -700,6 +702,7 @@ fun PlayerScreen(
         val key = items.getOrNull(index)?.key ?: return@LaunchedEffect
         delay(RECENT_AFTER_MS)
         Recent.add(context, key)
+        History.add(context, History.LIVE, items.getOrNull(index)?.name.orEmpty(), key, null)
     }
     // A number typed on the remote: a moment after the last key, that channel in the list.
     LaunchedEffect(typed) {

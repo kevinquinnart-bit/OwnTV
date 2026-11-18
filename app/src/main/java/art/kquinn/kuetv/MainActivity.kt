@@ -201,7 +201,14 @@ private fun App() {
     // What the browsing screen was showing, kept while the player covers it, so closing the player
     // comes back to the same list, at the same place, on the row or poster that was playing.
     val browse = remember(account, reload) { BrowseState(saved = Place.read(context)) }
-    val favourites = remember { Favourites(context.applicationContext) }
+    // The profile in use: its own favourites, history, watched marks and places. A kids profile hides adult categories.
+    val profileId = remember(Profiles.changes) { Profiles.currentId(context) }
+    val kids = remember(Profiles.changes) { Profiles.current(context).kids }
+    val favourites = remember(profileId) { Favourites(context.applicationContext) }
+    // "Add another provider": the provider details screen, empty, with the one in use kept on the list.
+    var addingProvider by remember { mutableStateOf(false) }
+    // What the last backup or restore said, for the Google Drive page.
+    var driveNote by remember { mutableStateOf("") }
     var driveSignIn by remember { mutableStateOf(false) }
     var addOnsOpen by remember { mutableStateOf(false) }
     var stremioOpen by remember { mutableStateOf(false) }
@@ -215,8 +222,14 @@ private fun App() {
     // A film or episode that can play from an add-on or from the provider's own copy, waiting for the user to pick.
     var choice by remember { mutableStateOf<Playing?>(null) }
     // What the lists show: everything the provider sent, less the categories chosen to be hidden.
-    val shownLibrary = remember(library, Choices.changes) {
-        library?.without(Choices.hidden(context, "live"), Choices.hidden(context, "film"), Choices.hidden(context, "show"))
+    val shownLibrary = remember(library, Choices.changes, kids) {
+        // A kids profile: adult categories hidden too.
+        val adult: (List<Category>) -> Set<String> = { cats -> if (kids) cats.filter { Profiles.isAdult(it.name) }.mapTo(HashSet()) { it.id } else emptySet() }
+        library?.without(
+            Choices.hidden(context, "live") + adult(library.liveCategories),
+            Choices.hidden(context, "film") + adult(library.filmCategories),
+            Choices.hidden(context, "show") + adult(library.showCategories),
+        )
             // ...and each kind's categories in the user's own order.
             ?.inOrder(Choices.order(context, "live"), Choices.order(context, "film"), Choices.order(context, "show"))
     }
@@ -251,10 +264,9 @@ private fun App() {
     // Keeping in step with a paired device: while KueTV is on screen, this device answers the other when it
     // asks, and every minute asks the other what it has, taking each part that was changed more recently there.
     val pairKey = remember(Sync.changes) { Sync.key(context) }
-    LaunchedEffect(Screen.visible, pairKey) {
-        if (!Screen.visible || pairKey.isEmpty()) return@LaunchedEffect
-        val kinds = listOf("live", "film", "show")
-        val bodies: () -> Map<String, String> = {
+    // Everything that makes KueTV the user's own, in parts: what the two devices keep in step, and what a backup holds.
+    val kinds = listOf("live", "film", "show")
+    val bodies: () -> Map<String, String> = {
             val a = AccountStore.load(context)
             mapOf(
                 "account" to listOf(a.server, a.user, a.pass, a.playlist).joinToString("\n"),
@@ -269,6 +281,8 @@ private fun App() {
                 "places" to Positions.export(context),
                 "reminders" to Reminders.all(context).sortedBy { it.id }.joinToString("\n") { it.toJson() },
                 "vpn" to Vpn.details(context).let { d -> d.user + "\u0002" + d.pass + "\u0002" + d.config },
+                "watched" to Watched.export(context),
+                "recent" to Recent.export(context),
             )
         }
         val take: (String, String) -> Unit = { name, body ->
@@ -300,8 +314,12 @@ private fun App() {
                 "places" -> Positions.import(context, body)
                 "reminders" -> Reminders.replaceAll(context, lines.mapNotNull { Reminder.fromJson(it) })
                 "vpn" -> body.split('\u0002', limit = 3).takeIf { it.size == 3 }?.let { Vpn.adopt(context, it[2], it[0], it[1]) }
+                "watched" -> Watched.import(context, body)
+                "recent" -> Recent.import(context, body)
             }
         }
+    LaunchedEffect(Screen.visible, pairKey) {
+        if (!Screen.visible || pairKey.isEmpty()) return@LaunchedEffect
         val server = SyncServer(pairKey)
         val answering = server.start()
         Report.note("Keeping in step", if (answering) "on: answering the other device" else "on, but this device couldn't open its door to be asked; it can still ask")
@@ -335,6 +353,56 @@ private fun App() {
             server.stop()
         }
     }
+    // The backup in Google Drive: the same parts, in one small file.
+    val scope = rememberCoroutineScope()
+    val backUpNow: suspend () -> String = {
+        val drive = Recordings.drive(context)
+        try {
+            if (!drive.signedIn) "Sign in to Google Drive first."
+            else {
+                val text = Backup.pack(bodies())
+                withContext(Dispatchers.IO) { drive.putText(Backup.FILE, text) }
+                Backup.done(context)
+                Report.note("Backup", "saved to Google Drive: " + text.length / 1024 + " KB")
+                "Backed up to Google Drive just now."
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Report.note("Backup", "failed: " + e.message)
+            "Couldn't back up: " + (e.message ?: "something went wrong")
+        }
+    }
+    val restoreNow: suspend () -> String = {
+        val drive = Recordings.drive(context)
+        try {
+            val text = if (!drive.signedIn) null else withContext(Dispatchers.IO) { drive.getText(Backup.FILE) }
+            val parts = text?.let { Backup.unpack(it) }
+            when {
+                !drive.signedIn -> "Sign in to Google Drive first."
+                text == null -> "There is no backup in this Google Drive yet."
+                parts == null -> "The backup in Google Drive couldn't be read."
+                else -> {
+                    for ((name, body) in parts) runCatching { take(name, body) }
+                    Report.note("Backup", "restored from Google Drive: " + parts.keys.sorted().joinToString(", "))
+                    "Restored from Google Drive."
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Report.note("Backup", "restore failed: " + e.message)
+            "Couldn't restore: " + (e.message ?: "something went wrong")
+        }
+    }
+    // Backing up by itself: by default every time KueTV opens, once the lists are in.
+    LaunchedEffect(Resumes.count, library != null) {
+        if (library == null || !Recordings.drive(context).signedIn || !Backup.due(context)) return@LaunchedEffect
+        delay(30_000)
+        driveNote = backUpNow()
+    }
+    // Provider details that have loaded are kept on the list, to switch back to later.
+    LaunchedEffect(loaded != null, account) { if (loaded != null) Providers.keep(context, account) }
     // On opening, when signed in to Stremio: its add-ons brought in, and ones taken out of Stremio taken out here.
     LaunchedEffect(Unit) {
         if (Stremio.key(context).isEmpty()) return@LaunchedEffect
@@ -485,15 +553,17 @@ private fun App() {
                     if (taken.account == account) reload++ else account = taken.account
                 },
             )
-            (!account.isSet && !noProvider) || editing -> SetupScreen(
-                current = account,
+            (!account.isSet && !noProvider) || editing || addingProvider -> SetupScreen(
+                current = if (addingProvider) Account("", "", "", "") else account,
                 canCancel = account.isSet || noProvider,
                 onNoProvider = if (account.isSet) null else ({ Choices.noProvider(context, true); editing = false }),
-                onCancel = { editing = false },
+                onCancel = { editing = false; addingProvider = false },
                 onCopy = { setUpShare = 2 },
                 onSave = { next ->
                     AccountStore.save(context, next)
+                    Providers.keep(context, next)
                     editing = false
+                    addingProvider = false
                     if (next == account) reload++ else account = next
                 },
             )
@@ -523,7 +593,18 @@ private fun App() {
             categoriesOpen && whole != null -> CategoriesScreen(whole, onDone = { categoriesOpen = false })
             problem != null -> ProblemScreen(problem.orEmpty(), onRetry = { reload++ }, onEdit = { editing = true })
             lib == null -> LoadingScreen()
-            else -> MainScreen(
+            else -> androidx.compose.runtime.key(profileId) { MainScreen(
+                extras = SettingsExtras(
+                    switchProvider = { next ->
+                        Providers.keep(context, account)
+                        AccountStore.save(context, next)
+                        if (next != account) account = next
+                    },
+                    addProvider = { Providers.keep(context, account); addingProvider = true },
+                    backUp = { scope.launch { driveNote = "Backing up…"; driveNote = backUpNow() } },
+                    restore = { scope.launch { driveNote = "Restoring…"; driveNote = restoreNow() } },
+                    driveNote = driveNote,
+                ),
                 library = lib,
                 state = browse,
                 favourites = favourites,
@@ -556,7 +637,7 @@ private fun App() {
                 onFree = { freeOpen = true },
                 onStremio = { stremioOpen = true },
                 onAddLink = { addLinkOpen = true },
-            )
+            ) }
         }
         if (reminder != null) ReminderPopUp(reminder, onWatch = watchReminded, onClose = { Reminders.showing = null }, Modifier.align(Alignment.TopCenter))
     }
@@ -1163,6 +1244,7 @@ private fun MainScreen(
     onFree: () -> Unit,
     onStremio: () -> Unit,
     onAddLink: () -> Unit,
+    extras: SettingsExtras = SettingsExtras(),
 ) {
     val context = LocalContext.current
     // The category in each section, kept for the next time the app opens.
@@ -1527,11 +1609,14 @@ private fun MainScreen(
                 val notWorking = Health.results.count { it.state == Check.DEAD }
                 val freeCount = remember(FreeStore.changes) { FreeStore.all(context).size }
                 val paired = remember(Sync.changes) { Sync.key(context).isNotEmpty() }
+                val savedProviders = remember(Providers.changes) { Providers.all(context) }
+                val profile = remember(Profiles.changes) { Profiles.current(context) }
                 val parts = listOf(
-                    "Your provider" to "Provider details, reload, categories, free channel lists ($freeCount)",
+                    "Your things" to "History, profiles · using " + profile.name + if (profile.kids) " (kids)" else "",
+                    "Your provider" to "Provider details" + (if (savedProviders.size > 1) " (" + savedProviders.size + " saved)" else "") + ", reload, categories, free channel lists ($freeCount)",
                     "Films and series" to "Add-ons (" + addOns.size + "), Stremio account",
                     "Watching" to "Subtitles, pause and rewind, text size",
-                    "Recordings" to "Google Drive: " + when { !drive.isSetUp -> "not set up"; drive.signedIn -> "signed in"; else -> "not signed in" },
+                    "Google Drive" to when { !drive.isSetUp -> "Not set up"; drive.signedIn -> "Signed in · backup and recordings"; else -> "Not signed in · backup and recordings" },
                     "TV and phone" to "Copy the set-up, keep in step: " + if (paired) "on" else "off",
                     "VPN" to remember(Vpn.changes, Vpn.level) { vpnLine(context) },
                     "Help" to "Health check" + (if (notWorking == 0) "" else ": $notWorking not working") + ", report, updates · version " + BuildConfig.VERSION_NAME,
@@ -1558,8 +1643,34 @@ private fun MainScreen(
                     val first: () -> Modifier = { if (given) Modifier else { given = true; Modifier.focusRequester(pageFirst) } }
                     val sub: @Composable (String) -> Unit = { Box(Modifier.padding(top = 14.dp)) { Heading(it) } }
                     when (page) {
+                        "Your things" -> YourThingsPage(first, sub) { e ->
+                            when (e.kind) {
+                                History.LIVE -> {
+                                    val group = library.groups.firstOrNull { g -> g.versions.any { it.channel.url == e.key } }
+                                    if (group != null) onPlay(listOf(livePlayable(group, library.account, library.serverAheadSec)), 0, true, "history:" + e.key)
+                                    else android.widget.Toast.makeText(context, "That channel isn't in your provider's list any more.", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                                History.FILM -> carryOn(Positions.Watching(e.key, e.name, e.poster, 0, 0, e.atMs))
+                                else -> onPlay(listOf(Playable(e.name, e.key)), 0, false, "history:" + e.key)
+                            }
+                        }
                         "Your provider" -> {
+                            // Other providers used before: OK switches the whole app to one.
+                            val inUse = library.account ?: AccountStore.load(context)
+                            if (savedProviders.size > 1) {
+                                sub("Switch provider")
+                                for (a in savedProviders) {
+                                    val using = a == inUse
+                                    FocusRow(
+                                        (if (using) "● " else "") + Providers.label(a), { if (!using) extras.switchProvider(a) },
+                                        look = Look.OTHER, below = if (using) "In use" else "OK to switch to this one · hold OK to take it off the list",
+                                        onHold = if (using) null else ({ Providers.remove(context, a) }),
+                                    )
+                                }
+                                sub("This provider")
+                            }
                             FocusRow("Change provider details", onEdit, first(), look = Look.OTHER)
+                            FocusRow("Add another provider", extras.addProvider, look = Look.OTHER, below = "The one in use is kept, to switch back to")
                             FocusRow("Reload channels and films", onReload, look = Look.OTHER, below = "Fetches everything afresh from your provider")
                             val hiddenCount = remember(Choices.changes) { listOf("live", "film", "show").sumOf { Choices.hidden(context, it).size } }
                             FocusRow("Categories: show, hide and order" + if (hiddenCount == 0) "" else " ($hiddenCount hidden)", onCategories, look = Look.OTHER)
@@ -1590,15 +1701,41 @@ private fun MainScreen(
                             FocusRow("Text size: " + Choices.textSizeNames[textSize], { Choices.textSize(context, (textSize + 1) % 3) }, look = Look.OTHER)
                             FocusRow("Reset text size, subtitles and small TV", { Choices.resetDisplay(context) }, look = Look.OTHER)
                         }
-                        "Recordings" -> {
-                            sub("Google Drive")
+                        "Google Drive" -> {
                             when {
                                 !drive.isSetUp -> Note("Google Drive isn't set up in this copy of the app.")
                                 drive.signedIn -> FocusRow(
                                     "Sign out of Google Drive", { drive.signOut(); Recordings.changed() }, first(), look = Look.OTHER,
                                     below = drive.email.ifBlank { null },
                                 )
-                                else -> FocusRow("Sign in to Google Drive", onDriveSignIn, first(), look = Look.OTHER, below = "Recordings are copied there")
+                                else -> FocusRow("Sign in to Google Drive", onDriveSignIn, first(), look = Look.OTHER, below = "Your backup and recordings are kept there")
+                            }
+                            if (drive.signedIn) {
+                                sub("Backup")
+                                val last = remember(Backup.changes) { Backup.lastMs(context) }
+                                val how = remember(Backup.changes) { Backup.how(context) }
+                                if (extras.driveNote.isNotEmpty()) StatusBox(
+                                    Status(
+                                        extras.driveNote,
+                                        when {
+                                            extras.driveNote.endsWith("…") -> Status.BUSY
+                                            extras.driveNote.startsWith("Couldn't") || extras.driveNote.startsWith("There is no") || extras.driveNote.startsWith("Sign in") -> Status.FAIL
+                                            else -> Status.OK
+                                        },
+                                    ),
+                                )
+                                FocusRow(
+                                    "Back up now", extras.backUp, look = Look.OTHER,
+                                    below = if (last == 0L) "Not backed up yet" else "Last backed up " + java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.UK).format(java.util.Date(last)),
+                                )
+                                FocusRow("Back up by itself: " + Backup.hows[how], { Backup.how(context, (how + 1) % Backup.hows.size) }, look = Look.OTHER, below = "OK to change")
+                                var sure by remember { mutableStateOf(false) }
+                                if (!sure) {
+                                    FocusRow("Restore from Google Drive", { sure = true }, look = Look.OTHER, below = "Puts back favourites, add-ons, provider details and choices from the backup")
+                                } else {
+                                    FocusRow("Yes, restore: what is here is replaced", { sure = false; extras.restore() }, look = Look.OTHER)
+                                    FocusRow("No, keep what is here", { sure = false }, look = Look.OTHER)
+                                }
                             }
                         }
                         "TV and phone" -> {
@@ -4666,6 +4803,16 @@ internal fun LiveTvForChecks(library: Library, favourites: Favourites) {
     MainScreen(library, state, favourites, { _, _, _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
 }
 
+/** What Settings needs from the app around it: switching provider, and the Google Drive backup. */
+internal class SettingsExtras(
+    val switchProvider: (Account) -> Unit = {},
+    val addProvider: () -> Unit = {},
+    val backUp: () -> Unit = {},
+    val restore: () -> Unit = {},
+    /** What the last backup or restore said. */
+    val driveNote: String = "",
+)
+
 /** For the automatic checks only: Films as a TV shows it. [onPlay] is told each time something is played. */
 @Composable
 internal fun FilmsForChecks(library: Library, favourites: Favourites, onPlay: () -> Unit) {
@@ -4718,4 +4865,105 @@ private fun removeAddOn(context: android.content.Context, scope: kotlinx.corouti
 @Composable
 internal fun AddOnsForChecks() {
     AddOnsScreen(onDone = {})
+}
+
+// --------------------------------------------------------------------------------------------- your things
+
+/**
+ * Settings › Your things: History (everything played, newest first; OK plays it again) and Profiles (switch, add,
+ * a PIN, a kids profile). [first] lands the remote on the page's first row.
+ */
+@Composable
+private fun YourThingsPage(first: () -> Modifier, sub: @Composable (String) -> Unit, play: (History.Entry) -> Unit) {
+    val context = LocalContext.current
+    val profiles = remember(Profiles.changes) { Profiles.all(context) }
+    val current = remember(Profiles.changes) { Profiles.current(context) }
+    // Switching to a profile with a PIN: the PIN is asked for first.
+    var pinFor by remember { mutableStateOf<Profiles.Profile?>(null) }
+    var typedPin by remember { mutableStateOf("") }
+    var said by remember { mutableStateOf<Status?>(null) }
+    // Adding a profile: its name, and whether it is a kids profile.
+    var adding by remember { mutableStateOf<Boolean?>(null) }
+    var newName by remember { mutableStateOf("") }
+    var settingPin by remember { mutableStateOf(false) }
+    var newPin by remember { mutableStateOf("") }
+
+    sub("Profiles · using " + current.name)
+    said?.let { StatusBox(it) }
+    val asking = pinFor
+    when {
+        asking != null -> {
+            Field("PIN for " + asking.name, typedPin, secret = true, modifier = first()) { typedPin = it.filter(Char::isDigit).take(8) }
+            FocusRow("Switch to " + asking.name, {
+                if (typedPin == asking.pin) {
+                    Profiles.switchTo(context, asking.id)
+                    pinFor = null
+                } else {
+                    said = Status("That isn't the PIN for " + asking.name + ".", Status.FAIL)
+                }
+                typedPin = ""
+            }, look = Look.MAIN)
+            FocusRow("Cancel", { pinFor = null; typedPin = "" }, look = Look.OTHER)
+        }
+        adding != null -> {
+            Field("Name", newName, modifier = first()) { newName = it.take(24) }
+            FocusRow("Kids profile: " + if (adding == true) "on, hides adult categories" else "off", { adding = adding != true }, look = Look.OTHER)
+            FocusRow("Add this profile", {
+                val made = Profiles.add(context, newName, adding == true)
+                said = Status("Added " + made.name + ". Choose it below to switch to it.", Status.OK)
+                adding = null
+                newName = ""
+            }, look = Look.MAIN)
+            FocusRow("Cancel", { adding = null; newName = "" }, look = Look.OTHER)
+        }
+        settingPin -> {
+            Field("New PIN for " + current.name + " (numbers only; leave empty for none)", newPin, secret = true, modifier = first()) { newPin = it.filter(Char::isDigit).take(8) }
+            FocusRow("Save the PIN", {
+                Profiles.setPin(context, current.id, newPin)
+                said = Status(if (newPin.isEmpty()) current.name + " has no PIN now." else current.name + " now asks for its PIN.", Status.OK)
+                settingPin = false
+                newPin = ""
+            }, look = Look.MAIN)
+            FocusRow("Cancel", { settingPin = false; newPin = "" }, look = Look.OTHER)
+        }
+        else -> {
+            var given = false
+            for (p in profiles) {
+                val using = p.id == current.id
+                FocusRow(
+                    (if (using) "● " else "") + p.name + (if (p.kids) " · kids" else "") + (if (p.pin.isNotEmpty()) " · PIN" else ""),
+                    {
+                        when {
+                            using -> Unit
+                            p.pin.isEmpty() -> Profiles.switchTo(context, p.id)
+                            else -> { pinFor = p; said = null }
+                        }
+                    },
+                    if (!given) { given = true; first() } else Modifier,
+                    look = Look.OTHER,
+                    below = when {
+                        using -> "In use"
+                        p.id.isEmpty() -> "OK to switch to it"
+                        else -> "OK to switch to it · hold OK to remove it and everything kept for it"
+                    },
+                    onHold = if (using || p.id.isEmpty()) null else ({ Profiles.remove(context, p.id); said = Status("Removed " + p.name + ".", Status.OK) }),
+                )
+            }
+            FocusRow("Add a profile", { adding = false; said = null }, look = Look.OTHER)
+            FocusRow("Add a kids profile", { adding = true; newName = "Kids"; said = null }, look = Look.OTHER)
+            FocusRow(if (current.pin.isEmpty()) "Set a PIN for " + current.name else "Change or remove " + current.name + "'s PIN", { settingPin = true; said = null }, look = Look.OTHER)
+        }
+    }
+
+    val history = remember(History.changes, Profiles.changes) { History.all(context) }
+    sub("History" + if (history.isEmpty()) "" else " · " + history.size)
+    if (history.isEmpty()) Note("Nothing played yet in this profile.")
+    val clock = remember { java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.UK) }
+    for (e in history.take(40)) {
+        FocusRow(
+            e.name, { play(e) }, look = Look.OTHER,
+            below = when (e.kind) { History.LIVE -> "Live TV"; History.FILM -> "Film or episode"; else -> "Catch-up or recording" } + " · " + clock.format(java.util.Date(e.atMs)),
+        )
+    }
+    if (history.isNotEmpty()) FocusRow("Clear history", { History.clear(context) }, look = Look.OTHER, below = "Only this profile's")
 }
