@@ -143,6 +143,8 @@ data class Playable(
     val poster: String? = null,
     /** For catch-up: what plays once this has finished, the next programme on the channel; null when there is none yet. */
     val then: (suspend () -> Playable?)? = null,
+    /** For catch-up: when it first went out, so the player can say what time it was on air at each moment. */
+    val airedFromMs: Long? = null,
 ) {
     /** What it is known by when its place is kept: its address, or, with no address of its own (add-on only), its name. */
     val key: String get() = url.ifEmpty { NO_ADDRESS + name }
@@ -167,7 +169,7 @@ private class Control(
 )
 
 /** The pictures drawn on the player's buttons. */
-private enum class Icon { BACK, PLAY, PAUSE, ON, FROM_START, RECORD, STOP, PICTURE, SUBS_ON, SUBS_OFF, OPTIONS, LIST, MULTI, LIVE }
+private enum class Icon { BACK, PLAY, PAUSE, ON, FROM_START, RECORD, STOP, PICTURE, SUBS_ON, SUBS_OFF, OPTIONS, LIST, MULTI, PREVIOUS, LIVE }
 
 /** How much one key-repeat of a held wind button adds: faster the longer it is held. Public for the tests. */
 fun windSpeed(repeats: Int): Int = when {
@@ -319,6 +321,10 @@ fun PlayerScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     // A channel number being typed on the remote's number keys; it is gone to a moment after the last key.
     var typed by remember { mutableStateOf("") }
+    // Live: the channel watched before this one, for 0 (or the Last channel button) to go back to.
+    var previous by remember { mutableIntStateOf(-1) }
+    // Sound only: the picture turned off, the sound kept (for a match's commentary, say).
+    var soundOnly by remember { mutableStateOf(false) }
     // The control buttons in the name box: brought up by OK on a TV (◀ ▶ then move along them), always there on a phone.
     var controls by remember { mutableStateOf(false) }
     var pick by remember { mutableIntStateOf(0) }
@@ -387,7 +393,7 @@ fun PlayerScreen(
             .setLoadControl(load)
             .build().apply {
                 trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setPreferredAudioLanguage("en")
+                    .setPreferredAudioLanguage(SoundLanguage.get(context))
                     .setPreferredTextLanguage(lang.code)
                     .setSelectUndeterminedTextLanguage(true)
                     .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !subtitlesWanted)
@@ -407,6 +413,7 @@ fun PlayerScreen(
         val wasRecording = finishRecording()
         upNext = -1
         channelList = false
+        if (live && next != index) previous = index
         // A sound picked for the last one doesn't carry over: the next starts on its own first choice.
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_AUDIO).build()
         index = next
@@ -711,13 +718,33 @@ fun PlayerScreen(
         Recent.add(context, key)
         History.add(context, History.LIVE, items.getOrNull(index)?.name.orEmpty(), key, null)
     }
+    // The sleep timer: a minute's warning, then what is playing stops and the player closes.
+    LaunchedEffect(SleepTimer.endAtMs) {
+        val end = SleepTimer.endAtMs
+        if (end == 0L) return@LaunchedEffect
+        delay((end - System.currentTimeMillis() - 60_000L).coerceAtLeast(0L))
+        say("Sleep timer: stopping in a minute. Options › Sleep timer to keep watching.")
+        delay((end - System.currentTimeMillis()).coerceAtLeast(0L))
+        SleepTimer.endAtMs = 0L
+        onClose()
+    }
+    // Sound only: the picture isn't fetched or shown.
+    LaunchedEffect(soundOnly) {
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_VIDEO, soundOnly).build()
+    }
     // A number typed on the remote: a moment after the last key, that channel in the list.
     LaunchedEffect(typed) {
         if (typed.isEmpty()) return@LaunchedEffect
         delay(TYPED_WAIT_MS)
         val n = typed.toIntOrNull() ?: 0
+        val zero = typed == "0"
         typed = ""
-        if (n in 1..items.size) go(n - 1) else say("There is no channel $n in this list. It has " + items.size + ".")
+        when {
+            // 0 on its own: back to the channel watched before.
+            zero -> if (previous in items.indices) go(previous) else say("There is no channel before this one yet.")
+            n in 1..items.size -> go(n - 1)
+            else -> say("There is no channel $n in this list. It has " + items.size + ".")
+        }
     }
     // The list of channels follows the remote, keeping a few rows above the one it is on.
     LaunchedEffect(channelList, listPick) {
@@ -891,12 +918,16 @@ fun PlayerScreen(
         "Picture shape: " + PictureShape.names[shape],
         "Sound sync: " + SoundSync.words(syncMs),
         "Play in another player",
+        "Sleep timer: " + SleepTimer.words(),
+        "Picture: " + if (soundOnly) "off, sound only" else "on",
     )
     val optionHints = listOf(
         if (phone) "Tap for the next sound" else "OK for the next sound",
         if (phone) "Tap for the next shape: Fit, Stretch, Zoom" else "OK for the next shape: Fit, Stretch, Zoom",
         if (phone) "− sound earlier · + sound later · tap the words for on time" else "◀ sound earlier · ▶ sound later · OK back to on time",
         "VLC, MX Player or another video app, if one is on this device",
+        if (phone) "Tap for 15 min, 30 min … 2 hours, then off" else "OK for 15 min, 30 min … 2 hours, then off",
+        "Off keeps the sound only, for a commentary or the news",
     )
     val nextSound: () -> Unit = {
         if (sounds.size > 1) {
@@ -912,7 +943,7 @@ fun PlayerScreen(
     }
     val optionAct: (Int) -> Unit = { row ->
         when (row) {
-            0 -> nextSound()
+            0 -> { nextSound(); sounds.getOrNull((soundNow.coerceAtLeast(0) + 1) % sounds.size.coerceAtLeast(1))?.let { SoundLanguage.set(context, it.language) } }
             1 -> { shape = (shape + 1) % PictureShape.names.size; PictureShape.save(context, shape) }
             2 -> setSync(0)
             3 -> {
@@ -923,6 +954,8 @@ fun PlayerScreen(
                 else say(if (url.startsWith("magnet:")) "A torrent can't be played in another player." else "There is no other video player on this device. VLC or MX Player can be installed from the app store.")
                 options = false
             }
+            4 -> SleepTimer.next()
+            5 -> soundOnly = !soundOnly
         }
     }
     val openList: () -> Unit = {
@@ -949,6 +982,7 @@ fun PlayerScreen(
             add(subsButton)
             add(Control("Options", Icon.OPTIONS, act = openOptions))
             if (items.size > 1) add(Control("Channels", Icon.LIST, act = openList))
+            if (previous in items.indices) add(Control("Last channel", Icon.PREVIOUS) { go(previous) })
             if (items.size > 1 && onMultiview != null) add(Control("Multiview", Icon.MULTI) { onMultiview(items.toList(), index) })
             // Always last: LIVE, drawn on the right of the box. Behind live, it jumps to what is on now.
             add(Control(if (isBehind || paused) "GO LIVE" else "● LIVE", Icon.LIVE) { if (isBehind || paused) { player.play(); reload += 1 } })
@@ -1180,22 +1214,19 @@ fun PlayerScreen(
                     // A film's bar has a subtitles button, to pick a language or turn them off.
                     setShowSubtitleButton(true)
                     // Subtitles: large white letters on a dark band, the same on every channel and film.
-                    subtitleView?.apply {
-                        setApplyEmbeddedStyles(false)
-                        setApplyEmbeddedFontSizes(false)
-                        setStyle(
-                            androidx.media3.ui.CaptionStyleCompat(
-                                android.graphics.Color.WHITE, 0xCC000000.toInt(), android.graphics.Color.TRANSPARENT,
-                                androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, android.graphics.Color.BLACK, null,
-                            ),
-                        )
-                        setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 1.4f)
-                    }
+                    // Subtitles: as chosen in Settings › Watching (large white letters on a dark band to begin with).
+                    subtitleView?.let { SubtitleLook.apply(ctx, it) }
                     setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
                 }
             },
             update = { it.resizeMode = PictureShape.mode(shape) },
         )
+        // Sound only: the picture is off.
+        if (soundOnly) {
+            Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                Text("Sound only  ·  Options › Picture to bring it back", color = Color(0xFFB9C2D3), fontSize = 20.sp)
+            }
+        }
         if (phone && !live) {
             // A tap on the picture brings up the box and its buttons.
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { if (nameVisible) { nameVisible = false; controls = false } else { controls = true; showName += 1 } }) })
@@ -1249,6 +1280,10 @@ fun PlayerScreen(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                         Text("   " + clock.format(java.util.Date(clockNow)), color = soft, fontSize = 22.sp, maxLines = 1)
+                        // Catch-up: the time it was on air at this point in the programme.
+                        items.getOrNull(index)?.airedFromMs?.let { aired ->
+                            Text("  ·  aired " + clock.format(java.util.Date(aired + player.currentPosition)), color = soft, fontSize = 18.sp, maxLines = 1)
+                        }
                         Spacer(Modifier.weight(1f))
                         // The keys, small, on a TV while the buttons aren't in use.
                         if (!phone && !controls) {
@@ -1622,6 +1657,12 @@ private fun ButtonIcon(b: Control, color: Color) {
                 Icon.STOP -> drawRect(Color(0xFFE53935), Offset(w * 0.2f, h * 0.2f), Size(w * 0.6f, h * 0.6f))
                 Icon.OPTIONS -> for (x in listOf(0.18f, 0.5f, 0.82f)) drawCircle(color, radius = w * 0.1f, center = Offset(w * x, h * 0.5f))
                 Icon.LIST -> for (y in listOf(0.22f, 0.5f, 0.78f)) drawRect(color, Offset(w * 0.12f, h * y - h * 0.06f), Size(w * 0.76f, h * 0.12f))
+                Icon.PREVIOUS -> {
+                    val p = Path().apply { moveTo(w * 0.08f, h * 0.5f); lineTo(w * 0.46f, h * 0.2f); lineTo(w * 0.46f, h * 0.8f); close() }
+                    val q = Path().apply { moveTo(w * 0.48f, h * 0.5f); lineTo(w * 0.86f, h * 0.2f); lineTo(w * 0.86f, h * 0.8f); close() }
+                    drawPath(p, color)
+                    drawPath(q, color)
+                }
                 Icon.MULTI -> for (x in listOf(0.1f, 0.54f)) for (y in listOf(0.14f, 0.54f)) drawRect(color, Offset(w * x, h * y), Size(w * 0.36f, h * 0.32f))
                 else -> {}
             }

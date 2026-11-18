@@ -1742,6 +1742,15 @@ private fun MainScreen(
                             val subtitlesOn = remember(Choices.changes) { Choices.subtitles(context) }
                             FocusRow("Subtitles: " + if (subtitlesOn) "on" else "off", { Choices.subtitles(context, !subtitlesOn) }, first(), look = Look.OTHER)
                             FocusRow("Subtitle language: " + subtitleLang.name, { Choices.subtitleLang(context, Langs.after(subtitleLang).code) }, look = Look.OTHER)
+                            val look = Choices.changes
+                            val sSize = if (look >= 0) SubtitleLook.size(context) else 0
+                            val sColour = SubtitleLook.colour(context)
+                            val sBack = SubtitleLook.background(context)
+                            val sHeight = SubtitleLook.height(context)
+                            FocusRow("Subtitle size: " + SubtitleLook.sizes[sSize], { SubtitleLook.set(context, "size", (sSize + 1) % SubtitleLook.sizes.size) }, look = Look.OTHER)
+                            FocusRow("Subtitle colour: " + SubtitleLook.colours[sColour], { SubtitleLook.set(context, "colour", (sColour + 1) % SubtitleLook.colours.size) }, look = Look.OTHER)
+                            FocusRow("Subtitle background: " + SubtitleLook.backgrounds[sBack], { SubtitleLook.set(context, "background", (sBack + 1) % SubtitleLook.backgrounds.size) }, look = Look.OTHER)
+                            FocusRow("Subtitle position: " + SubtitleLook.heights[sHeight], { SubtitleLook.set(context, "height", (sHeight + 1) % SubtitleLook.heights.size) }, look = Look.OTHER)
                             sub("Live TV")
                             val shiftOn = remember(Choices.changes) { Choices.timeShift(context) }
                             FocusRow("Pause and rewind live TV: " + if (shiftOn) "on" else "off", { Choices.timeShift(context, !shiftOn) }, look = Look.OTHER)
@@ -3307,6 +3316,7 @@ internal fun catchupPlayable(channelName: String, account: Account, channelId: S
     Playable(
         channelName + " · " + programme.title.ifBlank { "No title" },
         Provider.catchupUrl(account, channelId, programme, serverAheadSec),
+        airedFromMs = programme.startMs,
         then = {
             val listing = NowNext.get(account, channelId)
             val next = listing.filter { it.startMs >= programme.stopMs - 60_000 && it.startMs > programme.startMs }.minByOrNull { it.startMs }

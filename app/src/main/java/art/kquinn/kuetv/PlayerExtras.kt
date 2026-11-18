@@ -10,6 +10,8 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 /**
  * Sound sync: moves the sound against the picture, for a channel or film whose sound is early or late.
@@ -61,7 +63,7 @@ class SyncedRenderers(context: Context) : DefaultRenderersFactory(context) {
 }
 
 /** One of the sounds a stream carries: a language, or a commentary, in stereo or surround. */
-class SoundChoice(val label: String, val group: TrackGroup, val track: Int, val selected: Boolean)
+class SoundChoice(val label: String, val group: TrackGroup, val track: Int, val selected: Boolean, val language: String? = null)
 
 /** The sounds in [tracks] that can be played, in the order the stream lists them. */
 @OptIn(UnstableApi::class)
@@ -72,7 +74,7 @@ fun soundChoices(tracks: Tracks): List<SoundChoice> {
         for (i in 0 until group.length) {
             if (!group.isTrackSupported(i)) continue
             val f = group.getTrackFormat(i)
-            all += SoundChoice(soundName(f.language, f.label, f.channelCount, all.size + 1), group.mediaTrackGroup, i, group.isTrackSelected(i))
+            all += SoundChoice(soundName(f.language, f.label, f.channelCount, all.size + 1), group.mediaTrackGroup, i, group.isTrackSelected(i), f.language)
         }
     }
     return all
@@ -106,5 +108,74 @@ object PictureShape {
 
     fun save(context: Context, shape: Int) {
         context.getSharedPreferences("player", Context.MODE_PRIVATE).edit().putInt("shape", shape).apply()
+    }
+}
+
+/** How subtitles look: their size, colour, background and height on the screen. Kept on this device. */
+object SubtitleLook {
+    val sizes = listOf("Small", "Normal", "Large", "Very large")
+    private val sizeScale = listOf(1.0f, 1.4f, 1.8f, 2.2f)
+    val colours = listOf("White", "Yellow")
+    private val colourValues = listOf(android.graphics.Color.WHITE, 0xFFFFE14D.toInt())
+    val backgrounds = listOf("Dark band", "None, outlined letters")
+    val heights = listOf("At the bottom", "A little higher")
+
+    private fun prefs(context: Context) = context.getSharedPreferences("player", Context.MODE_PRIVATE)
+    fun get(context: Context, what: String, default: Int = 0): Int = prefs(context).getInt("subs.$what", default)
+    fun set(context: Context, what: String, value: Int) {
+        prefs(context).edit().putInt("subs.$what", value).apply()
+        Choices.touch()
+    }
+
+    fun size(context: Context) = get(context, "size", 1).coerceIn(0, sizes.size - 1)
+    fun colour(context: Context) = get(context, "colour").coerceIn(0, colours.size - 1)
+    fun background(context: Context) = get(context, "background").coerceIn(0, backgrounds.size - 1)
+    fun height(context: Context) = get(context, "height").coerceIn(0, heights.size - 1)
+
+    /** Puts the chosen look on a player's subtitles. */
+    @OptIn(UnstableApi::class)
+    fun apply(context: Context, view: androidx.media3.ui.SubtitleView) {
+        view.setApplyEmbeddedStyles(false)
+        view.setApplyEmbeddedFontSizes(false)
+        val band = background(context) == 0
+        view.setStyle(
+            androidx.media3.ui.CaptionStyleCompat(
+                colourValues[colour(context)], if (band) 0xCC000000.toInt() else android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT,
+                androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, android.graphics.Color.BLACK, null,
+            ),
+        )
+        view.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * sizeScale[size(context)])
+        view.setBottomPaddingFraction(if (height(context) == 1) 0.18f else androidx.media3.ui.SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION)
+    }
+}
+
+/** The sleep timer: when what is playing stops by itself. Not kept: it is for this sitting only. */
+object SleepTimer {
+    val minutes = listOf(0, 15, 30, 45, 60, 90, 120)
+
+    /** When it stops, or 0 with no timer set. */
+    var endAtMs by androidx.compose.runtime.mutableLongStateOf(0L)
+
+    /** The next choice along: off, 15 minutes … 2 hours, then off again. */
+    fun next(now: Long = System.currentTimeMillis()) {
+        val left = if (endAtMs == 0L) 0 else ((endAtMs - now) / 60_000L).toInt()
+        val after = minutes.firstOrNull { it > left + 1 } ?: 0
+        endAtMs = if (after == 0) 0L else now + after * 60_000L
+    }
+
+    fun words(now: Long = System.currentTimeMillis()): String {
+        if (endAtMs == 0L) return "Off"
+        val left = ((endAtMs - now + 59_999L) / 60_000L).coerceAtLeast(0)
+        return left.toString() + " min · stops at " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(java.util.Date(endAtMs))
+    }
+}
+
+/** The sound language last chosen in a player's Options, tried first on every channel and film after. */
+object SoundLanguage {
+    private fun prefs(context: Context) = context.getSharedPreferences("player", Context.MODE_PRIVATE)
+    fun get(context: Context): String = prefs(context).getString("soundLang", "en").orEmpty().ifBlank { "en" }
+    fun set(context: Context, language: String?) {
+        if (language.isNullOrBlank() || language == "und") return
+        prefs(context).edit().putString("soundLang", language).apply()
     }
 }
