@@ -1,6 +1,7 @@
 package art.kquinn.kuetv
 
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
@@ -49,9 +50,9 @@ class GuideLayoutTest {
         rule.waitForIdle()
     }
 
-    /** Where a piece of text is on the screen, in dp: left, top, right, bottom. */
-    private fun at(text: String): FloatArray {
-        val node = rule.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().firstOrNull()
+    /** Where a piece of text (or, with [tag], a tagged part) is on the screen, in dp: left, top, right, bottom. */
+    private fun at(text: String, tag: Boolean = false): FloatArray {
+        val node = rule.onAllNodes(if (tag) hasTestTag(text) else hasText(text, substring = true)).fetchSemanticsNodes().firstOrNull()
             ?: throw AssertionError("\"$text\" isn't on the screen")
         val d = rule.density.density
         val b = node.boundsInRoot
@@ -62,7 +63,7 @@ class GuideLayoutTest {
 
     @Test fun thePictureIsTopRightAndTheGridRunsTheFullWidth() {
         show()
-        val picture = at("Move onto a channel to watch it here.")
+        val picture = at("guide picture", tag = true)
         val channel = at("BBC One")
         val lateFilm = at("Late Film")
         assertTrue("the picture sits at the right of the screen (its right edge at ${picture[2]} dp of 960)", picture[2] > 880f)

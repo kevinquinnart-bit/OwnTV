@@ -95,6 +95,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -3012,7 +3013,7 @@ private fun Pane.GuideGrid(
         // the top right corner. The grid runs the full width of the screen underneath.
         Row(Modifier.fillMaxWidth().height(GUIDE_PICTURE_WIDTH * 9f / 16f + 41.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             GuideDetails(about, onChannel, account, time, Modifier.weight(1f).fillMaxHeight())
-            PreviewPicture(onChannel, Modifier.width(GUIDE_PICTURE_WIDTH))
+            PreviewPicture(onChannel, Modifier.width(GUIDE_PICTURE_WIDTH).testTag("guide picture"))
         }
         Spacer(Modifier.height(8.dp))
         Row {
