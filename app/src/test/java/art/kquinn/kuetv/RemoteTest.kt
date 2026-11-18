@@ -8,7 +8,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -45,50 +44,43 @@ class RemoteTest {
         rule.waitForIdle()
     }
 
-    /** The menu is open when its entries are on screen; the categories when their heading is. */
-    private fun menuOpen() = rule.onAllNodes(hasText("TV Guide")).fetchSemanticsNodes().isNotEmpty()
-    private fun categoriesOpen() = rule.onAllNodes(hasText("CATEGORIES")).fetchSemanticsNodes().isNotEmpty()
+    private fun categoriesShown() = rule.onAllNodes(hasText("CATEGORIES")).fetchSemanticsNodes().isNotEmpty()
     private fun remoteOn(text: String) = rule.onAllNodes(isFocused() and (hasText(text, substring = true) or hasAnyDescendant(hasText(text, substring = true))))
         .fetchSemanticsNodes().isNotEmpty()
-
-    /** The letters running down the folded edges, left to right, run together: "MENU" when the menu is folded. */
-    private fun edges(): String = rule.onAllNodes(androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Text), useUnmergedTree = true)
-        .fetchSemanticsNodes().mapNotNull { n -> n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString("")?.takeIf { it.length == 1 } }
-        .joinToString("")
+    private fun remoteOnPicture(name: String) = rule.onAllNodes(isFocused() and androidx.compose.ui.test.hasContentDescription(name)).fetchSemanticsNodes().isNotEmpty()
 
     /** Where the remote is, for the message when a step fails. */
     private fun where(): String = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { n ->
-        (n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString(" ") ?: "something with no words") +
-            " at x=" + n.boundsInRoot.left.toInt()
-    }.ifEmpty { "nothing" } + " · menu " + (if (menuOpen()) "open" else "folded") + " · categories " + (if (categoriesOpen()) "open" else "folded")
+        (n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString(" ")
+            ?: n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription) { null }?.joinToString(" ") ?: "something with no words") +
+            " at x=" + n.boundsInRoot.left.toInt() + " y=" + n.boundsInRoot.top.toInt()
+    }.ifEmpty { "nothing" }
 
-    @Test fun theRemoteMovesBetweenTheSideColumnsWithOnlyOneOpen() {
+    @Test fun theRemoteMovesBetweenTheTopBarTheCategoriesAndTheList() {
         show()
-        assertTrue("at the start the menu is open · remote on " + where(), menuOpen())
-        assertFalse("at the start the categories are folded · remote on " + where(), categoriesOpen())
-        assertTrue("at the start the remote is on Live TV in the menu · remote on " + where(), remoteOn("Live TV"))
+        assertTrue("the categories are always shown", categoriesShown())
+        assertTrue("the old folded edges are gone", rule.onAllNodes(hasText("M")).fetchSemanticsNodes().isEmpty())
+        assertTrue("at the start the remote is on Live TV in the top bar · remote on " + where(), remoteOn("Live TV"))
 
         press(Key.DirectionRight)
-        assertTrue("▶ from the menu opens the categories · remote on " + where(), categoriesOpen())
-        assertFalse("▶ from the menu folds the menu · remote on " + where(), menuOpen())
-        assertTrue("▶ from the menu puts the remote on the category being shown (All) · remote on " + where(), remoteOn("All"))
-        assertTrue("the folded menu's edge reads MENU · edges read " + edges(), edges().contains("MENU"))
-
+        assertTrue("▶ along the bar goes to the TV Guide · remote on " + where(), remoteOn("TV Guide"))
         press(Key.DirectionLeft)
-        assertTrue("◀ from the categories opens the menu · remote on " + where(), menuOpen())
-        assertFalse("◀ from the categories folds the categories · remote on " + where(), categoriesOpen())
-        assertTrue("◀ from the categories puts the remote back on Live TV · remote on " + where(), remoteOn("Live TV"))
 
-        press(Key.DirectionRight)
-        press(Key.DirectionRight)
-        assertFalse("▶ into the channel list folds the categories · remote on " + where(), categoriesOpen())
-        assertFalse("▶ into the channel list keeps the menu folded · remote on " + where(), menuOpen())
-        assertTrue("▶ into the channel list puts the remote on a channel · remote on " + where(), remoteOn("BBC One") || remoteOn("Sky Sports"))
-        assertTrue("both folded edges say what they are · edges read " + edges(), edges().contains("MENU") && edges().contains("CATEGORIES"))
+        press(Key.DirectionDown)
+        assertTrue("▼ from the bar goes down into the section · remote on " + where(), remoteOn("All") || remoteOn("BBC One") || remoteOn("Sky Sports"))
 
+        // Into the categories, then ▶ into the channel list, ◀ back to the category being shown.
+        repeat(3) { press(Key.DirectionLeft) }
+        assertTrue("◀ ends on the category being shown · remote on " + where(), remoteOn("All"))
+        press(Key.DirectionRight)
+        assertTrue("▶ from the categories goes into the channel list · remote on " + where(), remoteOn("BBC One") || remoteOn("Sky Sports"))
         press(Key.DirectionLeft)
-        assertTrue("◀ from the channel list opens the categories · remote on " + where(), categoriesOpen())
-        assertFalse("◀ from the channel list keeps the menu folded · remote on " + where(), menuOpen())
-        assertTrue("◀ from the channel list puts the remote on the category being shown · remote on " + where(), remoteOn("All"))
+        assertTrue("◀ from the channel list goes back to the category being shown · remote on " + where(), remoteOn("All"))
+
+        // ▲ from the top of the categories: up into the bar, onto the section shown.
+        repeat(4) { press(Key.DirectionUp) }
+        assertTrue("▲ into the bar lands on the section shown · remote on " + where(), remoteOn("Live TV"))
+        repeat(12) { press(Key.DirectionRight) }
+        assertTrue("Settings, at the end of the bar, can be reached · remote on " + where(), remoteOnPicture("Settings"))
     }
 }

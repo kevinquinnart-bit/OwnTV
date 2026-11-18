@@ -77,8 +77,8 @@ class Things2Test {
         val evenings = MyCategories.make(context, "Evenings", null)
         rule.setContent { LiveTvForChecks(library, Favourites(context)) }
         rule.waitForIdle()
-        // Into the categories (▶): your own is there. Into the list (▶), then hold OK on BBC One.
-        press(Key.DirectionRight)
+        // Into the categories (▼ from the top bar): your own is there. Into the list (▶), then hold OK on BBC One.
+        press(Key.DirectionDown)
         assertTrue("your own category is in Live TV's categories", shown("📁 Evenings"))
         press(Key.DirectionRight)
         rule.onAllNodes(isRoot()).onLast().performKeyInput {

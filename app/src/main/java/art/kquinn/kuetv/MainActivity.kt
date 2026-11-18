@@ -23,6 +23,8 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -1329,6 +1331,64 @@ private class Panels {
 /** The side columns on a TV; null on a phone, where nothing folds. */
 private val LocalPanels = staticCompositionLocalOf<Panels?> { null }
 
+/**
+ * The bar along the top of a TV screen, as on Freely: KueTV's mark, then the sections by name, with Search and
+ * Settings as pictures at the end. The section shown is lit; coming up into the bar lands on it. OK opens one.
+ */
+@Composable
+private fun TopBar(section: Section, focus: FocusRequester, bar: BarReach, onPick: (Section) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        KueLogo(26.dp, 18.sp)
+        Spacer(Modifier.width(14.dp))
+        Row(
+            Modifier.weight(1f).focusProperties { onEnter = { runCatching { focus.requestFocus() } } }.focusGroup()
+                .onFocusChanged { bar.inside = it.hasFocus }
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val pictures = listOf(Section.SEARCH, Section.SETTINGS)
+            (Section.entries.filter { it !in pictures } + pictures).forEach { s ->
+                if (s == Section.SEARCH) Spacer(Modifier.width(8.dp))
+                BarItem(s, s == section, s in pictures, if (s == section) Modifier.focusRequester(focus) else Modifier, bar) { onPick(s) }
+            }
+        }
+    }
+}
+
+/** When the top bar can take the remote: plain values, read at the moment the remote moves. */
+private class BarReach {
+    var inside = false
+    var up = false
+    var placing = false
+}
+
+/** One section in the top bar: yellow with the remote on it, a dark pill when it is the one shown. */
+@Composable
+private fun BarItem(section: Section, chosen: Boolean, picture: Boolean, modifier: Modifier, bar: BarReach, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(50)
+    val ink = when {
+        focused -> Color.Black
+        chosen -> AccentInk
+        else -> Ink
+    }
+    val name = UiLang.tr(section.label)
+    Row(
+        // Asked each time the remote moves: reachable from inside the bar, with ▲, or when KueTV puts the remote there.
+        modifier.focusProperties { canFocus = bar.inside || bar.up || bar.placing }.clip(shape).focusRing(focused, shape)
+            .background(if (focused) Accent else if (chosen) Panel else Color.Transparent, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .press(onClick, null)
+            .then(if (picture) Modifier.semantics { contentDescription = name } else Modifier)
+            .padding(horizontal = if (picture) 9.dp else 11.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (picture) SectionIcon(section, ink, Modifier.size(24.dp))
+        else Text(section.label, color = ink, fontSize = 16.sp, fontWeight = if (chosen || focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+    }
+}
+
 /** A folded side column: a thin edge. Moving onto it with the remote opens the column. */
 @Composable
 private fun PanelEdge(label: String, onLanded: () -> Unit) {
@@ -1465,6 +1525,7 @@ private fun MainScreen(
     val menuFocus = remember { FocusRequester() }
     val homeFocus = remember { FocusRequester() }
     val panels = remember { Panels() }
+    val bar = remember { BarReach() }
     val resume = remember { FocusRequester() }
     // The section shown before this one; null until the screen has been shown once.
     val before = remember { arrayOfNulls<Section>(1) }
@@ -1510,11 +1571,13 @@ private fun MainScreen(
         when {
             section == Section.HOME -> runCatching { homeFocus.requestFocus() }
             first || previous == Section.HOME -> {
-                // The menu may be folded: open it, let it be drawn, then put the remote on it.
+                // Onto the section's name in the bar along the top.
                 panels.zone = Zone.MENU
                 withFrameNanos { }
                 withFrameNanos { }
+                bar.placing = true
                 runCatching { menuFocus.requestFocus() }
+                bar.placing = false
             }
         }
     }
@@ -2138,37 +2201,19 @@ private fun MainScreen(
     } else {
         Box(Modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalPanels provides panels) {
-        Row(
-            Modifier.fillMaxSize().padding(24.dp).onFocusChanged { panels.anyHas = it.hasFocus },
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        // As on Freely: the sections in a bar across the top, and below it the section itself, with at most
+        // one column down the left (the categories). ▲ from the top of a list goes up into the bar.
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp).onFocusChanged { panels.anyHas = it.hasFocus }
+                // Which key is being pressed: only ▲ goes up into the bar, so ◀ ▶ never jump up into it.
+                .onPreviewKeyEvent { e ->
+                    if (e.type == KeyEventType.KeyDown) bar.up = e.key == Key.DirectionUp
+                    false
+                },
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // The menu: open while the remote is in it, otherwise folded to an edge.
-            Row(Modifier.fillMaxHeight().onFocusChanged { panels.menuHas = it.hasFocus }) {
-                // The folded edge stays until the remote is in the opened menu, so the remote is never left on nothing.
-                if (panels.zone != Zone.MENU) PanelEdge("Menu") { panels.menuWanted = true }
-                if (panels.zone == Zone.MENU || panels.menuWanted) {
-                    // Every entry fits on the screen: the entries share the height, so the menu never scrolls.
-                    Column(
-                        Modifier.width(190.dp * LocalTextScale.current).fillMaxHeight().background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 14.dp, horizontal = 8.dp)
-                            // ▶ from the menu: into the categories, which open as the menu folds away.
-                            .onPreviewKeyEvent { e ->
-                                if (e.key != Key.DirectionRight || !panels.catsShown) return@onPreviewKeyEvent false
-                                if (e.type == KeyEventType.KeyDown) panels.catsWanted = true
-                                true
-                            }
-                            .focusRestorer().focusGroup(),
-                    ) {
-                        KueLogo(30.dp, 20.sp, Modifier.padding(start = 10.dp, bottom = 6.dp))
-                        Section.entries.forEach { s ->
-                            FocusRow(
-                                s.label, { section = s },
-                                Modifier.weight(1f).then(if (s == section) Modifier.focusRequester(menuFocus) else Modifier),
-                                chosen = s == section, textSize = 18.sp, padV = 2.dp,
-                            )
-                        }
-                    }
-                }
-            }
+        TopBar(section, menuFocus, bar) { section = it }
+        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Pane(this, null).body()
             // The small TV: on every section the same size and place as Live TV's, on the right, with what is on
             // that channel underneath. Live TV draws its own, which follows the remote down the list. The TV Guide's
@@ -2184,6 +2229,7 @@ private fun MainScreen(
                     if (group != null) ProgrammeDetails(group, library.account, Modifier.fillMaxWidth().weight(1f))
                 }
             }
+        }
         }
         }
         }
@@ -2226,31 +2272,16 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
             onDispose { panels.catsShown = false }
         }
     }
-    // Only one side column open at a time: the categories open only while the remote is in them, or on the way in.
-    // The folded edge stays until the remote is in the opened column, so the remote is never left on nothing.
-    // The same edge throughout, so the one the remote landed on is still there while the column opens beside it.
-    val folded = panels != null && panels.zone != Zone.CATEGORIES
-    if (folded) {
-        Box(Modifier.fillMaxHeight().onFocusChanged { panels!!.catsHas = it.hasFocus }) {
-            PanelEdge("Categories") { panels!!.catsWanted = true }
-        }
-    }
-    if (folded && !panels!!.catsWanted) return
+    // The categories column is always open: it is the one column down the left.
     val row: @Composable (String, String) -> Unit = { id, name ->
         FocusRow(
             name, { onChoose(id) },
             if (chosen == id) Modifier.focusRequester(chosenFocus) else Modifier,
-            chosen = chosen == id, onFocus = { onChoose(id) },
+            chosen = chosen == id, onFocus = { onChoose(id) }, textSize = 19.sp,
         )
     }
     Column(
-        Modifier.width(270.dp * LocalTextScale.current).fillMaxHeight().onFocusChanged { panels?.catsHas = it.hasFocus }
-            // ◀ from the categories: back into the menu, which opens as the categories fold away.
-            .onPreviewKeyEvent { e ->
-                if (panels == null || e.key != Key.DirectionLeft) return@onPreviewKeyEvent false
-                if (e.type == KeyEventType.KeyDown) panels.menuWanted = true
-                true
-            }
+        Modifier.width(240.dp * LocalTextScale.current).fillMaxHeight().onFocusChanged { panels?.catsHas = it.hasFocus }
             .background(Panel, RoundedCornerShape(18.dp)).padding(vertical = 18.dp, horizontal = 8.dp),
     ) {
         Heading("Categories")

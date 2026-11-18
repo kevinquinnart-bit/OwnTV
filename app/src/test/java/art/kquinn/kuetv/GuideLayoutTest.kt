@@ -72,8 +72,8 @@ class GuideLayoutTest {
 
         // Into the grid: ▶ from the menu opens the categories, ▶ again goes into the grid, ▶ moves along a row.
         assertTrue("the days and Jump to now sit above the grid", shown("Jump to now") && shown("Tomorrow"))
-        // ▶ ▶ into the guide (onto the days, or the grid), ▼ ▼ down into the grid, then ▶ along a row.
-        press(Key.DirectionRight)
+        // ▼ from the top bar down into the screen, ▶ into the guide (onto the days, or the grid), ▼ ▼ down into the grid, then ▶ along a row.
+        press(Key.DirectionDown)
         press(Key.DirectionRight)
         press(Key.DirectionDown)
         press(Key.DirectionDown)

@@ -38,7 +38,8 @@ class FilmsExtrasTest {
         var played = 0
         rule.setContent { FilmsForChecks(library, Favourites(context)) { played++ } }
         rule.waitForIdle()
-        press(Key.DirectionRight)
+        // ▼ from the top bar into the categories, ▶ onto the buttons above the posters, ▼ onto the film.
+        press(Key.DirectionDown)
         press(Key.DirectionRight)
         press(Key.DirectionDown)
         // Hold OK on the film for a second: the key repeats while held, as a remote's does.
