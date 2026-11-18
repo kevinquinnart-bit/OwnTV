@@ -87,6 +87,20 @@ class WatchingTest {
         assertTrue("▶ ▶ on the sync row: sound 100 ms later · remote on: " + onRow(), shown("Sound 100 ms later"))
     }
 
+    @Test fun okOnTheSoundRowLeavesTheRemoteWorking() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { PlayerScreen(listOf(Playable("A Film", "http://films.example/1.mp4")), 0, live = false, onClose = {}) }
+        pass(300)
+        press(Key.DirectionCenter)
+        press(Key.DirectionRight)
+        press(Key.DirectionRight)
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        press(Key.DirectionCenter)
+        press(Key.DirectionDown)
+        assertTrue("after OK on the sound row, ▼ still moves · remote on: " + onRow(), onRow().contains("Picture shape"))
+    }
+
     @Test fun soundSyncMovesThePlaceAndLeavesNotKnownAlone() {
         assertEquals(1_150_000L, SoundSync.shifted(1_000_000L, 150_000L))
         assertEquals(900_000L, SoundSync.shifted(1_000_000L, -100_000L))

@@ -1083,6 +1083,8 @@ fun PlayerScreen(
                     // KueTV's own box and buttons, for everything it plays.
                     useController = false
                     isFocusable = false
+                    // Nothing inside the picture may take the remote from KueTV's own keys.
+                    descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                     keepScreenOn = true
                     // A film's bar has a subtitles button, to pick a language or turn them off.
                     setShowSubtitleButton(true)
