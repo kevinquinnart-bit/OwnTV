@@ -144,6 +144,8 @@ class MainActivity : ComponentActivity() {
         // A TV is always sideways. A phone turns with the way it is held.
         val tv = isTv(this)
         if (tv) requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        // On a TV the screen stays on while KueTV is showing: the Fire TV screensaver doesn't come on over it.
+        if (tv) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         Looks.load(this)
         UiLang.load(this)
         setContent {
@@ -163,6 +165,31 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         Resumes.count++
+        launching = false
+    }
+
+    // Set while KueTV itself opens something (Google sign-in, the installer, another player, a VPN prompt),
+    // so that isn't taken for leaving KueTV.
+    private var launching = false
+
+    override fun startActivity(intent: android.content.Intent, options: Bundle?) {
+        launching = true
+        super.startActivity(intent, options)
+    }
+
+    @Deprecated("Still what the activity-result tools call")
+    override fun startActivityForResult(intent: android.content.Intent, requestCode: Int, options: Bundle?) {
+        launching = true
+        @Suppress("DEPRECATION") super.startActivityForResult(intent, requestCode, options)
+    }
+
+    @Deprecated("Still what Google sign-in calls")
+    override fun startIntentSenderForResult(
+        intent: android.content.IntentSender, requestCode: Int, fillInIntent: android.content.Intent?,
+        flagsMask: Int, flagsValues: Int, extraFlags: Int, options: Bundle?,
+    ) {
+        launching = true
+        @Suppress("DEPRECATION") super.startIntentSenderForResult(intent, requestCode, fillInIntent, flagsMask, flagsValues, extraFlags, options)
     }
 
     override fun onStart() {
@@ -178,6 +205,12 @@ class MainActivity : ComponentActivity() {
     // Leaving KueTV (Home) while something plays: it carries on in a small picture in the corner, where the device allows.
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        // On a TV, Home (or another app) closes KueTV completely: nothing stays running or showing in a corner.
+        if (isTv(this) && !launching) {
+            Report.note("App", "closed on leaving")
+            finishAndRemoveTask()
+            return
+        }
         if (!Pip.wanted || !packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
         runCatching {
             enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9)).build())
@@ -613,14 +646,8 @@ private fun App() {
                     onFromStart = { programme -> playing = Playing(listOf(programme), 0, false) },
                     onMultiview = { items, index -> playing = null; multi = Playing(items, index, true) },
                     onVlc = { items, index -> playing = Playing(items, index, now.live, vlc = true) },
-                    lists = library?.takeIf { now.live }?.let { lib ->
-                        val play: (List<ChannelGroup>) -> List<Playable> = { groups -> groups.map { livePlayable(it, lib.account, lib.serverAheadSec) } }
-                        listOf(
-                            "Favourites" to { play(lib.groups.filter { g -> g.versions.any { Favourites.key(it.channel, true) in favourites.keys } }) },
-                            "Recently watched" to { play(Recent.pick(lib.groups, Recent.all(context)) { g -> g.versions.map { it.channel.url } }) },
-                            "All channels" to { play(lib.groups) },
-                        )
-                    }.orEmpty(),
+                    // The list over the picture holds only the channels being played: the other lists that were
+                    // offered above them (0.1.91) confused more than they helped.
                 )
             }
             choice != null -> {
@@ -1416,7 +1443,35 @@ private fun MainScreen(
     // The section shown before this one; null until the screen has been shown once.
     val before = remember { arrayOfNulls<Section>(1) }
     val shownOnce = remember { booleanArrayOf(false) }
+    // The small TV, before anything has been played since KueTV opened: the channel watched last time.
+    LaunchedEffect(library) {
+        if (LastLive.item != null) return@LaunchedEffect
+        Recent.pick(library.groups, Recent.all(context)) { g -> g.versions.map { it.channel.url } }.firstOrNull()
+            ?.takeIf { AddOns.showable(it.lightest.url) }?.let { LastLive.item = Playable(it.name, it.lightest.url) }
+    }
+    // Live TV, Films and Series always open on Favourites (All when there are none), each list from its top.
+    // Coming back from the player isn't opening a section, so it stays where it was.
     LaunchedEffect(section) {
+        if (before[0] != section && !(!shownOnce[0] && state.resumeKey != null)) {
+            when (section) {
+                Section.LIVE -> {
+                    state.liveCategory = if (library.groups.any { g -> g.versions.any { Favourites.key(it.channel, login) in favs } }) FAVOURITES else ALL
+                    launch { runCatching { state.liveCategoryList.scrollToItem(0) } }
+                    launch { runCatching { state.channelList.scrollToItem(0) } }
+                }
+                Section.FILMS -> {
+                    state.filmCategory = if (library.films.any { Favourites.key(it, login) in favs }) FAVOURITES else ALL
+                    launch { runCatching { state.filmCategoryList.scrollToItem(0) } }
+                    launch { runCatching { state.filmGrid.scrollToItem(0) } }
+                }
+                Section.SERIES -> if (state.openShow == null) {
+                    state.showCategory = if (library.shows.any { Favourites.key(it) in favs }) FAVOURITES else ALL
+                    launch { runCatching { state.showCategoryList.scrollToItem(0) } }
+                    launch { runCatching { state.showGrid.scrollToItem(0) } }
+                }
+                else -> Unit
+            }
+        }
         withFrameNanos { }
         withFrameNanos { }
         val first = !shownOnce[0]
@@ -1940,7 +1995,8 @@ private fun MainScreen(
                             FocusRow("Text size: " + Choices.textSizeNames[textSize], { Choices.textSize(context, (textSize + 1) % 3) }, look = Look.OTHER)
                             FocusRow("Reset text size, subtitles and small TV", { Choices.resetDisplay(context) }, look = Look.OTHER)
                             val pipOn = remember(Choices.changes) { Pip.on(context) }
-                            FocusRow(
+                            // On a TV, leaving KueTV closes it, so there is no small picture to choose.
+                            if (phone) FocusRow(
                                 "Small picture when you leave KueTV: " + if (pipOn) "on" else "off", { Pip.on(context, !pipOn) }, look = Look.OTHER,
                                 below = "What is playing carries on in a corner when you press Home, where the device allows it",
                             )
@@ -4223,10 +4279,11 @@ private fun HomeScreen(
             }
         }
 
-        Column(
-            if (phone) Modifier else Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 6.dp),
-        ) {
+        // The rows below the tiles, each with its heading. On a TV they show whole: a row that would be cut off
+        // at the bottom stays hidden until the remote moves down to it, and the rows then move up a row at a time.
+        val blockSpacing = Arrangement.spacedBy(if (phone) 14.dp else 6.dp)
+        val rows: List<@Composable () -> Unit> = listOf(
+        { Column(verticalArrangement = blockSpacing) {
         // Films and episodes left part way through: OK carries on from where it was left.
         val carry = remember(Positions.changes) { Positions.watching(context) }
         if (carry.isNotEmpty()) {
@@ -4266,7 +4323,8 @@ private fun HomeScreen(
                 }
             }
         }
-
+        } },
+        { Column(verticalArrangement = blockSpacing) {
         Heading("Favourite channels")
         if (channels.isEmpty()) {
             Note(if (phone) "Press and hold a channel in Live TV to make it a favourite. Favourites show here." else "Hold OK on a channel in Live TV to make it a favourite. Favourites show here.")
@@ -4303,12 +4361,57 @@ private fun HomeScreen(
                 }
             }
         }
+        } },
         // Favourite films and series, each in a row of posters. Hold OK takes one off.
-        val favFilms = remember(library, favs) { library.films.filter { Favourites.key(it, login) in favs } }
-        val favShows = remember(library, favs) { library.shows.filter { Favourites.key(it) in favs } }
-        PosterRow("Favourite films", favFilms, { "homefilm:" + it.id }, { it.name }, { it.poster }, state, resume, onFilm) { favourites.toggle(Favourites.key(it, login)) }
-        PosterRow("Favourite series", favShows, { "homeshow:" + it.id }, { it.name }, { it.poster }, state, resume, onShow) { favourites.toggle(Favourites.key(it)) }
+        { Column(verticalArrangement = blockSpacing) {
+            val favFilms = remember(library, favs) { library.films.filter { Favourites.key(it, login) in favs } }
+            PosterRow("Favourite films", favFilms, { "homefilm:" + it.id }, { it.name }, { it.poster }, state, resume, onFilm) { favourites.toggle(Favourites.key(it, login)) }
+        } },
+        { Column(verticalArrangement = blockSpacing) {
+            val favShows = remember(library, favs) { library.shows.filter { Favourites.key(it) in favs } }
+            PosterRow("Favourite series", favShows, { "homeshow:" + it.id }, { it.name }, { it.poster }, state, resume, onShow) { favourites.toggle(Favourites.key(it)) }
+        } },
+        )
+        if (phone) Column(verticalArrangement = blockSpacing) { rows.forEach { it() } }
+        else WholeRows(rows, Modifier.fillMaxWidth().weight(1f))
     }
+}
+
+/**
+ * Rows stacked down the screen, shown only whole: a row that would be cut off at the bottom is hidden until
+ * the remote moves down to it; then the rows move up so it shows in full. Moving up brings rows back.
+ */
+@Composable
+private fun WholeRows(rows: List<@Composable () -> Unit>, modifier: Modifier = Modifier) {
+    var focusedRow by remember { mutableIntStateOf(-1) }
+    val top = remember { intArrayOf(0) }
+    val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 6.dp.roundToPx() }
+    androidx.compose.ui.layout.Layout(
+        content = {
+            rows.forEachIndexed { i, row ->
+                Box(Modifier.onFocusChanged { if (it.hasFocus) focusedRow = i }) { row() }
+            }
+        },
+        modifier = modifier,
+    ) { measurables, constraints ->
+        val placeables = measurables.map { it.measure(constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)) }
+        val heights = placeables.map { if (it.height > 0) it.height + gap else 0 }
+        val room = constraints.maxHeight
+        val f = focusedRow
+        var t = top[0].coerceIn(0, (placeables.size - 1).coerceAtLeast(0))
+        if (f in placeables.indices) {
+            if (f < t) t = f
+            while (t < f && (t..f).sumOf { heights[it] } - gap > room) t++
+        }
+        top[0] = t
+        layout(constraints.maxWidth, room) {
+            var y = -(0 until t).sumOf { heights[it] }
+            placeables.forEachIndexed { i, p ->
+                val whole = y >= 0 && y + p.height <= room
+                p.placeWithLayer(0, y) { alpha = if (whole || i == t) 1f else 0f }
+                y += heights[i]
+            }
+        }
     }
 }
 
@@ -4592,24 +4695,17 @@ private fun LivePreview(on: ChannelGroup?, account: Account?, modifier: Modifier
 }
 
 /**
- * The small picture of the channel the remote is on. It changes channel once the remote has stayed on it
- * for a moment, and plays the channel's lightest version. Before any channel: the last one watched.
+ * The small picture: the channel last watched, still playing. It doesn't follow the remote down the list.
  */
 @Composable
 private fun PreviewPicture(on: ChannelGroup?, modifier: Modifier) {
-    var showing by remember { mutableStateOf(on) }
-    LaunchedEffect(on) {
-        if (on == null || on.id == showing?.id) return@LaunchedEffect
-        delay(900)
-        showing = on
-    }
-    val group = showing
-    val item = remember(group?.id) { group?.takeIf { AddOns.showable(it.lightest.url) }?.let { Playable(it.name, it.lightest.url) } } ?: LastLive.item
+    // The channel being watched keeps playing here: moving along the list only changes the details beside it.
+    val item = LastLive.item
     if (item != null) {
         MiniTv(item, modifier)
     } else {
         Box(modifier.aspectRatio(16f / 9f).background(Panel, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-            Text("Move onto a channel to watch it here.", color = Soft, fontSize = 18.sp, modifier = Modifier.padding(16.dp))
+            Text("OK on a channel to watch it.", color = Soft, fontSize = 18.sp, modifier = Modifier.padding(16.dp))
         }
     }
 }

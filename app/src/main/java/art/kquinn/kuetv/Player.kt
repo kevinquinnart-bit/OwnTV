@@ -34,6 +34,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import art.kquinn.kuetv.TrText as Text
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -261,7 +264,7 @@ private object Settled {
  * box does. Changing channel or closing the player also ends it. The recording is a copy of what the
  * player is being sent, so it uses no second connection to the provider.
  */
-@OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun PlayerScreen(
     firstItems: List<Playable>,
@@ -1360,7 +1363,28 @@ fun PlayerScreen(
                             )
                         }
                     }
-                    if (onNow != null) {
+                    // TV: what is on now and what is on next side by side, so the box is less tall. A long title
+                    // scrolls along, and a long description scrolls up through three lines by itself.
+                    if (!phone && (onNow != null || nextUp != null)) {
+                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                            listOf("Now" to onNow, "Next" to nextUp).forEach { (word, p) ->
+                                Column(Modifier.weight(1f)) {
+                                    if (p != null) {
+                                        Text(
+                                            word + " · " + clock.format(java.util.Date(p.startMs)) + " to " + clock.format(java.util.Date(p.stopMs)),
+                                            color = Color(0xFFFFD23F), fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                                        )
+                                        Text(
+                                            p.title.ifBlank { "No title" }, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                                            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2_000),
+                                        )
+                                        if (p.description.isNotBlank()) AutoScrollText(p.description, soft, 17.sp, 3)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (phone && onNow != null) {
                         Text(
                             "Now · " + clock.format(java.util.Date(onNow.startMs)) + " to " + clock.format(java.util.Date(onNow.stopMs)),
                             color = Color(0xFFFFD23F), fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp),
@@ -1370,7 +1394,7 @@ fun PlayerScreen(
                         // TV: the whole description. Phone: three lines, so the box doesn't fill the screen.
                         if (onNow.description.isNotBlank()) Text(onNow.description, color = soft, fontSize = 18.sp, maxLines = if (phone) 3 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                     }
-                    if (nextUp != null) {
+                    if (phone && nextUp != null) {
                         Text(
                             "Next · " + clock.format(java.util.Date(nextUp.startMs)) + " · " + nextUp.title.ifBlank { "No title" },
                             color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp),
@@ -1775,5 +1799,29 @@ object Pip {
     fun on(context: android.content.Context, value: Boolean) {
         prefs(context).edit().putBoolean("pip", value).apply()
         Choices.touch()
+    }
+}
+
+/**
+ * Words in at most [lines] lines. When there are more, they scroll up slowly by themselves, wait at the
+ * end, and start again from the top.
+ */
+@Composable
+private fun AutoScrollText(text: String, color: Color, fontSize: androidx.compose.ui.unit.TextUnit, lines: Int) {
+    val scroll = rememberScrollState()
+    val lineHeight = fontSize * 1.3f
+    val most = with(androidx.compose.ui.platform.LocalDensity.current) { lineHeight.toDp() } * lines
+    Box(Modifier.heightIn(max = most).verticalScroll(scroll, enabled = false)) {
+        Text(text, color = color, fontSize = fontSize, lineHeight = lineHeight)
+    }
+    LaunchedEffect(text, scroll.maxValue) {
+        scroll.scrollTo(0)
+        if (scroll.maxValue <= 0) return@LaunchedEffect
+        while (true) {
+            delay(3_000)
+            scroll.animateScrollTo(scroll.maxValue, androidx.compose.animation.core.tween(durationMillis = (scroll.maxValue * 30).coerceAtLeast(1_500), easing = androidx.compose.animation.core.LinearEasing))
+            delay(3_000)
+            scroll.scrollTo(0)
+        }
     }
 }
