@@ -135,7 +135,12 @@ object Vpn {
         } catch (e: Exception) {
             throw VpnProblem("Couldn't fetch the link: " + (e.message ?: e.javaClass.simpleName) + ".")
         }
-        return fromFile(bytes)
+        val text = fromFile(bytes)
+        // A site can answer with a web page (a sign-in, an advert, a check that a person is there) instead of the file.
+        val looksLikePage = text.trimStart().take(200).lowercase().let { it.startsWith("<!doctype") || it.startsWith("<html") || it.contains("<head") }
+        Report.note("VPN", "fetched " + url + ": " + bytes.size + " bytes, " + if (looksLikePage) "a web page" else "starts \"" + text.trimStart().take(40).replace('\n', ' ') + "\"")
+        if (looksLikePage) throw VpnProblem("The link gave a web page, not the OpenVPN file. Download the .ovpn file on your phone instead, and send it from the phone page.")
+        return text
     }
 
     /** The OpenVPN text in a file: the file itself, or the first .ovpn inside a .zip. */

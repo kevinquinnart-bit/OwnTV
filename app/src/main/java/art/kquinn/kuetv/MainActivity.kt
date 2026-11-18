@@ -4129,6 +4129,9 @@ private fun StremioScreen(onDone: () -> Unit) {
     }
 }
 
+/** VPN Jantit's free Dublin server (Ireland 1): the link to its OpenVPN file. */
+private const val JANTIT_IRELAND = "https://www.vpnjantit.com/download-openvpn.php?server=ie1"
+
 /** The VPN in a few words, for the Settings list. */
 private fun vpnLine(context: android.content.Context): String = when {
     Vpn.details(context).isEmpty -> "Not set up"
@@ -4263,21 +4266,29 @@ private fun VpnScreen(onDone: () -> Unit) {
         Page(
             "VPN",
             "Add the OpenVPN file from your VPN company, and the username and password that go with it. While the VPN is on it covers the whole $device.",
-            said ?: if (details.isEmpty) null else vpnStatus(Vpn.level),
+            // KueTV's answer shows by the buttons instead, where it is seen.
+            if (said != null || details.isEmpty) null else vpnStatus(Vpn.level),
         ) {
             phoneAddress?.let { address -> InfoPanel("Easiest: on your phone, on the same Wi-Fi, open $address. Choose the file there and type the username and password.") }
-            if (phone) FocusRow("Choose the OpenVPN file on this phone", { pick.launch("*/*") }, Modifier.focusRequester(first), look = Look.MAIN)
-            Field("Or a link to the file", link, modifier = if (phone) Modifier else Modifier.focusRequester(first)) { link = it }
-            FocusRow("Use VPN Jantit's Dublin server (Ireland 1)", { link = "https://www.vpnjantit.com/download-openvpn.php?server=ie1" }, look = Look.OTHER, below = "Fills in the link to its file. Then type the login you made on their page.")
-            Field("VPN username", user) { user = it }
+            Field("VPN username", user, modifier = Modifier.focusRequester(first)) { user = it }
             Field("VPN password", pass, secret = true) { pass = it }
-            FocusRow(if (busy) "Reading…" else "Add the link with this username and password", { keep("", link, user, pass) }, look = Look.MAIN)
+            // One press: KueTV fetches the Dublin server's file itself and keeps it with the login above.
+            FocusRow(
+                if (busy) "Reading…" else "Use VPN Jantit's Dublin server with this login", { keep("", JANTIT_IRELAND, user, pass) }, look = Look.MAIN,
+                below = "Free server in Dublin. Make the login on their page first (below).",
+            )
+            // KueTV's answer, here by the buttons, so it is seen without going back to the top.
+            said?.let { StatusBox(it) }
+            Heading("Another VPN")
+            if (phone) FocusRow("Choose its OpenVPN file on this phone", { pick.launch("*/*") }, look = Look.OTHER)
+            Field("Or a link to its OpenVPN file", link) { link = it }
+            FocusRow(if (busy) "Reading…" else "Add that link with this login", { keep("", link, user, pass) }, look = Look.OTHER)
             if (!details.isEmpty) FocusRow("Keep the file I have, with this username and password", { keep(details.config, "", user, pass) }, look = Look.OTHER)
             Heading("Where to get a free Irish one")
             InfoPanel(
                 "VPN Jantit has a free server in Dublin. On their page, make an account for the server called Ireland 1:\n" +
                     "https://www.vpnjantit.com/create-free-account?server=ie1&type=OpenVPN\n" +
-                    "Then choose \"Use VPN Jantit's Dublin server\" above, and type the username and password exactly as their page shows them.\n" +
+                    "Type the username and password above exactly as their page shows them (they add -vpnjantit.com to the username), then choose \"Use VPN Jantit's Dublin server\".\n" +
                     "A free account there lasts 7 days. When it runs out, KueTV says so: make a new one and add it here again.",
             )
             FocusRow(if (details.isEmpty) "‹ Back" else "‹ Back, without changing anything", { if (editing) editing = false else onDone() }, look = Look.OTHER)

@@ -38,7 +38,11 @@ class VpnPageTest {
         Vpn.forget(app)
         rule.setContent { VpnForChecks() }
         rule.waitForIdle()
-        assertTrue("with nothing added, the page asks for the file · remote on " + where(), remoteOn("Or a link to the file"))
+        assertTrue("with nothing added, the remote starts on the username · remote on " + where(), remoteOn("VPN username"))
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        assertTrue("▼ ▼ reaches the one-press Dublin server button · remote on " + where(), remoteOn("Use VPN Jantit's Dublin server"))
+        assertTrue("…and there is still a way to add another VPN's file", shows("Or a link to its OpenVPN file"))
         assertTrue("…and says where to get a free Irish one", shows("Where to get a free Irish one"))
         assertTrue("…and offers the Dublin server's file in one press", shows("VPN Jantit's Dublin server"))
 
