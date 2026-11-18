@@ -37,7 +37,7 @@ class ProviderTest {
                 q["action"] == "get_series_categories" -> """[{"category_id":"5","category_name":"Crime"}]"""
                 q["action"] == "get_series" -> """[{"num":1,"name":"A Show","series_id":77,"cover":"http://x/c.jpg","category_id":"5","backdrop_path":["a"],"plot":"Spies, mostly.","genre":"Crime, Drama","releaseDate":"2022-04-01","rating":"8"},{"name":"B Show","series_id":78,"cover":"","category_id":"5"}]"""
                 q["action"] == "get_series_info" && q["series_id"] == "77" -> """{"seasons":[],"info":{"name":"A Show"},"episodes":{
-                    "2":[{"id":"903","episode_num":1,"title":"A Show - S02E01","container_extension":"mkv","season":2,"info":{"duration":"00:45:00"}}],
+                    "2":[{"id":"903","episode_num":1,"title":"A Show - S02E01","container_extension":"mkv","season":2,"info":{"duration":"00:45:00","movie_image":"http://x/e3.jpg","air_date":"2021-03-12"}}],
                     "1":[{"id":"902","episode_num":"2","title":"Two","container_extension":"mp4","season":1},{"id":"901","episode_num":1,"title":"One","container_extension":"","season":1}]}}"""
                 q["action"] == "get_series_info" && q["series_id"] == "78" -> """{"episodes":[[{"id":"911","episode_num":1,"title":"Only","container_extension":"mp4","season":1}]]}"""
                 q["action"] == "get_vod_categories" -> """[{"category_id":"9","category_name":"Drama"}]"""
@@ -112,6 +112,9 @@ class ProviderTest {
         assertEquals("$base/series/kev/p%20w%2F1/901.mp4", eps[0].url)
         assertEquals("$base/series/kev/p%20w%2F1/903.mkv", eps[2].url)
         assertEquals("the list-of-lists shape", "Only", Provider.episodes(account, "78").single().title)
+        assertEquals("an episode's picture", "http://x/e3.jpg", eps[2].image)
+        assertEquals("when it first aired", "12 Mar 2021", EpisodeOrder.airedWords(eps[2].aired))
+        assertEquals("none given", "", eps[0].aired)
     }
 
     @Test fun searchMatchesEveryWordInAnyOrder() {

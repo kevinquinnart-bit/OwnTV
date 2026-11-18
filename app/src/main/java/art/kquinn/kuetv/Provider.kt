@@ -62,7 +62,13 @@ data class About(
     }
 }
 
-data class Episode(val id: String, val season: Int, val number: Int, val title: String, val url: String)
+data class Episode(
+    val id: String, val season: Int, val number: Int, val title: String, val url: String,
+    /** The episode's own picture, when the provider has one. */
+    val image: String = "",
+    /** When it first aired, as the provider writes it ("2021-03-12"); empty when not known. */
+    val aired: String = "",
+)
 
 class Library(
     val liveCategories: List<Category>,
@@ -542,7 +548,13 @@ object Provider {
                 val field: (String) -> String = { name -> o.get(name)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty() }
                 val id = field("id").ifBlank { continue }
                 val ext = field("container_extension").ifBlank { "mp4" }
-                out += Episode(id, field("season").toIntOrNull() ?: 0, field("episode_num").toIntOrNull() ?: 0, field("title").trim(), "$base$id.$ext")
+                val info = runCatching { o.get("info")?.takeIf { it.isJsonObject }?.asJsonObject }.getOrNull()
+                val infoField: (String) -> String = { name -> info?.get(name)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty() }
+                out += Episode(
+                    id, field("season").toIntOrNull() ?: 0, field("episode_num").toIntOrNull() ?: 0, field("title").trim(), "$base$id.$ext",
+                    image = infoField("movie_image").ifBlank { infoField("cover_big") },
+                    aired = infoField("air_date").ifBlank { infoField("releasedate") }.ifBlank { infoField("release_date") },
+                )
             }
         }
         return out.distinctBy { it.id }.sortedWith(compareBy({ it.season }, { it.number }))

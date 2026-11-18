@@ -1455,7 +1455,14 @@ private fun MainScreen(
     // The chosen section's screen. Where it sits is decided underneath, by TV or phone.
     val body: @Composable Pane.() -> Unit = {
         when (section) {
-            Section.HOME -> HomeScreen(library, state, favourites, homeFocus, resume, onPlay, openFromHome, carryOn, fill())
+            Section.HOME -> HomeScreen(
+                library, state, favourites, homeFocus, resume, onPlay, openFromHome, carryOn, fill(),
+                onFilm = { film -> onPlay(listOf(Playable(film.name, film.url, find = finder("movie", film.name, null, null), poster = film.poster)), 0, false, "homefilm:" + film.id) },
+                onShow = { show ->
+                    state.openShow = show
+                    section = Section.SERIES
+                },
+            )
             Section.LIVE -> {
                 Categories(listOf(Category(RECENT, "🕘 Recently watched")) + library.liveCategories, liveCategory, state.liveCategoryList) {
                     if (it != state.liveCategory) {
@@ -2447,6 +2454,12 @@ private fun Pane.SeriesPane(
         }
         Listing.sorted(inCategory, sort, { it.name }, { it.added })
     }
+    // A series with an episode part way through: how far through that episode, as a bar on its poster.
+    val partWay = remember(Positions.changes) {
+        Positions.watching(context).filter { it.lengthMs > 0 }.mapNotNull { w ->
+            w.name.substringBefore(" · S", "").takeIf { it.isNotEmpty() }?.let { it to (w.positionMs.toFloat() / w.lengthMs).coerceIn(0f, 1f) }
+        }.distinctBy { it.first }.toMap()
+    }
     LaunchedEffect(Unit) {
         if (!state.showJustClosed) return@LaunchedEffect
         state.showJustClosed = false
@@ -2479,6 +2492,7 @@ private fun Pane.SeriesPane(
                     favourite = Favourites.key(show) in favs,
                     onHold = { favourites.toggle(Favourites.key(show)) },
                     onFocus = { state.onShow = show },
+                    progress = partWay[show.name],
                 )
             }
         }
@@ -2544,7 +2558,15 @@ private fun Pane.EpisodePage(
                 val context = LocalContext.current
                 val watchedNow = Watched.changes
                 val placesNow = Positions.changes
+                // Oldest first, as the provider lists them, or newest first: chosen for each series.
+                val newest = remember(Listing.changes, show.id) { EpisodeOrder.newestFirst(context, show.id) }
+                val inOrder = remember(episodes, newest) {
+                    episodes.withIndex().let { all -> if (newest) all.sortedWith(compareByDescending<IndexedValue<Episode>> { it.value.season }.thenByDescending { it.value.number }) else all.toList() }
+                }
                 LazyColumn(Modifier.fillMaxSize(), state = state.episodeList) {
+                    item(key = "order") {
+                        FocusRow("Order: " + if (newest) "newest first" else "oldest first", { EpisodeOrder.set(context, show.id, !newest) }, look = Look.OTHER, below = "OK to change")
+                    }
                     // The series' trailer, when the provider gives one.
                     val trailer = show.about.trailer
                     if (!trailer.isNullOrBlank()) {
@@ -2554,10 +2576,10 @@ private fun Pane.EpisodePage(
                             }, look = Look.OTHER)
                         }
                     }
-                    episodes.forEachIndexed { i, episode ->
-                        if (i == 0 || episodes[i - 1].season != episode.season) {
+                    inOrder.forEachIndexed { at, (i, episode) ->
+                        if (at == 0 || inOrder[at - 1].value.season != episode.season) {
                             item(key = "season:" + episode.season) {
-                                Box(Modifier.padding(top = if (i == 0) 0.dp else 14.dp)) { Heading("Season " + episode.season) }
+                                Box(Modifier.padding(top = if (at == 0) 0.dp else 14.dp)) { Heading("Season " + episode.season) }
                             }
                         }
                         item(key = episode.id) {
@@ -2567,18 +2589,22 @@ private fun Pane.EpisodePage(
                             FocusRow(
                                 (if (watched) "✓ " else "") + label(episode),
                                 { onPlay(playables, i, false, key) },
-                                (if (i == 0) Modifier.focusRequester(first) else Modifier)
+                                (if (at == 0) Modifier.focusRequester(first) else Modifier)
                                     .then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                                leading = if (episode.image.isBlank()) null else ({ EpisodePicture(episode.image) }),
                                 // Hold OK: marks it watched, or not watched.
                                 onHold = {
                                     Watched.set(context, episode.url, !watched)
                                     android.widget.Toast.makeText(context, if (watched) "Marked as not watched." else "Marked as watched.", android.widget.Toast.LENGTH_SHORT).show()
                                 },
-                                below = when {
-                                    watched -> "Watched · hold OK to mark as not watched"
-                                    part != null -> (part * 100).toInt().toString() + "% watched"
-                                    else -> null
-                                },
+                                below = listOfNotNull(
+                                    episode.aired.takeIf { it.isNotBlank() }?.let { "First aired " + EpisodeOrder.airedWords(it) },
+                                    when {
+                                        watched -> "Watched · hold OK to mark as not watched"
+                                        part != null -> (part * 100).toInt().toString() + "% watched"
+                                        else -> null
+                                    },
+                                ).joinToString(" · ").ifEmpty { null },
                             )
                         }
                     }
@@ -3994,6 +4020,8 @@ private fun HomeScreen(
     onOpen: (Section) -> Unit,
     onCarryOn: (Positions.Watching) -> Unit,
     modifier: Modifier = Modifier,
+    onFilm: (Film) -> Unit = {},
+    onShow: (Show) -> Unit = {},
 ) {
     val context = LocalContext.current
     val phone = LocalPhone.current
@@ -4147,7 +4175,50 @@ private fun HomeScreen(
                 }
             }
         }
+        // Favourite films and series, each in a row of posters. Hold OK takes one off.
+        val favFilms = remember(library, favs) { library.films.filter { Favourites.key(it, login) in favs } }
+        val favShows = remember(library, favs) { library.shows.filter { Favourites.key(it) in favs } }
+        PosterRow("Favourite films", favFilms, { "homefilm:" + it.id }, { it.name }, { it.poster }, state, resume, onFilm) { favourites.toggle(Favourites.key(it, login)) }
+        PosterRow("Favourite series", favShows, { "homeshow:" + it.id }, { it.name }, { it.poster }, state, resume, onShow) { favourites.toggle(Favourites.key(it)) }
     }
+    }
+}
+
+/** A row on Home of favourite films or series: their posters; OK plays the film or opens the series. */
+@Composable
+private fun <T> PosterRow(title: String, items: List<T>, key: (T) -> String, name: (T) -> String, poster: (T) -> String, state: BrowseState, resume: FocusRequester, onOpen: (T) -> Unit, onHold: (T) -> Unit) {
+    if (items.isEmpty()) return
+    val phone = LocalPhone.current
+    Heading(title)
+    LazyRow(
+        Modifier.fillMaxWidth().focusRestorer(),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (phone) 10.dp else 14.dp),
+    ) {
+        itemsIndexed(items, key = { _, it -> key(it) }) { _, item ->
+            Tile(
+                { state.resumeKey = key(item); onOpen(item) },
+                Modifier.width(if (phone) 110.dp else 120.dp).then(if (key(item) == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                onHold = { onHold(item) },
+            ) { focused ->
+                Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+                    if (poster(item).isNotBlank()) AsyncImage(model = poster(item), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    else Text(name(item), color = Soft, fontSize = 14.sp, maxLines = 4, modifier = Modifier.padding(8.dp))
+                }
+                Text(
+                    name(item), color = if (focused) Color.Black else Color.White, fontSize = if (phone) 13.sp else 15.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+            }
+        }
+    }
+}
+
+/** An episode's picture, beside its name. */
+@Composable
+private fun EpisodePicture(url: String) {
+    Box(Modifier.size(width = 112.dp, height = 63.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x22FFFFFF))) {
+        AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
     }
 }
 
@@ -5029,6 +5100,13 @@ internal class SettingsExtras(
     /** What the last backup or restore said. */
     val driveNote: String = "",
 )
+
+/** For the automatic checks only: Home as a TV shows it. */
+@Composable
+internal fun HomeForChecks(library: Library, favourites: Favourites) {
+    val state = remember { BrowseState().apply { section = Section.HOME } }
+    MainScreen(library, state, favourites, { _, _, _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+}
 
 /** For the automatic checks only: Films as a TV shows it. [onPlay] is told each time something is played. */
 @Composable

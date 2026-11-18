@@ -46,6 +46,10 @@ object Listing {
     var changes by mutableIntStateOf(0)
         private set
 
+    fun touch() {
+        changes++
+    }
+
     private fun prefs(context: Context) = context.getSharedPreferences("listing", Context.MODE_PRIVATE)
 
     fun sort(context: Context): Int = prefs(context).getInt("sort", 0).coerceIn(0, sorts.size - 1)
@@ -70,6 +74,22 @@ object Listing {
     /** "|UK| The Batman" as "Batman": a provider's tag and a leading "The" or "A" don't count for A to Z. */
     fun plainName(name: String): String =
         name.trim().replace(Regex("^(\\[[^]]*]|\\|[^|]*\\||[A-Z]{2,4}\\s*[-:|]\\s)\\s*"), "").replace(Regex("^(the|a|an)\\s+", RegexOption.IGNORE_CASE), "").trim()
+}
+
+/** Each series' episode order: oldest first (as the provider lists them) or newest first. Kept on this device. */
+object EpisodeOrder {
+    private fun prefs(context: Context) = context.getSharedPreferences("listing", Context.MODE_PRIVATE)
+    fun newestFirst(context: Context, showId: String): Boolean = prefs(context).getBoolean("newest.$showId", false)
+    fun set(context: Context, showId: String, newest: Boolean) {
+        prefs(context).edit().putBoolean("newest.$showId", newest).apply()
+        Listing.touch()
+    }
+
+    /** "2021-03-12" as "12 Mar 2021"; anything else as it is. */
+    fun airedWords(aired: String): String = runCatching {
+        val d = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.UK).parse(aired.take(10))
+        java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.UK).format(d!!)
+    }.getOrDefault(aired)
 }
 
 /** A film's or series' trailer: opens it in the YouTube app, or the web if that isn't there. False when nothing can. */
