@@ -291,6 +291,8 @@ fun PlayerScreen(
     // Streams whose separate subtitle file has been left off, because they wouldn't play with it.
     val withoutSubtitles = remember { HashSet<String>() }
     var reload by remember { mutableIntStateOf(0) }
+    // Whether a torrent has been played in this sitting: only then is there a torrent to stop or tidy away.
+    val usedTorrent = remember { booleanArrayOf(false) }
     // Films and episodes already carried on from where they were left, so a change of stream doesn't do it twice over.
     val carriedOn = remember { HashSet<Int>() }
     val nextStream: (List<Stream>, Int) -> String = { all, next ->
@@ -574,8 +576,10 @@ fun PlayerScreen(
             Recordings.playing = false
             Recordings.wake(context)
             // Any torrent that was playing is stopped and what it fetched is removed. That can take a moment.
-            val app = context.applicationContext
-            Thread({ Torrents.close(app) }, "kuetv-torrent-close").start()
+            if (usedTorrent[0]) {
+                val app = context.applicationContext
+                Thread({ Torrents.close(app) }, "kuetv-torrent-close").start()
+            }
         }
     }
 
@@ -620,7 +624,8 @@ fun PlayerScreen(
         subtitles = 0
         val torrent = (now?.url ?: item.url).startsWith("magnet:")
         if (torrent && moved == null) moved = "This one is a torrent. It can take a minute to start."
-        if (!torrent) Thread({ Torrents.stopCurrent() }, "kuetv-torrent-stop").start()
+        if (torrent) usedTorrent[0] = true
+        else if (usedTorrent[0]) Thread({ Torrents.stopCurrent() }, "kuetv-torrent-stop").start()
         http.setDefaultRequestProperties(now?.headers?.takeIf { it.isNotEmpty() } ?: item.headers)
         // Live, with pause and rewind on: the channel is fetched into a copy here and played from that.
         // A stream that comes in many small files (.m3u8) can't be copied this way, so it plays as before.
