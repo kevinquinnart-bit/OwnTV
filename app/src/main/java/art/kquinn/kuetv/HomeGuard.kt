@@ -51,6 +51,7 @@ class HomeGuard : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
         val cls = event.className?.toString().orEmpty()
+        android.util.Log.i("KueHome", "front: $pkg / $cls (KueTV in front: $inFront)")
         when {
             pkg == AMAZON_HOME -> {
                 onAmazonHome = cls == AMAZON_HOME_SCREEN
@@ -72,6 +73,7 @@ class HomeGuard : AccessibilityService() {
         if (running !== this || !onAmazonHome || inFront || now - firstAsk > 8_000) return
         if (now - lastLaunch >= 1_000) {
             lastLaunch = now
+            android.util.Log.i("KueHome", "opening KueTV")
             showCover()
             openKueTv(this)
         }
