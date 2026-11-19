@@ -40,3 +40,16 @@ class AppKindsTest {
         org.junit.Assert.assertEquals("other", kind("Downloader", "com.esaba.downloader"))
     }
 }
+
+/** A provider's channel names lead to the right channel in its own app. */
+class LiveInAppsTest {
+    @org.junit.Test fun providerNamesFindTheirApp() {
+        org.junit.Assert.assertEquals("ITV1", LiveInApps.forChannel("ITV 1 HD")?.name)
+        org.junit.Assert.assertEquals("ITV1", LiveInApps.forChannel("UK: ITV1")?.name)
+        org.junit.Assert.assertEquals("Channel 4", LiveInApps.forChannel("UK | Channel 4 HD")?.name)
+        org.junit.Assert.assertEquals("E4", LiveInApps.forChannel("E4")?.name)
+        org.junit.Assert.assertEquals(null, LiveInApps.forChannel("E4 +1"))
+        org.junit.Assert.assertEquals(null, LiveInApps.forChannel("RTE One"))
+        org.junit.Assert.assertEquals(null, LiveInApps.forChannel("ITV Wales"))
+    }
+}

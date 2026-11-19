@@ -1058,6 +1058,10 @@ fun PlayerScreen(
             add(subsButton)
             add(Control("Options", Icon.OPTIONS, act = openOptions))
             if (items.size > 1 || onChannels != null) add(Control("Channels", Icon.LIST, act = toChannels))
+            // This channel in its own app's live player (ITVX for ITV1, Channel 4's app for Channel 4…), as Freely does.
+            items.getOrNull(index)?.let { LiveInApps.forChannel(it.name) }?.let { ch ->
+                add(Control("In " + ch.app, Icon.PLAY) { LiveInApps.open(context, ch) })
+            }
             if (previous in items.indices) add(Control("Last channel", Icon.PREVIOUS) { go(previous) })
             if (items.size > 1 && onMultiview != null) add(Control("Multiview", Icon.MULTI) { onMultiview(items.toList(), index) })
             // Always last: LIVE, drawn on the right of the box. Behind live, it jumps to what is on now.

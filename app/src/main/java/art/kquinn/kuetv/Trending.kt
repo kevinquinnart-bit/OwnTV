@@ -276,6 +276,31 @@ object LiveInApps {
         Ch("RTÉ live", "RTÉ Player", "com.twentyfouri.tvbridge.rte", "https://www.rte.ie/player/onnow"),
     )
 
+    /**
+     * The entry for a channel by its name in a provider's list ("ITV 1 HD", "UK: Channel 4", "E4 +1" is left out:
+     * the apps only play the main channel). RTÉ isn't matched: its app's link plays whatever RTÉ has on, not one channel.
+     */
+    fun forChannel(name: String): Ch? {
+        val n = name.lowercase().replace(Regex("^[a-z]{2,3}\\s*[:|]\\s*"), "").replace(Regex("\\b(hd|fhd|uhd|4k|sd|uk|london|\\(.*?\\))\\b"), " ")
+            .replace(Regex("[^a-z0-9+]"), "")
+        if (n.contains("+1") || n.contains("plus1")) return null
+        val key = when (n) {
+            // UTV is ITV1 in Northern Ireland: ITVX plays the viewer's own region of ITV1.
+            "itv", "itv1", "utv" -> "ITV1"
+            "itv2" -> "ITV2"
+            "itv3" -> "ITV3"
+            "itv4" -> "ITV4"
+            "itvquiz", "itvbe" -> "ITV Quiz"
+            "channel4", "c4", "ch4" -> "Channel 4"
+            "4seven" -> "4seven"
+            "e4" -> "E4"
+            "more4" -> "More4"
+            "film4" -> "Film4"
+            else -> return null
+        }
+        return all.firstOrNull { it.name == key }
+    }
+
     /** Opens the channel in its app; if the app isn't on the TV, the app store on a search for it. */
     fun open(context: Context, ch: Ch) {
         val ok = runCatching {
