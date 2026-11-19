@@ -41,7 +41,6 @@ class TrendingTest {
         rule.waitForIdle()
         val shown: (String) -> Boolean = { rule.onAllNodes(hasText(it, substring = true)).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(shown("A Trending Show") && shown("Trending · Netflix") && shown("What it is about."))
-        assertTrue("the TV's settings are in the row of apps", shown("TV settings"))
         Trending.setForChecks(emptyList())
     }
 }
