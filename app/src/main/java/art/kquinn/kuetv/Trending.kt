@@ -272,8 +272,8 @@ object LiveInApps {
         Ch("E4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/E4"),
         Ch("More4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/M4"),
         Ch("Film4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/F4"),
-        // RTÉ Player's "on now": what is live on RTÉ, playing.
-        Ch("RTÉ live", "RTÉ Player", "com.twentyfouri.tvbridge.rte", "https://www.rte.ie/player/onnow"),
+        // RTÉ Player: left out. Checked on Kevin's TV on 19 November 2026: its links to a live channel (onnow/RTEONE,
+        // onnow?channelSelected=RTE2) only open its Box Sets page from the UK, where RTÉ's live channels aren't offered.
     )
 
     /**
