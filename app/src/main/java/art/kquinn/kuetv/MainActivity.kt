@@ -144,6 +144,9 @@ class MainActivity : ComponentActivity() {
         if (Report.file == null) Report.keepIn(java.io.File(filesDir, "report.txt"))
         PhoneSetup.app = applicationContext
         Report.note("App", "opened, version " + BuildConfig.VERSION_NAME)
+        // TV: what the TV's own channel list holds (the aerial, and the channels the TV apps add), written where a
+        // computer can read it, to find out how Freely's way of opening channels can be brought into KueTV.
+        if (isTv(this)) Thread { TvChannels.writeProbe(applicationContext) }.start()
         // A TV is always sideways. A phone turns with the way it is held.
         val tv = isTv(this)
         if (tv) requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -169,6 +172,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         Resumes.count++
         launching = false
+        // KueTV is on screen: the Home button watcher's black cover can come down.
+        HomeGuard.shown()
     }
 
     // Set while KueTV itself opens something (Google sign-in, the installer, another player, a VPN prompt),

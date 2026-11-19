@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">KueTV 2</string>
+    <string name="home_guard_about">Opens KueTV when the Home button is pressed, in place of Amazon's home screen. It reads nothing on the screen.</string>
+    <string name="home_guard_name">KueTV Home button</string>
 </resources>
