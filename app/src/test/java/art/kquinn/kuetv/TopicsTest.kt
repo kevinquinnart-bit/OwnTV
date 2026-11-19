@@ -16,6 +16,9 @@ class TopicsTest {
         assertEquals("ent", Topics.of("IE | General"))
         assertEquals("docs", Topics.of("Documentary"))
         assertEquals("other", Topics.of("Adult"))
+        assertEquals("sport", Topics.of("Todays Live Events"))
+        assertEquals("docs", Topics.of("Free: Education (Watchio.live TV)"))
+        assertEquals("ent", Topics.of("Free: United Kingdom (Watchio.live TV)"))
     }
 
     @Test fun onlyTopicsWithChannelsShow() {
