@@ -1413,7 +1413,7 @@ private fun TopBar(section: Section, focus: FocusRequester, bar: BarReach, onPic
             }
         }
         LaunchedEffect(time) { Weather.refresh() }
-        Weather.now?.let { Text(it, color = Soft, fontSize = 17.sp, maxLines = 1, modifier = Modifier.padding(end = 14.dp)) }
+        Weather.now?.let { Text(it, color = Soft, fontSize = 17.sp, maxLines = 1, modifier = Modifier.padding(start = 20.dp, end = 14.dp)) }
         Text(time, color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
