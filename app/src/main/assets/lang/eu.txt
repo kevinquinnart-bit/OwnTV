@@ -838,3 +838,4 @@
 841=Telebistaren ezarpenak
 842=gehiago
 843=OK sakatuta aplikazioa irekitzen da
+844=Zuzenean beren aplikazioetan

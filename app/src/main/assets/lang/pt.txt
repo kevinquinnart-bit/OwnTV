@@ -838,3 +838,4 @@
 841=Definições da TV
 842=mais
 843=OK abre a app
+844=Em direto nas suas próprias apps

@@ -841,3 +841,4 @@ Your apps
 TV settings
 more
 OK opens the app
+Live in their own apps

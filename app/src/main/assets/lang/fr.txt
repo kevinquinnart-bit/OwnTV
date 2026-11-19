@@ -838,3 +838,4 @@
 841=Paramètres du téléviseur
 842=plus
 843=OK ouvre l’appli
+844=En direct dans leurs applis

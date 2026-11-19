@@ -838,3 +838,4 @@
 841=Tv-instellingen
 842=meer
 843=OK opent de app
+844=Live in hun eigen apps

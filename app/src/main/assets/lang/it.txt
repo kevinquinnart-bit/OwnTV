@@ -838,3 +838,4 @@
 841=Impostazioni TV
 842=altro
 843=OK apre l’app
+844=In diretta nelle loro app

@@ -838,3 +838,4 @@
 841=Nastavení TV
 842=další
 843=OK otevře aplikaci
+844=Živě ve vlastních aplikacích

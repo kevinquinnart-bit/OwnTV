@@ -838,3 +838,4 @@
 841=TV-beállítások
 842=továbbiak
 843=Az OK megnyitja az alkalmazást
+844=Élőben a saját alkalmazásukban

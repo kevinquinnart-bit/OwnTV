@@ -838,3 +838,4 @@
 841=TV ayarları
 842=daha fazla
 843=OK uygulamayı açar
+844=Kendi uygulamalarında canlı

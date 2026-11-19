@@ -838,3 +838,4 @@
 841=TV-innstillinger
 842=mer
 843=OK åpner appen
+844=Direkte i egne apper

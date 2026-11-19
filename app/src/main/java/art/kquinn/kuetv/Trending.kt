@@ -204,3 +204,28 @@ object Launcher {
         context.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }.isSuccess
 }
+
+/**
+ * Live channels that open straight into their own app's live player, as Freely does. Each link was tried on
+ * Kevin's Fire TV on 19 November 2026 and went straight to that channel playing live.
+ */
+object LiveInApps {
+    class Ch(val name: String, val app: String, val pkg: String, val link: String)
+
+    val all = listOf(
+        Ch("ITV1", "ITVX", "air.ITVMobilePlayer", "https://www.itv.com/watch?channel=itv"),
+        Ch("ITV2", "ITVX", "air.ITVMobilePlayer", "https://www.itv.com/watch?channel=itv2"),
+        Ch("ITV3", "ITVX", "air.ITVMobilePlayer", "https://www.itv.com/watch?channel=itv3"),
+        Ch("ITV4", "ITVX", "air.ITVMobilePlayer", "https://www.itv.com/watch?channel=itv4"),
+        Ch("ITV Quiz", "ITVX", "air.ITVMobilePlayer", "https://www.itv.com/watch?channel=itvbe"),
+        Ch("Channel 4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/C4"),
+    )
+
+    /** Opens the channel in its app; if the app isn't on the TV, the app store on a search for it. */
+    fun open(context: Context, ch: Ch) {
+        val ok = runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(ch.link)).setPackage(ch.pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        if (!ok) TvAppsOnDevice.openStore(context, ch.app)
+    }
+}

@@ -838,3 +838,4 @@
 841=Ustawienia telewizora
 842=więcej
 843=OK otwiera aplikację
+844=Na żywo w ich aplikacjach
