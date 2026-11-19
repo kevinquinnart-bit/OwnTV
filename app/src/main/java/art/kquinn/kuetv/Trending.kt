@@ -233,6 +233,13 @@ object LiveInApps {
         Ch("ITV4", "ITVX", "air.ITVMobilePlayer", "https://www.itv.com/watch?channel=itv4"),
         Ch("ITV Quiz", "ITVX", "air.ITVMobilePlayer", "https://www.itv.com/watch?channel=itvbe"),
         Ch("Channel 4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/C4"),
+        Ch("4seven", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/4S"),
+        // E4 opened Channel 4's live player; More4 and Film4 opened it saying "off air" at 4am, which it only says for a real channel.
+        Ch("E4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/E4"),
+        Ch("More4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/M4"),
+        Ch("Film4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/F4"),
+        // RTÉ Player's "on now": what is live on RTÉ, playing.
+        Ch("RTÉ live", "RTÉ Player", "com.twentyfouri.tvbridge.rte", "https://www.rte.ie/player/onnow"),
     )
 
     /** Opens the channel in its app; if the app isn't on the TV, the app store on a search for it. */
@@ -241,5 +248,49 @@ object LiveInApps {
             context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(ch.link)).setPackage(ch.pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }.isSuccess
         if (!ok) TvAppsOnDevice.openStore(context, ch.app)
+    }
+}
+
+/** Pluto TV's live channels in the UK, from Pluto's own list; each opens straight into Pluto TV playing it. */
+object PlutoChannels {
+    class Ch(val number: Int, val name: String, val slug: String, val logo: String)
+
+    var list by mutableStateOf<List<Ch>>(emptyList())
+        private set
+
+    private val http by lazy { Provider.http.newBuilder().callTimeout(20, TimeUnit.SECONDS).build() }
+
+    suspend fun load() {
+        if (list.isNotEmpty()) return
+        val fresh = withContext(Dispatchers.IO) {
+            runCatching {
+                val text = http.newCall(Request.Builder().url("https://api.pluto.tv/v2/channels.json").header("User-Agent", Provider.USER_AGENT).build())
+                    .execute().use { r -> if (!r.isSuccessful) throw IllegalStateException("answered " + r.code); r.body.string() }
+                parse(text)
+            }.onFailure { Report.note("Pluto", it.message.orEmpty()) }.getOrDefault(emptyList())
+        }
+        if (fresh.isNotEmpty()) list = fresh
+    }
+
+    /** Pluto's list: the numbered channels in number order, leaving out the ones made for other makers' TVs. */
+    internal fun parse(text: String): List<Ch> {
+        val a = JSONArray(text)
+        val out = ArrayList<Ch>()
+        for (i in 0 until a.length()) {
+            val c = a.optJSONObject(i) ?: continue
+            val number = c.optInt("number")
+            val slug = c.optString("slug")
+            val category = c.optString("category")
+            if (number <= 0 || slug.isBlank() || category == "Samsung" || category == "Xiaomi TV") continue
+            out += Ch(number, c.optString("name"), slug, c.optJSONObject("colorLogoPNG")?.optString("path").orEmpty())
+        }
+        return out.sortedBy { it.number }
+    }
+
+    fun open(context: Context, ch: Ch) {
+        val ok = runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://pluto.tv/uk/live-tv/" + ch.slug)).setPackage("tv.pluto.android").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        if (!ok) TvAppsOnDevice.openStore(context, "Pluto TV")
     }
 }

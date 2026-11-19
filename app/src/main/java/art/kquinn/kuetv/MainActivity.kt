@@ -4456,6 +4456,22 @@ private fun HomeScreen(
                 }
             }
         } },
+        // TV: Pluto TV's live channels, each opening straight into Pluto TV playing it.
+        { if (!phone) Column(verticalArrangement = blockSpacing) {
+            LaunchedEffect(Unit) { PlutoChannels.load() }
+            val pluto = PlutoChannels.list
+            if (pluto.isNotEmpty()) {
+                Heading("Pluto TV")
+                LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
+                    itemsIndexed(pluto, key = { _, c -> c.slug }) { _, c ->
+                        HomeCard({ PlutoChannels.open(context, c) }, Modifier.width(150.dp), 16f / 9f, c.name, null) {
+                            if (c.logo.isNotBlank()) AsyncImage(model = c.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(12.dp))
+                            else Text(c.name, color = Ink, fontSize = 16.sp, maxLines = 2, modifier = Modifier.padding(8.dp))
+                        }
+                    }
+                }
+            }
+        } },
         // TV: every app on the TV, with the TV's own settings at the end, as on Freely. KueTV can be the TV's
         // home screen, so this is the way to Freely, Prime Video and the rest.
         { if (!phone) Column(verticalArrangement = blockSpacing) {
