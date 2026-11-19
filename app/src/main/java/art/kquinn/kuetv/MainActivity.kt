@@ -23,6 +23,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Column
@@ -1972,8 +1973,8 @@ private fun MainScreen(
             }
             }
             Section.SERIES -> SeriesPane(library, state, favourites, resume, finder, onPlay, showCatalogues, catCategory)
-            Section.GUIDE -> ChannelGuide(library, false, state.guide, state, favs, resume, onPlay)
-            Section.CATCHUP -> ChannelGuide(library, true, state.catchUp, state, favs, resume, onPlay)
+            Section.GUIDE -> ChannelGuide(library, false, state.guide, state, favs, resume, onPlay, favourites)
+            Section.CATCHUP -> ChannelGuide(library, true, state.catchUp, state, favs, resume, onPlay, favourites)
             Section.SEARCH -> SearchPane(library, state, resume, finder, onPlay, playCat) { show ->
                 state.openShow = show
                 section = Section.SERIES
@@ -2506,6 +2507,7 @@ private fun Pane.ChannelGuide(
     favs: Set<String>,
     resume: FocusRequester,
     onPlay: (items: List<Playable>, index: Int, live: Boolean, key: String) -> Unit,
+    favourites: Favourites? = null,
 ) {
     val account = library.account
     if (account == null) {
@@ -2537,11 +2539,17 @@ private fun Pane.ChannelGuide(
             scope.launch { pick.channelList.scrollToItem(0) }
         }
     }
-    val shown = remember(channels, pick.category, if (pick.category == FAVOURITES) favs else null) {
+    val shown = remember(channels, pick.category, favs, favourites?.order) {
+        val isFav: (ChannelGroup) -> Boolean = { g -> g.versions.any { Favourites.key(it.channel, true) in favs } }
+        // In the order set in Live TV's Favourites.
+        val rank: (ChannelGroup) -> Int = { g -> favourites?.rank(g.versions.map { Favourites.key(it.channel, true) }) ?: 0 }
         when (pick.category) {
             ALL -> channels
-            FAVOURITES -> channels.filter { g -> g.versions.any { Favourites.key(it.channel, true) in favs } }
+            FAVOURITES -> channels.filter(isFav)
             else -> channels.filter { g -> g.versions.any { it.channel.categoryId == pick.category } }
+        }.let { list ->
+            // Favourites first, in that order, in every category; the rest as before.
+            list.partition(isFav).let { (fav, rest) -> fav.sortedBy(rank) + rest }
         }
     }
     LaunchedEffect(Unit) {
@@ -4017,6 +4025,7 @@ private fun Pane.GuideGrid(
                                         },
                                         { about = channel.name to programme; onChannel = channel },
                                         if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
+                                        strip = strip, startsAt = with(density) { across(from - start).roundToPx() },
                                     )
                                 }
                             }
@@ -4112,7 +4121,10 @@ private fun GuideDetails(about: Pair<String, Programme>?, channel: ChannelGroup?
 
 /** One box in the guide's grid: a channel's name, or a programme as wide as it is long. */
 @Composable
-private fun GridCell(title: String, sub: String, width: Dp, onNow: Boolean, onClick: () -> Unit, onFocus: () -> Unit, modifier: Modifier = Modifier, logo: String? = null) {
+private fun GridCell(
+    title: String, sub: String, width: Dp, onNow: Boolean, onClick: () -> Unit, onFocus: () -> Unit, modifier: Modifier = Modifier, logo: String? = null,
+    strip: androidx.compose.foundation.ScrollState? = null, startsAt: Int = 0,
+) {
     var focused by remember { mutableStateOf(false) }
     // A channel's name: its logo beside it.
     if (logo != null) {
@@ -4150,8 +4162,18 @@ private fun GridCell(title: String, sub: String, width: Dp, onNow: Boolean, onCl
             .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(title, color = if (focused) Color.Black else Ink, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (sub.isNotEmpty()) Text(sub, color = if (focused) Color.Black else Soft, fontSize = 13.sp, maxLines = 1)
+        // A programme that began before the left edge of the guide: its name slides along to stay in view.
+        val keep = with(androidx.compose.ui.platform.LocalDensity.current) { 70.dp.roundToPx() }
+        Column(
+            Modifier.layout { m, c ->
+                val shift = if (strip == null) 0 else (strip.value - startsAt).coerceIn(0, (c.maxWidth - keep).coerceAtLeast(0))
+                val p = m.measure(c.copy(minWidth = 0, maxWidth = (c.maxWidth - shift).coerceAtLeast(0)))
+                layout(c.maxWidth, p.height) { p.place(shift, 0) }
+            },
+        ) {
+            Text(title, color = if (focused) Color.Black else Ink, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (sub.isNotEmpty()) Text(sub, color = if (focused) Color.Black else Soft, fontSize = 13.sp, maxLines = 1)
+        }
     }
 }
 
