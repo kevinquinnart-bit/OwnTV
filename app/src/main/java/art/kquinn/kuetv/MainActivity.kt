@@ -1670,6 +1670,16 @@ private fun MainScreen(
                 val categoryTopic = remember(library) { Topics.byCategory(library.liveCategories) }
                 val topicCats = remember(library, categoryTopic) { Topics.categories(categoryTopic, library.channels.mapTo(HashSet()) { it.categoryId }) }
                 val columnCats = if (grouped) topicCats else library.liveCategories
+                // For checking the topics from a computer: each category's name, its topic and how many channels it has.
+                LaunchedEffect(library) {
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            val counts = library.channels.groupingBy { it.categoryId }.eachCount()
+                            val text = library.liveCategories.joinToString("\n") { c -> (counts[c.id] ?: 0).toString() + "\t" + categoryTopic[c.id] + "\t" + c.id + "\t" + c.name }
+                            java.io.File(context.getExternalFilesDir(null), "live-categories.txt").writeText(text)
+                        }
+                    }
+                }
                 Categories(listOf(Category(RECENT, "🕘 Recently watched")) + mine.map { Category(it.id, "📁 " + it.name) } + columnCats, liveCategory, state.liveCategoryList) {
                     if (it != state.liveCategory) {
                         state.liveCategory = it
