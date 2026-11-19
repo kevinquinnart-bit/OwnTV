@@ -846,3 +846,7 @@
 849=Hudba
 850=Vše ostatní
 851=Seskupit podle tématu
+852=Aplikace TV stanic
+853=Aplikace s filmy a seriály
+854=Hudební aplikace
+855=Další aplikace

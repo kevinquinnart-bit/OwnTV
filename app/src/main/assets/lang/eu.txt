@@ -846,3 +846,7 @@
 849=Musika
 850=Gainerako guztia
 851=Gaiaren arabera taldekatu
+852=Telebista-kateen aplikazioak
+853=Film eta telesail aplikazioak
+854=Musika aplikazioak
+855=Beste aplikazioak

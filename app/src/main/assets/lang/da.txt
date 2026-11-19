@@ -846,3 +846,7 @@
 849=Musik
 850=Alt andet
 851=Gruppér efter emne
+852=TV-kanal-apps
+853=Film- og serieapps
+854=Musikapps
+855=Andre apps

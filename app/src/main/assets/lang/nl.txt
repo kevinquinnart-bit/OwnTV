@@ -846,3 +846,7 @@
 849=Muziek
 850=Al het andere
 851=Groeperen op onderwerp
+852=Apps van zenders
+853=Apps voor films en series
+854=Muziek-apps
+855=Andere apps

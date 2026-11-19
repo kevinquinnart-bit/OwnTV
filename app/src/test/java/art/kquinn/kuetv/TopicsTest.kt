@@ -27,3 +27,16 @@ class TopicsTest {
         assertEquals(listOf("topic:sport"), shown.map { it.id })
     }
 }
+
+/** The TV's apps land in the right row on Home. */
+class AppKindsTest {
+    private fun kind(name: String, pkg: String) = AppKinds.of(DeviceApps.App(pkg, name, null))
+    @org.junit.Test fun appsLandInTheRightRow() {
+        org.junit.Assert.assertEquals("tv", kind("BBC iPlayer", "uk.co.bbc.iplayer"))
+        org.junit.Assert.assertEquals("tv", kind("RTÉ Player", "com.twentyfouri.tvbridge.rte"))
+        org.junit.Assert.assertEquals("films", kind("YouTube", "com.amazon.firetv.youtube"))
+        org.junit.Assert.assertEquals("films", kind("Netflix", "com.netflix.ninja"))
+        org.junit.Assert.assertEquals("music", kind("Spotify", "com.spotify.tv.android"))
+        org.junit.Assert.assertEquals("other", kind("Downloader", "com.esaba.downloader"))
+    }
+}

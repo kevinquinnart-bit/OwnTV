@@ -846,3 +846,7 @@
 849=Müzik
 850=Diğer her şey
 851=Konuya göre grupla
+852=TV kanalı uygulamaları
+853=Film ve dizi uygulamaları
+854=Müzik uygulamaları
+855=Diğer uygulamalar

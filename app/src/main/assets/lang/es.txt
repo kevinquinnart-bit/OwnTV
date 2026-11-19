@@ -846,3 +846,7 @@
 849=Música
 850=Todo lo demás
 851=Agrupar por tema
+852=Apps de canales
+853=Apps de películas y series
+854=Apps de música
+855=Otras apps

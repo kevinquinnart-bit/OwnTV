@@ -846,3 +846,7 @@
 849=Musik
 850=Allt annat
 851=Gruppera efter ämne
+852=Appar för TV-kanaler
+853=Appar för film och serier
+854=Musikappar
+855=Andra appar

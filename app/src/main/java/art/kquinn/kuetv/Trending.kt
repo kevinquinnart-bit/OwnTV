@@ -294,3 +294,25 @@ object PlutoChannels {
         if (!ok) TvAppsOnDevice.openStore(context, "Pluto TV")
     }
 }
+
+/**
+ * Which row of apps on Home an app belongs in, from its name and package: so an app installed later
+ * (YouTube, Spotify, Virgin Media Player) lands in the right row by itself.
+ */
+object AppKinds {
+    private val tv = listOf("iplayer", "itv", "channel4", "channel 4", "demand5", "my5", "channel5", "rte", "rté", "virgin", "uktv", "pluto",
+        "stv", "freely", "tg4", "s4c", "opapp", "sky news", "gb news", "tvbridge", "live tv")
+    private val films = listOf("netflix", "prime video", "avod", "firebat", "disney", "youtube", "smarttube", "now tv", "nowtv", "paramount",
+        "apple tv", "britbox", "stremio", "plex", "jellyfin", "emby", "kodi", "tubi", "rakuten", "mubi", "hayu", "discovery+", "crunchyroll")
+    private val music = listOf("spotify", "music", "tidal", "deezer", "soundcloud", "audible", "tunein", "radio", "podcast")
+
+    fun of(app: DeviceApps.App): String {
+        val n = (app.name + " " + app.packageName).lowercase()
+        return when {
+            music.any { n.contains(it) } && !n.contains("youtube") -> "music"
+            tv.any { n.contains(it) } -> "tv"
+            films.any { n.contains(it) } -> "films"
+            else -> "other"
+        }
+    }
+}

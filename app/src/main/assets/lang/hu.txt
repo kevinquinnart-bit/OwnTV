@@ -846,3 +846,7 @@
 849=Zene
 850=Minden más
 851=Csoportosítás téma szerint
+852=TV-csatorna alkalmazások
+853=Film- és sorozatalkalmazások
+854=Zenei alkalmazások
+855=Egyéb alkalmazások

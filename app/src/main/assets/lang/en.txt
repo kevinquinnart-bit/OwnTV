@@ -849,3 +849,7 @@ Documentaries
 Music
 Everything else
 Group by topic
+TV channel apps
+Films and series apps
+Music apps
+Other apps

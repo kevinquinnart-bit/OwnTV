@@ -1708,7 +1708,9 @@ private fun MainScreen(
                 }
                 // One row for each channel: its 4K, FHD, HD and SD versions are kept together behind it.
                 val recentNow = if (liveCategory == RECENT) Recent.changes else -1
-                val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null, if (liveCategory == FAVOURITES) favourites.order else null, recentNow, mine, categoryTopic) {
+                val shown = remember(library, liveCategory, favs, favourites.order, recentNow, mine, categoryTopic) {
+                    val isFav: (ChannelGroup) -> Boolean = { g -> g.versions.any { Favourites.key(it.channel, login) in favs } }
+                    val favRank: (ChannelGroup) -> Int = { g -> favourites.rank(g.versions.map { Favourites.key(it.channel, login) }) }
                     when {
                         // One of the user's own categories: its channels in the order they were added.
                         liveCategory.startsWith(MyCategories.PREFIX) -> mine.firstOrNull { it.id == liveCategory }?.channels.orEmpty().mapNotNull { id -> library.groups.firstOrNull { it.id == id } }
@@ -1727,6 +1729,10 @@ private fun MainScreen(
                         Library.FREE_ALL -> library.groups.filter { g -> g.versions.any { it.free } }
                         else -> library.groups.filter { g -> g.versions.any { it.channel.categoryId == liveCategory } }
                         }
+                    }.let { list ->
+                        // Every other category: its favourite channels first, in the order set in Favourites, then the rest.
+                        if (liveCategory == FAVOURITES || liveCategory == RECENT || liveCategory.startsWith(MyCategories.PREFIX)) list
+                        else list.partition(isFav).let { (fav, rest) -> fav.sortedBy(favRank) + rest }
                     }
                 }
                 val playables = remember(shown) { shown.map { livePlayable(it, library.account, library.serverAheadSec) } }
@@ -4567,16 +4573,22 @@ private fun HomeScreen(
         } },
         // TV: every app on the TV, with the TV's own settings at the end, as on Freely. KueTV can be the TV's
         // home screen, so this is the way to Freely, Prime Video and the rest.
-        { if (!phone) Column(verticalArrangement = blockSpacing) {
-            val apps by produceState(emptyList<DeviceApps.App>()) { value = withContext(Dispatchers.IO) { DeviceApps.list(context) } }
-            Heading("Your apps")
+        // TV: the TV's apps, each sorted into its row by what it is: an app installed later lands in the right row
+        // by itself, the next time Home shows. The TV's own settings at the end of the last row.
+        *(listOf("tv" to "TV channel apps", "films" to "Films and series apps", "music" to "Music apps", "other" to "Other apps").map { (kind, title) ->
+        @Composable { if (!phone) Column(verticalArrangement = blockSpacing) {
+            val apps by produceState(emptyList<DeviceApps.App>(), Resumes.count) { value = withContext(Dispatchers.IO) { DeviceApps.list(context) } }
+            val these = apps.filter { AppKinds.of(it) == kind }
+            if (these.isNotEmpty() || kind == "other") {
+            Heading(title)
             LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
-                itemsIndexed(apps, key = { _, a -> a.packageName }) { _, a ->
+                itemsIndexed(these, key = { _, a -> a.packageName }) { _, a ->
                     HomeCard({ TvAppsOnDevice.open(context, a.packageName) }, Modifier.width(150.dp), 16f / 9f, a.name, null) {
                         a.picture?.let { androidx.compose.foundation.Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(8.dp)) }
                             ?: Text(a.name, color = Soft, fontSize = 14.sp, maxLines = 2, modifier = Modifier.padding(8.dp))
                     }
                 }
+                if (kind == "other") {
                 item(key = "tv-settings") {
                     HomeCard({ if (!Launcher.openTvSettings(context)) android.widget.Toast.makeText(context, "The TV's settings wouldn't open. Hold Home for the TV's menu.", android.widget.Toast.LENGTH_LONG).show() }, Modifier.width(150.dp), 16f / 9f, "TV settings", null) {
                         SectionIcon(Section.SETTINGS, AccentInk, Modifier.size(44.dp))
@@ -4588,8 +4600,11 @@ private fun HomeScreen(
                         SectionIcon(Section.SETTINGS, Soft, Modifier.size(44.dp))
                     }
                 }
+                }
             }
-        } },
+            }
+        } }
+        }).toTypedArray(),
         // Favourite films and series, each in a row of posters. Hold OK takes one off.
         { Column(verticalArrangement = blockSpacing) {
             val favFilms = remember(library, favs) { library.films.filter { Favourites.key(it, login) in favs } }
