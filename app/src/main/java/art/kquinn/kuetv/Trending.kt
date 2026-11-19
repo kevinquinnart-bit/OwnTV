@@ -200,28 +200,20 @@ object Launcher {
     }.getOrDefault(false)
 
     /**
-     * The TV's own settings: with Amazon's home screen skipped, this is the way to them. The clean-up switched off
-     * a small Amazon part ("dummy settings") that can answer the usual request, so Fire TV's real settings app is
-     * asked for first, and anything that doesn't open is passed over for the next way.
+     * The TV's own settings. On Fire TV they live inside Amazon's home screen (checked on Kevin's TV: the request
+     * goes through a small Amazon part that opens Amazon's home screen on its settings), so the Home button watcher
+     * leaves Amazon's home screen alone while they are open. Developer options are their own screen.
      */
     fun openTvSettings(context: Context, developer: Boolean = false): Boolean {
-        val pm = context.packageManager
-        val real = listOf("com.amazon.tv.settings.v2", "com.amazon.tv.settings")
-        val action = if (developer) android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS else android.provider.Settings.ACTION_SETTINGS
-        val tries = buildList {
-            real.forEach { pkg -> add(Intent(action).setPackage(pkg)) }
-            if (!developer) real.forEach { pkg -> (pm.getLeanbackLaunchIntentForPackage(pkg) ?: pm.getLaunchIntentForPackage(pkg))?.let { add(it) } }
-            add(Intent(action))
-            if (developer) add(Intent(android.provider.Settings.ACTION_DEVICE_INFO_SETTINGS))
-        }
+        val tries = if (developer) listOf(
+            Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).setPackage("com.amazon.tv.settings.v2"),
+            Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS),
+        ) else listOf(Intent(android.provider.Settings.ACTION_SETTINGS))
+        if (!developer) HomeGuard.pause()
         for (intent in tries) {
-            val target = runCatching { pm.resolveActivity(intent, 0)?.activityInfo }.getOrNull() ?: continue
-            if (target.packageName.contains("dummy")) continue
-            val ok = runCatching {
-                context.startActivity(Intent(intent).setClassName(target.packageName, target.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }.isSuccess
-            if (ok) return true
+            if (runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return true
         }
+        HomeGuard.pausedUntil = 0
         Report.note("Home", "TV settings: nothing on this TV opened")
         return false
     }
