@@ -56,7 +56,10 @@ class HomeGuard : AccessibilityService() {
             pkg == AMAZON_HOME -> {
                 onAmazonHome = cls == AMAZON_HOME_SCREEN
                 // The TV's settings live inside Amazon's home screen: while they were asked for, it is left alone.
-                if (!onAmazonHome || !Launcher.isHome(this) || SystemClock.uptimeMillis() < pausedUntil) { stop(); return }
+                if (!onAmazonHome || !Launcher.isHome(this)) { stop(); return }
+                // The TV's settings live inside Amazon's home screen: while they open (the first 3 seconds) it is let
+                // through; after that, Amazon's home screen coming up (Home or Back when done) brings KueTV back.
+                if (SystemClock.uptimeMillis() < pausedUntil) { stop(); return }
                 firstAsk = SystemClock.uptimeMillis()
                 retryHome()
             }
@@ -110,11 +113,11 @@ class HomeGuard : AccessibilityService() {
         /** The watcher while it is running, so KueTV can take the cover down once it is on screen. */
         @Volatile var running: HomeGuard? = null
 
-        /** Until when Amazon's home screen is left alone: set when KueTV opens the TV's settings, which live inside it. */
+        /** Until when Amazon's home screen is left alone: the few seconds the TV's settings (which live inside it) take to open. */
         @Volatile var pausedUntil = 0L
 
-        /** Leaves Amazon's home screen alone for the TV's settings, until another app or KueTV comes back (10 minutes at most). */
-        fun pause() { pausedUntil = SystemClock.uptimeMillis() + 10 * 60_000L }
+        /** Leaves Amazon's home screen alone while the TV's settings open. */
+        fun pause() { pausedUntil = SystemClock.uptimeMillis() + 3_000L }
 
         /** True while KueTV's screen is in front. */
         @Volatile var inFront = false

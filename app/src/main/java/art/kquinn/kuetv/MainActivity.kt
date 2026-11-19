@@ -4363,6 +4363,38 @@ private fun CategoriesScreen(library: Library, onDone: () -> Unit) {
     }
 }
 
+/**
+ * The TV's own settings, as a page in KueTV: Network, Display, Sound and the rest, only those this TV has.
+ * Each opens straight onto that settings screen, and Back comes back to this page. The last row opens
+ * Amazon's full settings menu, which lives inside Amazon's home screen.
+ */
+@Composable
+private fun TvSettingsPage(onClose: () -> Unit) {
+    val context = LocalContext.current
+    val parts = remember(Resumes.count) { Launcher.tvSettings(context) }
+    val first = remember { FocusRequester() }
+    BackHandler(onBack = onClose)
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        runCatching { first.requestFocus() }
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("TV settings", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Note("Each opens the TV's own settings screen. Back comes back here.")
+        LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+            itemsIndexed(parts, key = { _, p -> p.action }) { i, p ->
+                FocusRow(p.label, { if (!Launcher.open(context, p)) android.widget.Toast.makeText(context, "That part of the TV's settings wouldn't open.", android.widget.Toast.LENGTH_LONG).show() },
+                    if (i == 0) Modifier.focusRequester(first) else Modifier)
+            }
+            item(key = "all") {
+                FocusRow("All Fire TV settings", { Launcher.openTvSettings(context) }, if (parts.isEmpty()) Modifier.focusRequester(first) else Modifier,
+                    look = Look.OTHER, below = "Amazon's own settings menu. Home or Back when done comes back to KueTV")
+            }
+            item(key = "close") { FocusRow("Close", onClose, look = Look.OTHER) }
+        }
+    }
+}
+
 /** For the automatic checks only: the Categories screen as a TV shows it. */
 @Composable
 internal fun CategoriesForChecks(library: Library) {
@@ -4400,6 +4432,12 @@ private fun HomeScreen(
             .sortedBy { g -> favourites.rank(g.versions.map { Favourites.key(it.channel, login) }) }
     }
     val playables = remember(channels) { channels.map { livePlayable(it, library.account, library.serverAheadSec) } }
+    // The TV's own settings, listed inside KueTV: each opens on its own screen, and Back comes back here.
+    var tvSettingsOpen by remember { mutableStateOf(false) }
+    if (tvSettingsOpen) {
+        TvSettingsPage(onClose = { tvSettingsOpen = false })
+        return
+    }
     val clock by produceState(homeClock()) {
         while (true) {
             delay(10_000)
@@ -4590,7 +4628,7 @@ private fun HomeScreen(
                 }
                 if (kind == "other") {
                 item(key = "tv-settings") {
-                    HomeCard({ if (!Launcher.openTvSettings(context)) android.widget.Toast.makeText(context, "The TV's settings wouldn't open. Hold Home for the TV's menu.", android.widget.Toast.LENGTH_LONG).show() }, Modifier.width(150.dp), 16f / 9f, "TV settings", null) {
+                    HomeCard({ tvSettingsOpen = true }, Modifier.width(150.dp), 16f / 9f, "TV settings", null) {
                         SectionIcon(Section.SETTINGS, AccentInk, Modifier.size(44.dp))
                     }
                 }

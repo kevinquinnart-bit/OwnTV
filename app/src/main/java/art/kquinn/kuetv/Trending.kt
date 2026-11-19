@@ -194,6 +194,40 @@ object DeviceApps {
  * TV's accessibility settings, which is done from a computer: Fire OS won't let anything replace Amazon's home screen.
  */
 object Launcher {
+    /** One part of the TV's own settings that opens on its own screen, so Back comes straight back to KueTV. */
+    class TvSetting(val label: String, val action: String)
+
+    private val parts = listOf(
+        TvSetting("Network", android.provider.Settings.ACTION_WIFI_SETTINGS),
+        TvSetting("Display", android.provider.Settings.ACTION_DISPLAY_SETTINGS),
+        TvSetting("Sound", android.provider.Settings.ACTION_SOUND_SETTINGS),
+        TvSetting("Apps", android.provider.Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS),
+        TvSetting("Storage", android.provider.Settings.ACTION_INTERNAL_STORAGE_SETTINGS),
+        TvSetting("Remotes and Bluetooth", android.provider.Settings.ACTION_BLUETOOTH_SETTINGS),
+        TvSetting("Accessibility", android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS),
+        TvSetting("Date and time", android.provider.Settings.ACTION_DATE_SETTINGS),
+        TvSetting("Language", android.provider.Settings.ACTION_LOCALE_SETTINGS),
+        TvSetting("About this TV", android.provider.Settings.ACTION_DEVICE_INFO_SETTINGS),
+        TvSetting("Developer options", android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS),
+    )
+
+    /** The parts this TV really has: each must open a real settings screen, not Amazon's home screen or a stand-in. */
+    fun tvSettings(context: Context): List<TvSetting> = parts.filter { target(context, it.action) != null }
+
+    private fun target(context: Context, action: String): android.content.pm.ActivityInfo? {
+        val a = runCatching { context.packageManager.resolveActivity(Intent(action), 0)?.activityInfo }.getOrNull() ?: return null
+        if (a.packageName == HomeGuard.AMAZON_HOME || a.name.contains("Dummy", ignoreCase = true) || a.packageName == "android") return null
+        return a
+    }
+
+    /** Opens one part of the TV's settings inside KueTV's own task, so Back returns to KueTV. */
+    fun open(context: Context, setting: TvSetting): Boolean {
+        val a = target(context, setting.action) ?: return false
+        val intent = Intent(setting.action).setClassName(a.packageName, a.name)
+        if (context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching { context.startActivity(intent) }.isSuccess
+    }
+
     fun isHome(context: Context): Boolean = runCatching {
         val on = android.provider.Settings.Secure.getString(context.contentResolver, "enabled_accessibility_services").orEmpty()
         on.split(':').any { it.equals(context.packageName + "/" + HomeGuard::class.java.name, ignoreCase = true) || it.equals(context.packageName + "/.HomeGuard", ignoreCase = true) }
