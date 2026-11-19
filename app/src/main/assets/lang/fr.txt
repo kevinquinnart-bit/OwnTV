@@ -839,3 +839,10 @@
 842=plus
 843=OK ouvre l’appli
 844=En direct dans leurs applis
+845=Sport
+846=Infos
+847=Divertissement
+848=Documentaires
+849=Musique
+850=Tout le reste
+851=Regrouper par thème

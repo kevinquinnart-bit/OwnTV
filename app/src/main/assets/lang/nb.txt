@@ -839,3 +839,10 @@
 842=mer
 843=OK åpner appen
 844=Direkte i egne apper
+845=Sport
+846=Nyheter
+847=Underholdning
+848=Dokumentarer
+849=Musikk
+850=Alt annet
+851=Grupper etter tema

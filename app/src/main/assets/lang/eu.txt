@@ -839,3 +839,10 @@
 842=gehiago
 843=OK sakatuta aplikazioa irekitzen da
 844=Zuzenean beren aplikazioetan
+845=Kirola
+846=Albisteak
+847=Entretenimendua
+848=Dokumentalak
+849=Musika
+850=Gainerako guztia
+851=Gaiaren arabera taldekatu

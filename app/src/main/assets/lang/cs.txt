@@ -839,3 +839,10 @@
 842=další
 843=OK otevře aplikaci
 844=Živě ve vlastních aplikacích
+845=Sport
+846=Zprávy
+847=Zábava
+848=Dokumenty
+849=Hudba
+850=Vše ostatní
+851=Seskupit podle tématu

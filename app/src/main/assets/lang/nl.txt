@@ -839,3 +839,10 @@
 842=meer
 843=OK opent de app
 844=Live in hun eigen apps
+845=Sport
+846=Nieuws
+847=Entertainment
+848=Documentaires
+849=Muziek
+850=Al het andere
+851=Groeperen op onderwerp

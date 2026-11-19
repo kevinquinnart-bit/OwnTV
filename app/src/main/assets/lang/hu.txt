@@ -839,3 +839,10 @@
 842=továbbiak
 843=Az OK megnyitja az alkalmazást
 844=Élőben a saját alkalmazásukban
+845=Sport
+846=Hírek
+847=Szórakozás
+848=Dokumentumfilmek
+849=Zene
+850=Minden más
+851=Csoportosítás téma szerint

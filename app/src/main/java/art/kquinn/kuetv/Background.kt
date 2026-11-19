@@ -146,6 +146,13 @@ object Choices {
         changes++
     }
 
+    /** Live TV's categories grouped by topic (Sport, News, …), free channels in with the rest; off for the provider's own list. */
+    fun groupedLive(context: Context): Boolean = prefs(context).getBoolean("groupedLive", true)
+    fun groupedLive(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("groupedLive", on).apply()
+        changes++
+    }
+
     fun smallTv(context: Context): Boolean = prefs(context).getBoolean("smallTv", true)
     fun smallTv(context: Context, on: Boolean) {
         prefs(context).edit().putBoolean("smallTv", on).apply()

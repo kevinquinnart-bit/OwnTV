@@ -839,3 +839,10 @@
 842=más
 843=OK abre la app
 844=En directo en sus propias apps
+845=Deportes
+846=Noticias
+847=Entretenimiento
+848=Documentales
+849=Música
+850=Todo lo demás
+851=Agrupar por tema

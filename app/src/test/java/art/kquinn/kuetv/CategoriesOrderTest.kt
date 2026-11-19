@@ -47,6 +47,8 @@ class CategoriesOrderTest {
         assertTrue("the remote starts on Done · remote on " + where(), remoteOn("Done"))
 
         press(Key.DirectionDown)
+        assertTrue("▼ moves onto Group by topic · remote on " + where(), remoteOn("Group by topic"))
+        press(Key.DirectionDown)
         assertTrue("▼ moves onto Put Live TV's categories in order · remote on " + where(), remoteOn("Put Live TV"))
         press(Key.DirectionCenter)
         assertTrue("OK starts putting them in order, on the first category · remote on " + where(), remoteOn("UK"))

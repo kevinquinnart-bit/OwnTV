@@ -839,3 +839,10 @@
 842=daha fazla
 843=OK uygulamayı açar
 844=Kendi uygulamalarında canlı
+845=Spor
+846=Haberler
+847=Eğlence
+848=Belgeseller
+849=Müzik
+850=Diğer her şey
+851=Konuya göre grupla

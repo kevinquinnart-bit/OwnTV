@@ -839,3 +839,10 @@
 842=mer
 843=OK öppnar appen
 844=Live i sina egna appar
+845=Sport
+846=Nyheter
+847=Underhållning
+848=Dokumentärer
+849=Musik
+850=Allt annat
+851=Gruppera efter ämne

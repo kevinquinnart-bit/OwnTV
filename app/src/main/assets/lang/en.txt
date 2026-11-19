@@ -842,3 +842,10 @@ TV settings
 more
 OK opens the app
 Live in their own apps
+Sport
+News
+Entertainment
+Documentaries
+Music
+Everything else
+Group by topic

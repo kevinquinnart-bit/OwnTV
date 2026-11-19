@@ -1665,7 +1665,12 @@ private fun MainScreen(
                 var menuChannel by remember { mutableStateOf<ChannelGroup?>(null) }
                 val profileNow = Profiles.changes
                 val mine = remember(MyCategories.changes, profileNow) { MyCategories.all(context) }
-                Categories(listOf(Category(RECENT, "🕘 Recently watched")) + mine.map { Category(it.id, "📁 " + it.name) } + library.liveCategories, liveCategory, state.liveCategoryList) {
+                // Grouped (the usual): a handful of topics, free channels in with the rest. Otherwise the provider's own list.
+                val grouped = remember(Choices.changes) { Choices.groupedLive(context) }
+                val categoryTopic = remember(library) { Topics.byCategory(library.liveCategories) }
+                val topicCats = remember(library, categoryTopic) { Topics.categories(categoryTopic, library.channels.mapTo(HashSet()) { it.categoryId }) }
+                val columnCats = if (grouped) topicCats else library.liveCategories
+                Categories(listOf(Category(RECENT, "🕘 Recently watched")) + mine.map { Category(it.id, "📁 " + it.name) } + columnCats, liveCategory, state.liveCategoryList) {
                     if (it != state.liveCategory) {
                         state.liveCategory = it
                         scope.launch { state.channelList.scrollToItem(0) }
@@ -1673,10 +1678,16 @@ private fun MainScreen(
                 }
                 // One row for each channel: its 4K, FHD, HD and SD versions are kept together behind it.
                 val recentNow = if (liveCategory == RECENT) Recent.changes else -1
-                val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null, if (liveCategory == FAVOURITES) favourites.order else null, recentNow, mine) {
+                val shown = remember(library, liveCategory, if (liveCategory == FAVOURITES) favs else null, if (liveCategory == FAVOURITES) favourites.order else null, recentNow, mine, categoryTopic) {
                     when {
                         // One of the user's own categories: its channels in the order they were added.
                         liveCategory.startsWith(MyCategories.PREFIX) -> mine.firstOrNull { it.id == liveCategory }?.channels.orEmpty().mapNotNull { id -> library.groups.firstOrNull { it.id == id } }
+                        // A topic: every channel filed under a category of that topic, the provider's first, then free ones.
+                        liveCategory.startsWith(Topics.PREFIX) -> {
+                            val topic = liveCategory.removePrefix(Topics.PREFIX)
+                            library.groups.filter { g -> g.versions.any { categoryTopic[it.channel.categoryId] == topic } }
+                                .sortedBy { g -> if (g.versions.all { it.free }) 1 else 0 }
+                        }
                         else -> when (liveCategory) {
                         ALL -> library.groups
                         RECENT -> Recent.pick(library.groups, Recent.all(context)) { g -> g.versions.map { it.channel.url } }
@@ -2289,11 +2300,19 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
         }
     }
     // The categories column is always open: it is the one column down the left.
+    // The remote resting on a category shows it; moving quickly past categories doesn't fetch each one's list,
+    // which made going down a long column slow.
+    var landed by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(landed) {
+        val id = landed ?: return@LaunchedEffect
+        delay(350)
+        if (id != chosen) onChoose(id)
+    }
     val row: @Composable (String, String) -> Unit = { id, name ->
         FocusRow(
             name, { onChoose(id) },
             if (chosen == id) Modifier.focusRequester(chosenFocus) else Modifier,
-            chosen = chosen == id, onFocus = { onChoose(id) }, textSize = 19.sp,
+            chosen = chosen == id, onFocus = { landed = id }, textSize = 19.sp,
         )
     }
     Column(
@@ -4223,6 +4242,15 @@ private fun CategoriesScreen(library: Library, onDone: () -> Unit) {
                 val off = hidden[kind.key].orEmpty()
                 item(key = "h:" + kind.key) {
                     Box(Modifier.padding(top = 16.dp)) { Heading(kind.title + " · " + (kind.categories.size - kind.categories.count { it.id in off }) + " of " + kind.categories.size + " showing") }
+                }
+                if (sorting == null && kind.key == "live") {
+                    item(key = "group:live") {
+                        val on = Choices.groupedLive(context)
+                        FocusRow(
+                            "Group by topic: " + if (on) "On" else "Off", { Choices.groupedLive(context, !on) }, look = Look.OTHER,
+                            below = if (on) "Sport, News, Entertainment and so on, free channels in with the rest" else "Your provider's own categories, and each free list's",
+                        )
+                    }
                 }
                 if (sorting == null) {
                     item(key = "sort:" + kind.key) {
