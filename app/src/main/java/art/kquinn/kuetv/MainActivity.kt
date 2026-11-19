@@ -1405,6 +1405,16 @@ private fun TopBar(section: Section, focus: FocusRequester, bar: BarReach, onPic
                 BarItem(s, s == section, s in pictures, if (s == section) Modifier.focusRequester(focus) else Modifier, bar) { onPick(s) }
             }
         }
+        // The time and the weather, at the right of the bar.
+        val time by produceState(barClock()) {
+            while (true) {
+                value = barClock()
+                delay(60_000L - System.currentTimeMillis() % 60_000L)
+            }
+        }
+        LaunchedEffect(time) { Weather.refresh() }
+        Weather.now?.let { Text(it, color = Soft, fontSize = 17.sp, maxLines = 1, modifier = Modifier.padding(end = 14.dp)) }
+        Text(time, color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
@@ -1890,7 +1900,9 @@ private fun MainScreen(
                     // TV: the list takes the left half; the channel the remote is on plays top right, what is on it below.
                     Row(fill(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                         list(Modifier.weight(1f).fillMaxHeight())
-                        LivePreview(state.liveOn, library.account, Modifier.width(SIDE_WIDTH).fillMaxHeight())
+                        // With the remote off the list (in the categories), the details are of the channel playing.
+                        val playingGroup = remember(LastLive.item, library) { LastLive.item?.let { l -> library.groups.firstOrNull { g -> g.versions.any { it.channel.url == l.url } } ?: library.groups.firstOrNull { it.name == l.name } } }
+                        LivePreview(state.liveOn ?: playingGroup, library.account, Modifier.width(SIDE_WIDTH).fillMaxHeight())
                     }
                 }
             }
@@ -4906,6 +4918,8 @@ private fun EpisodePicture(url: String) {
         AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
     }
 }
+
+private fun barClock(): String = java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(java.util.Date())
 
 private fun homeClock(): String = java.text.SimpleDateFormat("EEEE d MMMM · HH:mm", java.util.Locale.UK).format(java.util.Date())
 
