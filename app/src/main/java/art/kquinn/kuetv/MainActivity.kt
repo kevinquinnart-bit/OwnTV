@@ -147,6 +147,7 @@ class MainActivity : ComponentActivity() {
         // TV: what the TV's own channel list holds (the aerial, and the channels the TV apps add), written where a
         // computer can read it, to find out how Freely's way of opening channels can be brought into KueTV.
         if (isTv(this)) Thread { TvChannels.writeProbe(applicationContext) }.start()
+        if (isTv(this)) Thread { runCatching { UiSounds.load(applicationContext) } }.start()
         // A TV is always sideways. A phone turns with the way it is held.
         val tv = isTv(this)
         if (tv) requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -238,6 +239,17 @@ class MainActivity : ComponentActivity() {
         if (SpareKeys.keys.any { it.code == event.keyCode } && SpareKeys.action(this, event.keyCode) != "Nothing") {
             if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) SpareKeys.pressed(this, event.keyCode)
             return true
+        }
+        // TV: a quiet tick as the remote moves, a fuller one for OK, a lower one for Back (not over a programme).
+        if (isTv(this)) {
+            val k = event.keyCode
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) when (k) {
+                android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> UiSounds.move(this)
+            } else if (event.action == android.view.KeyEvent.ACTION_UP && !event.isCanceled) when (k) {
+                android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> UiSounds.ok(this)
+                android.view.KeyEvent.KEYCODE_BACK -> UiSounds.back(this)
+            }
         }
         return super.dispatchKeyEvent(event)
     }
@@ -647,6 +659,7 @@ private fun App() {
             // Only the player is on screen while it plays, so no key can reach the lists behind it.
             // A fresh player for each thing played, so "From the start" begins clean in place of the live channel.
             multi != null -> {
+                DisposableEffect(Unit) { UiSounds.muted = true; onDispose { UiSounds.muted = false } }
                 val m = multi!!
                 MultiviewScreen(
                     m.items, m.index,
@@ -655,9 +668,11 @@ private fun App() {
                 )
             }
             now != null && (now.vlc || PlayerEngine.vlc(context)) -> androidx.compose.runtime.key(now) {
+                DisposableEffect(Unit) { UiSounds.muted = true; onDispose { UiSounds.muted = false } }
                 VlcScreen(now.items, now.index, now.live, onClose = { playing = null })
             }
             now != null -> androidx.compose.runtime.key(now) {
+                DisposableEffect(Unit) { UiSounds.muted = true; onDispose { UiSounds.muted = false } }
                 PlayerScreen(
                     now.items, now.index, now.live,
                     onClose = { playing = null },
@@ -2116,6 +2131,8 @@ private fun MainScreen(
                             if (!phone) {
                                 val smallTv = remember(Choices.changes) { Choices.smallTv(context) }
                                 FocusRow("Small TV while browsing: " + if (smallTv) "on" else "off", { Choices.smallTv(context, !smallTv) }, look = Look.OTHER)
+                                val sounds = remember(Choices.changes) { UiSounds.on(context) }
+                                FocusRow("Sounds as you move around: " + if (sounds) "on" else "off", { UiSounds.on(context, !sounds) }, look = Look.OTHER, below = "Quiet ticks for moving, OK and Back. Never over a programme")
                             }
                             sub("The remote's spare buttons")
                             val spareNow = Choices.changes
