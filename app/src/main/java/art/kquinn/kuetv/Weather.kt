@@ -18,8 +18,13 @@ object Weather {
     var now by mutableStateOf<String?>(null)
         private set
 
+    /** The country the TV is in, from the same rough location ("IE", "GB", …); null until known. */
+    var country by mutableStateOf<String?>(null)
+        private set
+
     private var fetchedAt = 0L
     private var place: Pair<Double, Double>? = null
+    private var placedAt = System.currentTimeMillis()
     private val http by lazy { Provider.http.newBuilder().callTimeout(15, TimeUnit.SECONDS).build() }
 
     private fun get(url: String): JSONObject = http.newCall(Request.Builder().url(url).header("User-Agent", Provider.USER_AGENT).build())
@@ -27,9 +32,14 @@ object Weather {
 
     suspend fun refresh() {
         if (System.currentTimeMillis() - fetchedAt < 30 * 60_000L && now != null) return
+        // The TV moves between houses: where it is gets checked again every 6 hours.
+        if (System.currentTimeMillis() - placedAt > 6 * 60 * 60_000L) { place = null; placedAt = System.currentTimeMillis() }
         val line = withContext(Dispatchers.IO) {
             runCatching {
-                val (lat, lon) = place ?: get("https://ipapi.co/json/").let { it.getDouble("latitude") to it.getDouble("longitude") }.also { place = it }
+                val (lat, lon) = place ?: get("https://ipapi.co/json/").let { j ->
+                    country = j.optString("country_code").ifBlank { null }
+                    j.getDouble("latitude") to j.getDouble("longitude")
+                }.also { place = it }
                 val c = get("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code").getJSONObject("current")
                 picture(c.getInt("weather_code")) + " " + Math.round(c.getDouble("temperature_2m")) + "°"
             }.onFailure { Report.note("Weather", it.message.orEmpty()) }.getOrNull()

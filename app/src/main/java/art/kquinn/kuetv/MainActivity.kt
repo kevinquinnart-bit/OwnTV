@@ -4609,9 +4609,12 @@ private fun HomeScreen(
         } },
         // TV: live channels that open straight into their own app's live player, as Freely does.
         { if (!phone) Column(verticalArrangement = blockSpacing) {
+            // RTÉ's appear when the TV is in Ireland: where the TV is comes with the weather.
+            LaunchedEffect(Unit) { Weather.refresh() }
+            val liveHere = LiveInApps.here()
             Heading("Live in their own apps")
             LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
-                itemsIndexed(LiveInApps.all, key = { _, c -> c.link }) { _, c ->
+                itemsIndexed(liveHere, key = { _, c -> c.link }) { _, c ->
                     HomeCard({ LiveInApps.open(context, c) }, Modifier.width(150.dp), 16f / 9f, c.name, c.app) {
                         Text(c.name, color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
