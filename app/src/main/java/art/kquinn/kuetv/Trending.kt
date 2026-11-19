@@ -1,9 +1,7 @@
 package art.kquinn.kuetv
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.compose.runtime.getValue
@@ -192,13 +190,13 @@ object DeviceApps {
 }
 
 /**
- * KueTV as the TV's home screen. It is an extra way into KueTV that answers the Home button, switched off
- * until it is switched on from a computer (with Amazon's own home screen switched off at the same time).
+ * KueTV as the TV's Home button. It is on while KueTV's Home button watcher ([HomeGuard]) is switched on in the
+ * TV's accessibility settings, which is done from a computer: Fire OS won't let anything replace Amazon's home screen.
  */
 object Launcher {
     fun isHome(context: Context): Boolean = runCatching {
-        context.packageManager.getComponentEnabledSetting(ComponentName(context, "art.kquinn.kuetv.HomeScreen")) ==
-            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        val on = android.provider.Settings.Secure.getString(context.contentResolver, "enabled_accessibility_services").orEmpty()
+        on.split(':').any { it.equals(context.packageName + "/" + HomeGuard::class.java.name, ignoreCase = true) || it.equals(context.packageName + "/.HomeGuard", ignoreCase = true) }
     }.getOrDefault(false)
 
     /** The TV's own settings: with Amazon's home screen off, this is the way to them. */
