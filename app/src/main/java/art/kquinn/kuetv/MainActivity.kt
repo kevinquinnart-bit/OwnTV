@@ -306,7 +306,7 @@ private fun App() {
     // A film or episode that can play from an add-on or from the provider's own copy, waiting for the user to pick.
     var choice by remember { mutableStateOf<Playing?>(null) }
     // What the lists show: everything the provider sent, less the categories chosen to be hidden.
-    val shownLibrary = remember(library, Choices.changes, kids, Renames.changes) {
+    val shownLibrary = remember(library, Choices.changes, kids, Renames.changes, HiddenChannels.changes) {
         // A kids profile: adult categories hidden too.
         val adult: (List<Category>) -> Set<String> = { cats -> if (kids) cats.filter { Profiles.isAdult(it.name) }.mapTo(HashSet()) { it.id } else emptySet() }
         // Channels given names of the user's own.
@@ -317,6 +317,8 @@ private fun App() {
         )
             // ...and each kind's categories in the user's own order.
             ?.inOrder(Choices.order(context, "live"), Choices.order(context, "film"), Choices.order(context, "show"))
+            // ...and without the channels hidden one by one.
+            ?.withoutChannels(HiddenChannels.all(context))
     }
     // Each time KueTV comes to the front: carry on copying any recordings that are waiting for Google Drive.
     LaunchedEffect(Resumes.count) { Recordings.wake(context) }
@@ -1312,6 +1314,9 @@ private class BrowseState(saved: Map<String, String> = emptyMap()) {
     /** The part of Settings open: null for the list of parts. */
     var settingsPage by mutableStateOf<String?>(null)
 
+    /** Picking channels to hide in Live TV: the rows picked so far; null when not picking. */
+    var hiding by mutableStateOf<Set<String>?>(null)
+
     /** The channel the remote is on in Live TV, for the picture and programme details beside the list. */
     var liveOn by mutableStateOf<ChannelGroup?>(null)
 }
@@ -1726,6 +1731,16 @@ private fun MainScreen(
                     val sortable = liveCategory == FAVOURITES && shown.size > 1
                     val sorting = sortable && state.sorting
                     BackHandler(enabled = sorting) { state.sorting = false; state.picked = null }
+                    // Picking channels to hide: Back stops picking, hiding nothing.
+                    val hiding = state.hiding
+                    BackHandler(enabled = hiding != null) { state.hiding = null }
+                    val hideNow: () -> Unit = {
+                        val picked = state.hiding.orEmpty()
+                        val ids = library.groups.filter { it.id in picked }.flatMap { g -> g.versions.map { it.channel.id } }
+                        HiddenChannels.hide(context, ids)
+                        state.hiding = null
+                        android.widget.Toast.makeText(context, "Hidden " + picked.size + (if (picked.size == 1) " channel" else " channels") + ". Settings › Categories › Hidden channels brings them back.", android.widget.Toast.LENGTH_LONG).show()
+                    }
                     /** Moves the picked channel to [to] in the list, and keeps that as the order. */
                     val moveTo: (Int) -> Unit = { to ->
                         val from = shown.indexOfFirst { it.id == state.picked }
@@ -1737,7 +1752,7 @@ private fun MainScreen(
                     }
                     // Hold OK on a channel: what can be done with it, in a short list.
                     menuChannel?.let { ch ->
-                        ChannelMenu(ch, login, favourites, mine, onClose = { menuChannel = null })
+                        ChannelMenu(ch, login, favourites, mine, onClose = { menuChannel = null }, onPickToHide = { state.hiding = setOf(ch.id) })
                     }
                     // A channel number typed on the remote's number keys: a moment after the last key, the remote goes to that row.
                     var typed by remember { mutableStateOf("") }
@@ -1762,12 +1777,16 @@ private fun MainScreen(
                         Heading(
                             when {
                                 typed.isNotEmpty() -> "Channel $typed…"
+                                hiding != null -> hiding.size.toString() + " picked. " + (if (phone) "Tap" else "OK on") + " a channel to pick it or not. Back to stop."
                                 sorting && state.picked != null -> "Moving. " + if (phone) "Tap where it should go." else "▲ ▼ to move it, OK to put it down."
                                 sorting -> (if (phone) "Tap a channel to pick it up." else "OK on a channel to pick it up.") + " Back when done."
                                 else -> (if (shown.size == 1) "1 channel" else "${shown.size} channels") + menuHint()
                             },
                         )
-                        if (sortable) {
+                        if (hiding != null) {
+                            FocusRow("Hide the " + hiding.size + " picked", hideNow, look = Look.MAIN)
+                        }
+                        if (sortable && hiding == null) {
                             FocusRow(
                                 if (sorting) "Done sorting" else "Sort my favourites",
                                 { state.sorting = !state.sorting; state.picked = null },
@@ -1801,10 +1820,12 @@ private fun MainScreen(
                                 val key = "live:" + channel.id
                                 val favKeys = channel.versions.map { Favourites.key(it.channel, login) }
                                 val isPicked = sorting && state.picked == channel.id
+                                val toHide = hiding != null && channel.id in hiding
                                 FocusRow(
-                                    (if (isPicked) "↕ " else if (favKeys.any { it in favs }) "★ " else "") + channel.name,
+                                    (if (hiding != null) (if (toHide) "☑ " else "☐ ") else if (isPicked) "↕ " else if (favKeys.any { it in favs }) "★ " else "") + channel.name,
                                     {
                                         when {
+                                            hiding != null -> state.hiding = if (toHide) hiding - channel.id else hiding + channel.id
                                             !sorting -> onPlay(playables, i, true, key)
                                             state.picked == null -> state.picked = channel.id
                                             state.picked == channel.id -> state.picked = null
@@ -1813,9 +1834,9 @@ private fun MainScreen(
                                         }
                                     },
                                     (if (key == resumeKey) Modifier.focusRequester(resume) else Modifier).then(if (i == jumpTo) Modifier.focusRequester(jumpFocus) else Modifier),
-                                    chosen = isPicked,
+                                    chosen = isPicked || toHide,
                                     onFocus = { state.liveOn = channel },
-                                    onHold = if (sorting) null else ({ menuChannel = channel }),
+                                    onHold = if (sorting || hiding != null) null else ({ menuChannel = channel }),
                                     leading = { Logo(channel.logo) },
                                     below = nowLine(library.account, channel.versions[channel.start].channel.id, channel.name),
                                 )
@@ -4199,6 +4220,7 @@ private fun CategoriesScreen(library: Library, onDone: () -> Unit) {
         ).filter { it.categories.isNotEmpty() }
     }
     val hidden = remember(changes) { kinds.associate { it.key to Choices.hidden(context, it.key) } }
+    @Suppress("UNUSED_VARIABLE") val hiddenChannelsNow = HiddenChannels.changes
     val list = remember { LazyListState() }
     /** Moves the picked category to [to] within its kind, and keeps that order. */
     val moveTo: (Kind, Int) -> Unit = { kind, to ->
@@ -4295,6 +4317,22 @@ private fun CategoriesScreen(library: Library, onDone: () -> Unit) {
                             (if (isOff) "✗  " else "✓  ") + category.name + " · " + (kind.counts[category.id] ?: 0) + if (isOff) " · hidden" else "",
                             { Choices.hidden(context, kind.key, if (isOff) off - category.id else off + category.id) },
                         )
+                    }
+                }
+            }
+            // Channels hidden one by one in Live TV: each can be brought back, or all at once.
+            if (sorting == null) {
+                val hiddenIds = HiddenChannels.all(context)
+                val hiddenNames = library.channels.filter { it.id in hiddenIds }.groupBy { it.name }
+                item(key = "h:channels") {
+                    Box(Modifier.padding(top = 16.dp)) { Heading("Hidden channels · " + hiddenNames.size) }
+                }
+                if (hiddenNames.isEmpty()) {
+                    item(key = "none:channels") { Note(if (phone) "None. Press and hold a channel in Live TV to hide it." else "None. Hold OK on a channel in Live TV to hide it.") }
+                } else {
+                    item(key = "all:channels") { FocusRow("Show all hidden channels again", { HiddenChannels.show(context, hiddenIds) }, look = Look.OTHER) }
+                    hiddenNames.entries.sortedBy { it.key.lowercase() }.forEach { (name, list) ->
+                        item(key = "ch:" + name) { FocusRow("✗  " + name + " · hidden", { HiddenChannels.show(context, list.map { it.id }) }) }
                     }
                 }
             }
@@ -5840,7 +5878,7 @@ private fun YourThingsPage(first: () -> Modifier, sub: @Composable (String) -> U
  * categories, or a new one made with it; or a name of the user's own. Back, or a choice, closes it.
  */
 @Composable
-private fun ChannelMenu(channel: ChannelGroup, login: Boolean, favourites: Favourites, mine: List<MyCategories.Mine>, onClose: () -> Unit) {
+private fun ChannelMenu(channel: ChannelGroup, login: Boolean, favourites: Favourites, mine: List<MyCategories.Mine>, onClose: () -> Unit, onPickToHide: () -> Unit = {}) {
     val context = LocalContext.current
     val favKeys = channel.versions.map { Favourites.key(it.channel, login) }
     val favourite = favKeys.any { it in favourites.keys }
@@ -5874,6 +5912,8 @@ private fun ChannelMenu(channel: ChannelGroup, login: Boolean, favourites: Favou
                     }
                     FocusRow("New category with this channel", { typed = ""; naming = true }, look = Look.OTHER)
                     FocusRow("Rename this channel", { typed = channel.name; naming = false }, look = Look.OTHER)
+                    FocusRow("Hide this channel", { HiddenChannels.hide(context, channel.versions.map { it.channel.id }); onClose() }, look = Look.OTHER)
+                    FocusRow("Pick channels to hide", { onPickToHide(); onClose() }, look = Look.OTHER, below = "OK picks each one; then hide them all at once")
                     FocusRow("Close", onClose, look = Look.OTHER)
                 }
                 else -> {

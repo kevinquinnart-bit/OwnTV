@@ -111,6 +111,12 @@ class Library(
         )
     }
 
+    /** The same lists without the channels the user has hidden (by channel id). */
+    fun withoutChannels(ids: Set<String>): Library {
+        if (ids.isEmpty()) return this
+        return Library(liveCategories, channels.filter { it.id !in ids }, filmCategories, films, showCategories, shows, account, serverAheadSec)
+    }
+
     /** The same lists with channels given the names the user chose for them (by channel id). */
     fun renamed(names: Map<String, String>): Library {
         if (names.isEmpty()) return this

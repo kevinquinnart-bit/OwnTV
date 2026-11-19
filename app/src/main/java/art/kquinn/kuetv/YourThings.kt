@@ -312,3 +312,21 @@ object SpareKeys {
         Choices.touch()
     }
 }
+
+/** Channels the user has hidden from Live TV, by the provider's (or a free list's) channel id. Settings › Categories brings them back. */
+object HiddenChannels {
+    var changes by mutableIntStateOf(0)
+        private set
+
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(Profiles.scoped(context, "hidden_channels"), Context.MODE_PRIVATE)
+
+    fun all(context: Context): Set<String> = prefs(context).getStringSet("ids", emptySet()).orEmpty().toSet()
+
+    fun hide(context: Context, ids: Collection<String>) = put(context, all(context) + ids)
+    fun show(context: Context, ids: Collection<String>) = put(context, all(context) - ids.toSet())
+
+    private fun put(context: Context, ids: Set<String>) {
+        prefs(context).edit().putStringSet("ids", ids).apply()
+        changes++
+    }
+}
