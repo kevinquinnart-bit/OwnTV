@@ -4467,8 +4467,14 @@ private fun HomeScreen(
                     }
                 }
                 item(key = "tv-settings") {
-                    HomeCard({ Launcher.openTvSettings(context) }, Modifier.width(150.dp), 16f / 9f, "TV settings", null) {
+                    HomeCard({ if (!Launcher.openTvSettings(context)) android.widget.Toast.makeText(context, "The TV's settings wouldn't open. Hold Home for the TV's menu.", android.widget.Toast.LENGTH_LONG).show() }, Modifier.width(150.dp), 16f / 9f, "TV settings", null) {
                         SectionIcon(Section.SETTINGS, AccentInk, Modifier.size(44.dp))
+                    }
+                }
+                // Straight to the TV's developer options, where ADB debugging is switched on and off.
+                item(key = "tv-developer") {
+                    HomeCard({ if (!Launcher.openTvSettings(context, developer = true)) android.widget.Toast.makeText(context, "The TV's settings wouldn't open. Hold Home for the TV's menu.", android.widget.Toast.LENGTH_LONG).show() }, Modifier.width(150.dp), 16f / 9f, "Developer options", null) {
+                        SectionIcon(Section.SETTINGS, Soft, Modifier.size(44.dp))
                     }
                 }
             }
