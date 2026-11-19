@@ -168,6 +168,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        HomeGuard.inFront = false
+    }
+
     override fun onResume() {
         super.onResume()
         Resumes.count++
