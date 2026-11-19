@@ -119,6 +119,26 @@ class HomeGuard : AccessibilityService() {
         /** True while KueTV's screen is in front. */
         @Volatile var inFront = false
 
+        /**
+         * After KueTV is updated, Fire OS can leave the Home watcher switched on but not running. If the computer
+         * gave KueTV leave to change that setting, it switches the watcher off and on again, which starts it.
+         */
+        fun wakeIfAsleep(context: Context) {
+            if (running != null || !Launcher.isHome(context)) return
+            if (context.checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS") != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+            val cr = context.contentResolver
+            val key = "enabled_accessibility_services"
+            val now = android.provider.Settings.Secure.getString(cr, key).orEmpty()
+            val mine = context.packageName + "/" + HomeGuard::class.java.name
+            val others = now.split(':').filter { it.isNotBlank() && !it.equals(mine, ignoreCase = true) }
+            runCatching {
+                android.provider.Settings.Secure.putString(cr, key, others.joinToString(":"))
+                android.provider.Settings.Secure.putString(cr, key, (others + mine).joinToString(":"))
+                android.provider.Settings.Secure.putString(cr, "accessibility_enabled", "1")
+                Report.note("Home", "Home button watcher started again")
+            }
+        }
+
         /** KueTV on screen: the cover can come down. */
         fun shown() { inFront = true; running?.removeCover() }
 

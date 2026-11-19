@@ -179,6 +179,8 @@ class MainActivity : ComponentActivity() {
         launching = false
         // KueTV is on screen: the Home button watcher's black cover can come down.
         HomeGuard.shown()
+        // Just updated: the Home button watcher may need starting again.
+        if (isTv(this)) Thread { HomeGuard.wakeIfAsleep(applicationContext) }.start()
     }
 
     // Set while KueTV itself opens something (Google sign-in, the installer, another player, a VPN prompt),
