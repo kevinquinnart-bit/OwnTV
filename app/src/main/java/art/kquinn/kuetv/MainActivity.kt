@@ -107,6 +107,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -4693,8 +4695,9 @@ private fun HomeScreen(
     // nothing is pushed off the top. The margins keep clear of the edges a TV can cut off.
     Column(
         modifier.fillMaxSize().then(if (phone) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-            .padding(horizontal = if (phone) 8.dp else 48.dp, vertical = if (phone) 8.dp else 22.dp),
-        verticalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 10.dp),
+            // TV: a little tighter at the top than the bottom, so there is room for the next row to peek in below.
+            .padding(start = if (phone) 8.dp else 48.dp, end = if (phone) 8.dp else 48.dp, top = if (phone) 8.dp else 14.dp, bottom = if (phone) 8.dp else 22.dp),
+        verticalArrangement = Arrangement.spacedBy(if (phone) 14.dp else 6.dp),
     ) {
         // The top. Phone: the app's name and the time. TV, as on Freely: what the remote is on (or the channel last
         // watched) in big letters on the left, and the channel last watched still playing on the right.
@@ -4748,7 +4751,7 @@ private fun HomeScreen(
         } else {
             // All the tiles are drawn, so the one to land on can always take focus, even when it is off to the right.
             Row(
-                Modifier.fillMaxWidth().focusRestorer().focusGroup().horizontalScroll(rememberScrollState()).padding(8.dp),
+                Modifier.fillMaxWidth().focusRestorer().focusGroup().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 tiles.forEach { s ->
@@ -4918,23 +4921,45 @@ private fun HomeScreen(
         } },
         )
         if (phone) Column(verticalArrangement = blockSpacing) { rows.forEach { it() } }
-        else WholeRows(rows, Modifier.fillMaxWidth().weight(1f))
+        else WholeRows(rows, Modifier.fillMaxWidth().weight(1f), peekBelow = 22.dp)
     }
 }
 
 /**
- * Rows stacked down the screen, shown only whole: a row that would be cut off at the bottom is hidden until
- * the remote moves down to it; then the rows move up so it shows in full. Moving up brings rows back.
+ * Rows stacked down the screen, shown whole: a row that would be cut off at the bottom is hidden until the
+ * remote moves down to it; then the rows move up so it shows in full. Moving up brings rows back.
+ *
+ * The first row below the whole ones peeks in at the bottom, faded out downwards, so it is plain there are
+ * more rows below (Kevin, 20 November 2026). It may run [peekBelow] into the space under the rows.
  */
 @Composable
-private fun WholeRows(rows: List<@Composable () -> Unit>, modifier: Modifier = Modifier) {
+private fun WholeRows(rows: List<@Composable () -> Unit>, modifier: Modifier = Modifier, peekBelow: Dp = 0.dp) {
     var focusedRow by remember { mutableIntStateOf(-1) }
     val top = remember { intArrayOf(0) }
-    val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 6.dp.roundToPx() }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val gap = with(density) { 6.dp.roundToPx() }
+    val extra = with(density) { peekBelow.roundToPx() }
+    // Too little of a row to be worth showing.
+    val least = with(density) { 24.dp.roundToPx() }
+    // The row peeking in, and how much of it shows (in pixels).
+    var peek by remember { mutableStateOf(-1 to 0f) }
     androidx.compose.ui.layout.Layout(
         content = {
             rows.forEachIndexed { i, row ->
-                Box(Modifier.onFocusChanged { if (it.hasFocus) focusedRow = i }) { row() }
+                Box(
+                    Modifier
+                        .onFocusChanged { if (it.hasFocus) focusedRow = i }
+                        .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            val (row, shows) = peek
+                            // Faded: two thirds there at its top, gone by the bottom of the screen.
+                            if (row == i && shows > 0f) drawRect(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.65f), 1f to Color.Transparent, startY = 0f, endY = shows),
+                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                            )
+                        },
+                ) { row() }
             }
         },
         modifier = modifier,
@@ -4949,11 +4974,26 @@ private fun WholeRows(rows: List<@Composable () -> Unit>, modifier: Modifier = M
             while (t < f && (t..f).sumOf { heights[it] } - gap > room) t++
         }
         top[0] = t
+        // Which row peeks in: the first one below the whole ones, when enough of it would show.
+        var nowPeek = -1 to 0f
+        run {
+            var y = -(0 until t).sumOf { heights[it] }
+            placeables.forEachIndexed { i, p ->
+                val whole = y >= 0 && y + p.height <= room
+                if (!whole && i != t && y >= 0 && nowPeek.first < 0) {
+                    val shows = room + extra - y
+                    if (shows >= least && p.height > 0) nowPeek = i to shows.toFloat()
+                    return@run
+                }
+                y += heights[i]
+            }
+        }
+        if (nowPeek != peek) peek = nowPeek
         layout(constraints.maxWidth, room) {
             var y = -(0 until t).sumOf { heights[it] }
             placeables.forEachIndexed { i, p ->
                 val whole = y >= 0 && y + p.height <= room
-                p.placeWithLayer(0, y) { alpha = if (whole || i == t) 1f else 0f }
+                p.placeWithLayer(0, y) { alpha = if (whole || i == t || i == nowPeek.first) 1f else 0f }
                 y += heights[i]
             }
         }
