@@ -1696,16 +1696,13 @@ private fun MainScreen(
         Recent.pick(library.groups, Recent.all(context)) { g -> g.versions.map { it.channel.url } }.firstOrNull()
             ?.takeIf { AddOns.showable(it.lightest.url) }?.let { LastLive.item = Playable(it.name, it.lightest.url) }
     }
-    // Live TV, Films and Series always open on Favourites (All when there are none), each list from its top.
+    // Films and Series always open on Favourites (All when there are none), each list from its top.
+    // Live TV opens on the category it was last in (Kevin, 20 Nov 2026: it used to jump back to Favourites).
     // Coming back from the player isn't opening a section, so it stays where it was.
     LaunchedEffect(section) {
         if (before[0] != section && !(!shownOnce[0] && state.resumeKey != null)) {
             when (section) {
-                Section.LIVE -> {
-                    state.liveCategory = if (library.groups.any { g -> g.versions.any { Favourites.key(it.channel, login) in favs } }) FAVOURITES else ALL
-                    launch { runCatching { state.liveCategoryList.scrollToItem(0) } }
-                    launch { runCatching { state.channelList.scrollToItem(0) } }
-                }
+                Section.LIVE -> Unit
                 Section.FILMS -> {
                     state.filmCategory = if (library.films.any { Favourites.key(it, login) in favs }) FAVOURITES else ALL
                     launch { runCatching { state.filmCategoryList.scrollToItem(0) } }
@@ -1862,7 +1859,9 @@ private fun MainScreen(
                         else list.partition(isFav).let { (fav, rest) -> fav.sortedBy(favRank) + rest }
                     }
                 }
-                val playables = remember(shown) { shown.map { livePlayable(it, library.account, library.serverAheadSec) } }
+                // Made only when a channel is chosen: making one for every channel in the category (thousands in All) each
+                // time the category changed held the screen up, so the list was slow to follow the categories.
+                val playables = remember(shown) { lazy { shown.map { livePlayable(it, library.account, library.serverAheadSec) } } }
                 // Come from the player with ◀: the list moves to the channel that was playing, and the remote lands on it.
                 LaunchedEffect(shown) {
                     if (!state.jumpLive) return@LaunchedEffect
@@ -1974,7 +1973,7 @@ private fun MainScreen(
                                     {
                                         when {
                                             hiding != null -> state.hiding = if (toHide) hiding - channel.id else hiding + channel.id
-                                            !sorting -> onPlay(playables, i, true, key)
+                                            !sorting -> onPlay(playables.value, i, true, key)
                                             state.picked == null -> state.picked = channel.id
                                             state.picked == channel.id -> state.picked = null
                                             // Phone: tapping another channel puts the picked one there.
@@ -2532,7 +2531,10 @@ private fun Categories(categories: List<Category>, chosen: String, list: LazyLis
     LaunchedEffect(landed) {
         val id = landed ?: return@LaunchedEffect
         delay(350)
-        if (id != chosen) onChoose(id)
+        if (id != chosen) {
+            Report.note("Lists", "remote rested on a category: showing " + (categories.firstOrNull { it.id == id }?.name ?: id))
+            onChoose(id)
+        }
     }
     val row: @Composable (String, String) -> Unit = { id, name ->
         FocusRow(

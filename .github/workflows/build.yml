@@ -61,7 +61,10 @@ jobs:
           echo "VPN engine in this build: all parts, for both kinds of chip"
           if [ -n "$KUETV_DRIVE_CLIENT_ID" ] && [ -n "$KUETV_DRIVE_CLIENT_SECRET" ]; then echo "Google Drive keys: in this build"; else echo "Google Drive keys: MISSING from this build"; fi
 
-      - name: Publish
+      # The app first, and only then version.txt, which tells TVs and phones a new version is there. Sent
+      # together, version.txt (tiny) arrived first, so a TV asking at that moment downloaded the old app,
+      # rejected it, and had to download again (seen 20 Nov 2026).
+      - name: Publish the app
         uses: softprops/action-gh-release@v3
         with:
           tag_name: kuetv2
@@ -71,7 +74,17 @@ jobs:
             dist/KueTV2.apk
             dist/KueTV.apk
             dist/OwnTV.apk
-            dist/version.txt
+          body_path: dist/NOTES.md
+          prerelease: false
+          make_latest: true
+
+      - name: Publish the version number
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: kuetv2
+          target_commitish: ${{ github.sha }}
+          name: KueTV 2 (${{ env.VERSION_NAME }})
+          files: dist/version.txt
           body_path: dist/NOTES.md
           prerelease: false
           make_latest: true
