@@ -87,7 +87,7 @@ object K {
     val Ink = Color.White
     val Soft = Color(0xFFB9C2D3)
     /** The light blue of the Kue K: the second word of every Kue app's name ("TV", "Sounds"). */
-    val KueBlue = Color(0xFF00BEFB)
+    val KueBlue = Color(0xFF5CCEFF)
     val Poppins = FontFamily(
         Font(R.font.poppins_regular, FontWeight.Normal),
         Font(R.font.poppins_bold, FontWeight.Bold),
@@ -140,7 +140,13 @@ object Ui {
         Text(
             androidx.compose.ui.text.buildAnnotatedString {
                 append("Kue")
-                withStyle(androidx.compose.ui.text.SpanStyle(color = K.KueBlue)) { append("Sounds") }
+                // A soft dark shadow keeps the light blue clear on any background.
+                withStyle(
+                    androidx.compose.ui.text.SpanStyle(
+                        color = K.KueBlue,
+                        shadow = androidx.compose.ui.graphics.Shadow(Color(0xCC000000), androidx.compose.ui.geometry.Offset(0f, 2f), 6f),
+                    ),
+                ) { append("Sounds") }
             },
             modifier = modifier, color = K.Ink, fontSize = size.sp, fontFamily = K.Poppins, fontWeight = FontWeight.SemiBold, maxLines = 1,
         )
