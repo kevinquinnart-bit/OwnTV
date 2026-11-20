@@ -37,6 +37,14 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- Aerial TV: lets KueTV find the TV's own aerial tuner, and the TV's app that shows its channels. -->
+        <intent>
+            <action android:name="android.media.tv.TvInputService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="content" android:host="android.media.tv" />
+        </intent>
     </queries>
 
     <!--

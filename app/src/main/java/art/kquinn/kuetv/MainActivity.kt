@@ -676,6 +676,22 @@ private fun App() {
             playing = Playing(listOf(livePlayable(group, library?.account, library?.serverAheadSec ?: 0)), 0, true)
         }
     }
+    // The home internet gone for 15 seconds, on a TV with an aerial: the aerial is offered, once each time it goes.
+    LaunchedEffect(Unit) {
+        NetWatch.start(context)
+        Report.note("Aerial", withContext(Dispatchers.Default) { Aerial.describe(context) })
+    }
+    LaunchedEffect(NetWatch.online) {
+        if (NetWatch.online) { Aerial.offering = false; return@LaunchedEffect }
+        delay(15_000)
+        if (!NetWatch.online && Aerial.offerWhenOffline(context) && withContext(Dispatchers.Default) { Aerial.available(context) }) Aerial.offering = true
+    }
+    val watchAerial: () -> Unit = {
+        Aerial.offering = false
+        playing = null
+        multi = null
+        if (!Aerial.open(context)) android.widget.Toast.makeText(context, "The TV's aerial channels wouldn't open.", android.widget.Toast.LENGTH_LONG).show()
+    }
     // A reminder that isn't answered goes after a minute and a half.
     LaunchedEffect(reminder) {
         if (reminder == null) return@LaunchedEffect
@@ -686,6 +702,12 @@ private fun App() {
         Modifier.fillMaxSize().background(Looks.backdrop).then(if (playing == null) Modifier.safeDrawingPadding() else Modifier)
             // With a reminder up, OK watches it and Back puts it away, before anything underneath sees those keys.
             .onPreviewKeyEvent { e ->
+                // With the aerial offered, OK watches it and Back puts the offer away.
+                if (Aerial.offering) return@onPreviewKeyEvent when (e.key) {
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { if (e.type == KeyEventType.KeyUp) watchAerial(); true }
+                    Key.Back -> { if (e.type == KeyEventType.KeyUp) Aerial.offering = false; true }
+                    else -> false
+                }
                 if (Reminders.showing == null) return@onPreviewKeyEvent false
                 when (e.key) {
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { if (e.type == KeyEventType.KeyUp) watchReminded(); true }
@@ -861,6 +883,21 @@ private fun App() {
             ) }
         }
         if (reminder != null) ReminderPopUp(reminder, onWatch = watchReminded, onClose = { Reminders.showing = null }, Modifier.align(Alignment.TopCenter))
+        if (Aerial.offering) AerialPopUp(onWatch = watchAerial, onClose = { Aerial.offering = false }, Modifier.align(Alignment.TopCenter))
+    }
+}
+
+/** The home internet gone: the TV's aerial channels offered, over whatever is on screen, at the top. */
+@Composable
+private fun AerialPopUp(onWatch: () -> Unit, onClose: () -> Unit, modifier: Modifier) {
+    Column(
+        modifier.padding(top = 28.dp, start = 12.dp, end = 12.dp).widthIn(max = 720.dp)
+            .background(Looks.panel.copy(alpha = 0.95f), RoundedCornerShape(16.dp)).border(2.dp, Accent, RoundedCornerShape(16.dp))
+            .padding(horizontal = 22.dp, vertical = 16.dp),
+    ) {
+        Text("No internet", color = AccentInk, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text("Watch the TV's aerial channels?", color = Ink, fontSize = Sizes.ROW, fontWeight = FontWeight.Bold)
+        Text("OK to watch  ·  Back to put this away", color = Soft, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp))
     }
 }
 
@@ -2318,13 +2355,24 @@ private fun MainScreen(
                             }
                         }
                         "This TV" -> {
+                            // The TV's own aerial channels, when it has a tuner.
+                            val aerialName = remember(Resumes.count) { Aerial.name(context) }
+                            if (aerialName != null) {
+                                sub("Aerial TV")
+                                FocusRow("Watch aerial TV", { if (!Aerial.open(context)) android.widget.Toast.makeText(context, "The TV's aerial channels wouldn't open.", android.widget.Toast.LENGTH_LONG).show() },
+                                    first(), look = Look.OTHER, below = "The digital channels from the aerial plugged into the TV. They work with no internet")
+                                val offer = remember(Aerial.changes) { Aerial.offerWhenOffline(context) }
+                                FocusRow("Offer aerial TV when the internet goes: " + if (offer) "on" else "off", { Aerial.offerWhenOffline(context, !offer) },
+                                    look = Look.OTHER, below = "OK to change")
+                                sub("The TV's settings")
+                            }
                             // The TV's own settings: each opens straight onto that screen, and Back comes back here.
                             val tvParts = remember(Resumes.count) { Launcher.tvSettings(context) }
                             tvParts.forEachIndexed { i, p ->
                                 FocusRow(p.label, { if (!Launcher.open(context, p)) android.widget.Toast.makeText(context, "That part of the TV's settings wouldn't open.", android.widget.Toast.LENGTH_LONG).show() },
-                                    if (i == 0) first() else Modifier, look = Look.OTHER)
+                                    if (i == 0 && aerialName == null) first() else Modifier, look = Look.OTHER)
                             }
-                            FocusRow("All Fire TV settings", { Launcher.openTvSettings(context) }, if (tvParts.isEmpty()) first() else Modifier,
+                            FocusRow("All Fire TV settings", { Launcher.openTvSettings(context) }, if (tvParts.isEmpty() && aerialName == null) first() else Modifier,
                                 look = Look.OTHER, below = "Amazon's own settings menu. Home or Back when done comes back to KueTV")
                             FocusRow("Get more apps", { if (!Launcher.openAppstore(context)) android.widget.Toast.makeText(context, "Amazon's Appstore wouldn't open.", android.widget.Toast.LENGTH_LONG).show() },
                                 look = Look.OTHER, below = "Amazon's Appstore. New apps land in the right row on Home by themselves")
@@ -4645,8 +4693,16 @@ private fun HomeScreen(
         // TV: live channels that open straight into their own app's live player, as Freely does.
         { if (!phone) Column(verticalArrangement = blockSpacing) {
             val liveHere = LiveInApps.all
+            val aerial by produceState(false) { value = withContext(Dispatchers.Default) { Aerial.available(context) } }
             Heading("Live in their own apps")
             LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
+                // The TV's own aerial channels, first: they work with no internet.
+                if (aerial) item(key = "aerial") {
+                    HomeCard({ if (!Aerial.open(context)) android.widget.Toast.makeText(context, "The TV's aerial channels wouldn't open.", android.widget.Toast.LENGTH_LONG).show() },
+                        Modifier.width(150.dp), 16f / 9f, "Aerial TV", "This TV") {
+                        Text("📡 Aerial", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                }
                 itemsIndexed(liveHere, key = { _, c -> c.link }) { _, c ->
                     HomeCard({ LiveInApps.open(context, c) }, Modifier.width(150.dp), 16f / 9f, c.name, c.app) {
                         Text(c.name, color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
