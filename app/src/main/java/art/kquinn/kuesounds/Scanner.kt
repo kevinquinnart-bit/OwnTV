@@ -84,6 +84,12 @@ object Scanner {
     fun init(context: Context) {
         app = context.applicationContext
         data = Library.load(libraryFile())
+        // Libraries kept before 0.1.5 had their albums looked up without keeping the catalogue's cover in
+        // first place: every album is looked up once more.
+        if (data.version < 2) {
+            data = data.copy(tracks = data.tracks.map { it.copy(checked = false) }, version = 2)
+            save()
+        }
         read = data.tracks.count { it.tagged }
     }
 
@@ -292,7 +298,8 @@ object Scanner {
 
     /**
      * Puts what the catalogue found on these songs (or, when nothing was found, the tidied album name),
-     * and gives the album a cover. True when a new cover was fetched.
+     * and gives the album the catalogue's cover in place of any picture inside the files. True when a
+     * catalogue cover was fetched.
      */
     private fun apply(ids: Set<String>, al: Album, m: Catalogue.Match?, cleanTitle: String): Boolean {
         val oldKey = al.key
@@ -312,17 +319,20 @@ object Scanner {
         )
         val sample = data.tracks.first { it.id in ids }
         val newKey = Library.albumKey(Library.albumArtistOf(sample), sample.album)
-        if (newKey in data.art) return false
-        // A cover already found for the album (in its folder or its files) moves with it.
-        data.art[oldKey]?.let {
-            data = data.copy(art = data.art + (newKey to it))
-            return false
+        if (m != null) data = data.copy(releases = data.releases + (newKey to m.releaseId + "|" + m.groupId))
+        if (newKey in data.catalogueCovers) return false
+        // The catalogue's cover comes first: a picture inside the files can be the wrong one.
+        if (m != null) {
+            val bytes = runCatching { Catalogue.cover(m) }.getOrNull()
+            val path = bytes?.let { keepPicture(it, newKey + "\u0002catalogue") }
+            if (path != null) {
+                data = data.copy(art = data.art + (newKey to path), catalogueCovers = data.catalogueCovers + newKey)
+                return true
+            }
         }
-        if (m == null) return false
-        val bytes = runCatching { Catalogue.cover(m) }.getOrNull() ?: return false
-        val path = keepPicture(bytes, newKey) ?: return false
-        data = data.copy(art = data.art + (newKey to path))
-        return true
+        // No catalogue cover: one already found for the album (in its folder or its files) moves with it.
+        if (newKey !in data.art) data.art[oldKey]?.let { data = data.copy(art = data.art + (newKey to it)) }
+        return false
     }
 
     /** Shrinks a cover picture to at most 600 dots across and keeps it. Gives back the kept file's path. */

@@ -137,6 +137,15 @@ class LibraryTest {
     }
 
     @Test
+    fun aFreshListingKeepsCataloguedCovers() {
+        val old = LibraryData(art = mapOf("k" to "/c.jpg"), catalogueCovers = setOf("k"), releases = mapOf("k" to "r|g"), version = 2)
+        val merged = Library.merge(old, emptyList(), emptyList(), emptyMap(), 1L)
+        assertEquals(setOf("k"), merged.catalogueCovers)
+        assertEquals("r|g", merged.releases["k"])
+        assertEquals(2, merged.version)
+    }
+
+    @Test
     fun aChangedFileIsReadAgain() {
         val old = LibraryData(tracks = listOf(track("1", "Old", "A", "B", 1).copy(modified = "t1")))
         val merged = Library.merge(old, listOf(Drive.FileInfo("1", "01 New.mp3", "audio/mpeg", 100, "fb", "t2")), listOf(artistFolder, albumFolder), emptyMap(), 1L)

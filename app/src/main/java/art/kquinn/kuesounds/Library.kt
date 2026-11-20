@@ -46,6 +46,12 @@ data class LibraryData(
     /** Folder id to the Drive file of a cover picture found in it (cover.jpg, folder.jpg, front.jpg). */
     val folderCovers: Map<String, String> = emptyMap(),
     val scannedAt: Long = 0,
+    /** Album key to the catalogue's release it was matched to ("release id|release group id"). */
+    val releases: Map<String, String> = emptyMap(),
+    /** Albums whose cover came from the catalogue. These win over a picture inside the files. */
+    val catalogueCovers: Set<String> = emptySet(),
+    /** Which way the kept library is laid out, so an older one can be brought up to date. */
+    val version: Int = 0,
 )
 
 object Library {
@@ -244,7 +250,7 @@ object Library {
                 )
             }
         }
-        return LibraryData(tracks = tracks, folders = folders, art = old.art, folderCovers = folderCovers, scannedAt = now)
+        return old.copy(tracks = tracks, folders = folders, folderCovers = folderCovers, scannedAt = now)
     }
 
     private val gson = Gson()
@@ -273,7 +279,10 @@ object Library {
             )
         }
         @Suppress("USELESS_ELVIS")
-        return LibraryData(tracks, d.folders ?: emptyList(), d.art ?: emptyMap(), d.folderCovers ?: emptyMap(), d.scannedAt)
+        return LibraryData(
+            tracks, d.folders ?: emptyList(), d.art ?: emptyMap(), d.folderCovers ?: emptyMap(), d.scannedAt,
+            d.releases ?: emptyMap(), d.catalogueCovers ?: emptySet(), d.version,
+        )
     }
 
     /** The folders inside [parent] (null: the top of the Drive), in name order. */
