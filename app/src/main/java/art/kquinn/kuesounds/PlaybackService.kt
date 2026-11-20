@@ -34,6 +34,7 @@ class PlaybackService : MediaSessionService() {
         super.onCreate()
         Google.init(this)
         Scanner.init(this)
+        Offline.init(this)
         val upstream = OkHttpDataSource.Factory(Drive.http)
         // Every request for a song carries the current Drive pass, fetched fresh when the old one has run out.
         val withPass = ResolvingDataSource.Factory(upstream) { spec ->
@@ -41,7 +42,8 @@ class PlaybackService : MediaSessionService() {
             spec.withAdditionalHeaders(mapOf("Authorization" to "Bearer $token"))
         }
         val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(withPass))
+            // Songs saved on the phone are read from there; the rest come from the Drive with the pass.
+            .setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(this, withPass)))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)

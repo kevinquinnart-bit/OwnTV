@@ -46,7 +46,10 @@ object Playing {
     /** Whether anything is loaded to play. */
     val active: Boolean get() = currentId.isNotEmpty()
 
+    private lateinit var appContext: Context
+
     fun connect(context: Context) {
+        appContext = context.applicationContext
         if (controller != null) return
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
         val future = MediaController.Builder(context, token).buildAsync()
@@ -84,9 +87,11 @@ object Playing {
 
     fun item(t: Track): MediaItem {
         val art = Scanner.artForTrack(t)
+        // A song saved on the phone plays from there; the rest from the Drive.
+        val local = Offline.fileFor(t)
         return MediaItem.Builder()
             .setMediaId(t.id)
-            .setUri(Drive.mediaUrl(t.id))
+            .setUri(local?.let { Uri.fromFile(it).toString() } ?: Drive.mediaUrl(t.id))
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(t.title)
@@ -106,6 +111,16 @@ object Playing {
     fun play(list: List<Track>, start: Int, shuffled: Boolean = false) {
         val c = controller ?: return
         if (list.isEmpty()) return
+        // With no internet, only the songs saved on the phone can play: the rest are left out.
+        if (!Net.online(appContext)) {
+            val chosen = list.getOrNull(start)
+            val onPhone = list.filter { it.id in Offline.saved }
+            if (onPhone.isEmpty()) {
+                problem = "No internet, and these songs aren't saved on the phone."
+                return
+            }
+            return play(onPhone, chosen?.let { onPhone.indexOf(it) }?.takeIf { it >= 0 } ?: 0, shuffled)
+        }
         c.shuffleModeEnabled = shuffled
         val first = if (shuffled) list.indices.random() else start.coerceIn(0, list.size - 1)
         c.setMediaItems(list.map { item(it) }, first, 0L)

@@ -132,7 +132,12 @@ object Library {
      * The name an artist or album is grouped and sorted by: case, accents, curly quotes, leading
      * punctuation and a leading "The" set aside.
      */
-    fun sortName(name: String): String {
+    fun sortName(name: String): String = sortCache.getOrPut(name) { makeSortName(name) }
+
+    /** Sort names are worked out once per name: sorting thousands of songs asks for each many times. */
+    private val sortCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    private fun makeSortName(name: String): String {
         val plain = Normalizer.normalize(name, Normalizer.Form.NFD).replace(Regex("""\p{M}"""), "")
             .replace('\u2019', '\'').replace('\u2018', '\'').lowercase(Locale.ROOT).trim()
         return plain.trimStart { !it.isLetterOrDigit() }.removePrefix("the ").trim()

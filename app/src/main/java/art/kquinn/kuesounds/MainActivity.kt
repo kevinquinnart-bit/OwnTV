@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Google.init(this)
         Scanner.init(this)
+        Offline.init(this)
+        Sync.init(this)
         Playing.connect(this)
         Fixer.askPermission = ::askEdit
         Fixer.askNotices = {
@@ -70,7 +72,7 @@ class MainActivity : ComponentActivity() {
         }
         signedIn = Google.signedIn
         val unfinished = Scanner.data.tracks.any { !it.tagged || !it.checked }
-        if (signedIn && (Scanner.data.tracks.isEmpty() || unfinished || System.currentTimeMillis() - Scanner.data.scannedAt > 6 * 60 * 60 * 1000L)) {
+        if (signedIn && Net.online(this) && (Scanner.data.tracks.isEmpty() || unfinished || System.currentTimeMillis() - Scanner.data.scannedAt > 6 * 60 * 60 * 1000L)) {
             Scanner.scan()
         }
         setContent {
@@ -86,6 +88,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (signedIn) Sync.later(1000)
         lifecycleScope.launch(Dispatchers.IO) { Updates.checkAndFetch(applicationContext) }
     }
 

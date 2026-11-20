@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -85,6 +86,8 @@ object K {
     val Accent = Color(0xFFFFD23F)
     val Ink = Color.White
     val Soft = Color(0xFFB9C2D3)
+    /** The light blue of the Kue K: the second word of every Kue app's name ("TV", "Sounds"). */
+    val KueBlue = Color(0xFF00BEFB)
     val Poppins = FontFamily(
         Font(R.font.poppins_regular, FontWeight.Normal),
         Font(R.font.poppins_bold, FontWeight.Bold),
@@ -102,7 +105,9 @@ sealed class Screen {
     data object Settings : Screen()
 }
 
-enum class Tab(val label: String) { ALBUMS("Albums"), ARTISTS("Artists"), SONGS("Songs"), FOLDERS("Folders") }
+enum class Tab(val label: String) {
+    ALBUMS("Albums"), ARTISTS("Artists"), SONGS("Songs"), FOLDERS("Folders"), FAVOURITES("Favourites"), ON_PHONE("On phone"),
+}
 
 object Ui {
     @Composable
@@ -126,6 +131,18 @@ object Ui {
             text, modifier = modifier, color = colour, fontSize = size.sp, fontFamily = K.Poppins,
             fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal, maxLines = lines, overflow = TextOverflow.Ellipsis,
             textAlign = if (centre) TextAlign.Center else null, lineHeight = (size * 1.3f).sp,
+        )
+    }
+
+    /** "Kue" in white and "Sounds" in the Kue blue, as KueTV's name is written. */
+    @Composable
+    private fun Brand(size: Int, modifier: Modifier = Modifier) {
+        Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                append("Kue")
+                withStyle(androidx.compose.ui.text.SpanStyle(color = K.KueBlue)) { append("Sounds") }
+            },
+            modifier = modifier, color = K.Ink, fontSize = size.sp, fontFamily = K.Poppins, fontWeight = FontWeight.SemiBold, maxLines = 1,
         )
     }
 
@@ -176,7 +193,7 @@ object Ui {
         ) {
             Mark(84.dp)
             Spacer(Modifier.height(20.dp))
-            Words("KueSounds", 30, bold = true)
+            Brand(30)
             Spacer(Modifier.height(10.dp))
             Words("Your music, straight from Google Drive.", 17, K.Soft, lines = 3, centre = true)
             Spacer(Modifier.height(32.dp))
@@ -205,15 +222,16 @@ object Ui {
         BackHandler(enabled = stack.size > 1, onBack = back)
 
         val data = Scanner.data
-        val albums = remember(data) { Library.albums(data.tracks) }
-        val artists = remember(albums) { Library.artists(albums) }
-        val songs = remember(data) { Library.songs(data.tracks) }
+        val view = Scanner.view
+        val albums = view.albums
+        val artists = view.artists
+        val songs = view.songs
 
         Column(Modifier.fillMaxSize().imePadding()) {
             Box(Modifier.weight(1f)) {
                 when (val s = stack.last()) {
                     Screen.Home -> Home(albums, artists, songs, go)
-                    is Screen.AlbumPage -> albums.firstOrNull { it.key == s.key }?.let { AlbumPage(it, back, go) } ?: Gone(back)
+                    is Screen.AlbumPage -> view.byKey[s.key]?.let { AlbumPage(it, back, go) } ?: Gone(back)
                     is Screen.ArtistPage -> artists.firstOrNull { it.name == s.name }?.let { ArtistPage(it, back, go) } ?: Gone(back)
                     is Screen.FolderPage -> FolderPage(s, data, back, go)
                     Screen.NowPlaying -> NowPlaying(back)
@@ -242,7 +260,7 @@ object Ui {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Mark(36.dp)
                     Spacer(Modifier.width(10.dp))
-                    Words("KueSounds", 24, bold = true, modifier = Modifier.weight(1f))
+                    Brand(24, Modifier.weight(1f))
                     RoundButton(Glyph.GEAR, "Settings") { go(Screen.Settings) }
                 }
                 SearchBox(query) { query = it }
@@ -263,14 +281,33 @@ object Ui {
             Box(Modifier.weight(1f)) {
                 when {
                     Scanner.data.tracks.isEmpty() -> Empty()
-                    query.isNotBlank() -> SearchResults(Library.search(query, Scanner.data.tracks, albums, artists), go)
+                    query.isNotBlank() -> {
+                        val results = remember(query, albums) { Library.search(query, Scanner.data.tracks, albums, artists) }
+                        SearchResults(results, go)
+                    }
                     tab == Tab.ALBUMS -> AlbumGrid(albums, go)
                     tab == Tab.ARTISTS -> ArtistList(artists, go)
                     tab == Tab.SONGS -> SongList(songs)
+                    tab == Tab.FAVOURITES -> {
+                        val ids = Sync.favouriteIds()
+                        val favs = remember(ids, songs) { songs.filter { it.id in ids } }
+                        if (favs.isEmpty()) Note("Tap the heart on a playing song to keep it here.") else SongList(favs)
+                    }
+                    tab == Tab.ON_PHONE -> {
+                        val saved = Offline.saved
+                        val onPhone = remember(saved, albums) { albums.filter { al -> al.tracks.any { it.id in saved } } }
+                        if (onPhone.isEmpty()) Note("Save an album to play it with no internet. Open an album and tap Save to phone.")
+                        else AlbumGrid(onPhone, go)
+                    }
                     else -> FolderList(null, Scanner.data, go)
                 }
             }
         }
+    }
+
+    @Composable
+    private fun Note(text: String) {
+        Box(Modifier.fillMaxSize().padding(28.dp)) { Words(text, 17, K.Soft, lines = 4) }
     }
 
     @Composable
@@ -341,7 +378,7 @@ object Ui {
                 }
             }
         }
-        val status = Scanner.status.ifEmpty { Fixer.status }.ifEmpty { Updates.doing }
+        val status = Scanner.status.ifEmpty { Fixer.status }.ifEmpty { Offline.status }.ifEmpty { Updates.doing }
         if (status.isNotEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(color = K.Accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
@@ -503,6 +540,8 @@ object Ui {
                         Button("Play", glyph = Glyph.PLAY, modifier = Modifier.weight(1f)) { Playing.play(al.tracks, 0) }
                         Button("Shuffle", main = false, glyph = Glyph.SHUFFLE, modifier = Modifier.weight(1f)) { Playing.play(al.tracks, 0, shuffled = true) }
                     }
+                    Spacer(Modifier.height(12.dp))
+                    SaveToPhone(al)
                     if (Fixer.canFix(al)) {
                         Spacer(Modifier.height(12.dp))
                         FixFiles(listOf(al))
@@ -513,11 +552,35 @@ object Ui {
                 Box(Modifier.padding(horizontal = 12.dp)) {
                     val len = if (t.durationMs > 0) Library.clock(t.durationMs) else ""
                     // The song's own artist shows only when it isn't the album's (a guest, or a compilation).
-                    val sub = listOf(t.artist.takeIf { it != al.artist }.orEmpty(), len).filter { it.isNotEmpty() }.joinToString(" · ")
+                    val onPhone = if (t.id in Offline.saved) "On phone" else ""
+                    val sub = listOf(t.artist.takeIf { it != al.artist }.orEmpty(), len, onPhone).filter { it.isNotEmpty() }.joinToString(" · ")
                     Row2(t.title, sub, null, highlight = t.id == Playing.currentId, lead = if (t.trackNo > 0) t.trackNo.toString() else (i + 1).toString()) {
                         Playing.play(al.tracks, i)
                     }
                 }
+            }
+        }
+    }
+
+    /** "Save to phone": keeps the album's songs on the phone to play with no internet. */
+    @Composable
+    private fun SaveToPhone(al: Album) {
+        val context = LocalContext.current
+        val saved = Offline.saved
+        val all = al.tracks.all { it.id in saved }
+        when {
+            all -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Words("Saved on this phone.", 14, K.Soft, modifier = Modifier.weight(1f))
+                Button("Remove", main = false, modifier = Modifier.height(44.dp)) { Offline.remove(al.tracks) }
+            }
+            Offline.isWaiting(al) || Offline.status.contains(al.tracks.firstOrNull { it.id !in saved }?.title ?: "\u0000") ->
+                Words(
+                    "Saving to phone · " + al.tracks.count { it.id in saved } + " of " + al.tracks.size,
+                    14, K.Accent, centre = true,
+                )
+            else -> Button("Save to phone", main = false, glyph = Glyph.SAVE, modifier = Modifier.fillMaxWidth()) {
+                Fixer.askNotices()
+                Offline.save(context, al.tracks)
             }
         }
     }
@@ -642,10 +705,18 @@ object Ui {
                     else Sign(Glyph.DISC, 96.dp, K.Soft)
                 }
             }
-            Column {
-                Words(Playing.title, 24, bold = true, lines = 2)
-                Words(Playing.artist, 17, K.Soft)
-                if (Playing.problem.isNotEmpty()) Words(Playing.problem, 15, K.Accent)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Words(Playing.title, 24, bold = true, lines = 2)
+                    Words(Playing.artist, 17, K.Soft)
+                    if (Playing.problem.isNotEmpty()) Words(Playing.problem, 15, K.Accent, lines = 2)
+                }
+                val fav = Sync.isFavourite(Playing.currentId)
+                Box(
+                    Modifier.size(52.dp).clip(CircleShape).background(K.Panel)
+                        .clickable(onClickLabel = if (fav) "Take out of favourites" else "Add to favourites") { Sync.flipFavourite(Playing.currentId) },
+                    contentAlignment = Alignment.Center,
+                ) { Sign(if (fav) Glyph.HEART_FULL else Glyph.HEART, 26.dp, if (fav) K.Accent else K.Soft) }
             }
             Column {
                 Slider(
@@ -707,9 +778,9 @@ object Ui {
             }
             Panel {
                 Words("Your music", 14, K.Soft)
-                val albums = remember(data) { Library.albums(data.tracks) }
-                Words(count(data.tracks.size, "song") + " · " + count(albums.size, "album"), 17)
-                Words(String.format("%,d", albums.count { Scanner.artFor(it) != null }) + " with a cover", 14, K.Soft)
+                val view = Scanner.view
+                Words(count(data.tracks.size, "song") + " · " + count(view.albums.size, "album"), 17)
+                Words(String.format("%,d", view.withCover) + " with a cover", 14, K.Soft)
                 val left = data.tracks.count { !it.tagged }
                 if (left > 0) Words("Song details still to read: " + String.format("%,d", left), 14, K.Soft, lines = 2)
                 Spacer(Modifier.height(8.dp))
@@ -720,10 +791,22 @@ object Ui {
                 }
             }
             Panel {
+                Words("On this phone", 14, K.Soft)
+                val saved = Offline.saved
+                val bytes = remember(saved) { Offline.bytesUsed() }
+                Words(count(saved.size, "song") + " saved · " + String.format("%.1f", bytes / 1_000_000_000.0) + " GB", 17)
+                if (Offline.status.isNotEmpty()) Words(Offline.status, 14, K.Accent, lines = 2)
+                val when_ = Sync.syncedAt
+                Words(
+                    if (when_ == 0L) "Favourites not synced with the Drive yet."
+                    else "Favourites synced with the Drive at " + java.text.SimpleDateFormat("HH:mm, d MMM", java.util.Locale.UK).format(java.util.Date(when_)),
+                    14, K.Soft, lines = 2,
+                )
+            }
+            Panel {
                 Words("Fix the files", 14, K.Soft)
-                val albums = remember(data) { Library.albums(data.tracks) }
-                val fixable = albums.filter { Fixer.canFix(it) }
-                val left = fixable.count { !Fixer.isFixed(it) }
+                val fixable = Scanner.view.matched
+                val left = Scanner.view.leftToFix
                 Words(count(fixable.size, "album") + " matched · " + String.format("%,d", left) + " still to fix", 17)
                 if (Fixer.status.isNotEmpty()) Words(Fixer.status, 14, K.Accent, lines = 2)
                 if (Fixer.lastResult.isNotEmpty() && !Fixer.running) Words(Fixer.lastResult, 14, K.Soft, lines = 2)
@@ -736,10 +819,14 @@ object Ui {
                 Spacer(Modifier.height(8.dp))
                 var copied by remember { mutableStateOf(false) }
                 val context = LocalContext.current
+                val scope = rememberCoroutineScope()
                 Button(if (copied) "Copied. Paste it to Claude." else "Copy report for Claude", main = false, modifier = Modifier.fillMaxWidth()) {
-                    val clip = context.getSystemService(android.content.ClipboardManager::class.java)
-                    clip?.setPrimaryClip(android.content.ClipData.newPlainText("KueSounds report", Scanner.report()))
-                    copied = true
+                    scope.launch {
+                        val text = withContext(Dispatchers.Default) { Scanner.report() }
+                        val clip = context.getSystemService(android.content.ClipboardManager::class.java)
+                        clip?.setPrimaryClip(android.content.ClipData.newPlainText("KueSounds report", text))
+                        copied = true
+                    }
                 }
             }
         }
@@ -754,7 +841,7 @@ object Ui {
 }
 
 /** The small drawn signs used on buttons and rows. */
-enum class Glyph { PLAY, PAUSE, NEXT, PREVIOUS, SHUFFLE, REPEAT, REPEAT_ONE, BACK, DOWN, CLOSE, SEARCH, GEAR, NOTE, DISC, FOLDER, PERSON }
+enum class Glyph { PLAY, PAUSE, NEXT, PREVIOUS, SHUFFLE, REPEAT, REPEAT_ONE, BACK, DOWN, CLOSE, SEARCH, GEAR, NOTE, DISC, FOLDER, PERSON, SAVE, HEART, HEART_FULL }
 
 @Composable
 fun Sign(glyph: Glyph, size: Dp, colour: Color) {
@@ -833,6 +920,22 @@ private fun DrawScope.drawGlyph(g: Glyph, c: Color) {
             drawCircle(c, 2.5f * u, Offset(12f * u, 12f * u), style = Stroke(1.5f * u))
         }
         Glyph.FOLDER -> drawPath(p(3f, 7f, 3f, 19f, 21f, 19f, 21f, 9f, 11f, 9f, 9f, 6f, 3f, 6f, close = true), c, style = line)
+        Glyph.SAVE -> {
+            drawPath(p(12f, 4f, 12f, 15f), c, style = line)
+            drawPath(p(7f, 10f, 12f, 15f, 17f, 10f), c, style = line)
+            drawPath(p(5f, 20f, 19f, 20f), c, style = line)
+        }
+        Glyph.HEART, Glyph.HEART_FULL -> {
+            val heart = Path().apply {
+                moveTo(12f * u, 20f * u)
+                cubicTo(4f * u, 14.5f * u, 3f * u, 10f * u, 4.5f * u, 7f * u)
+                cubicTo(6.5f * u, 3.5f * u, 10.5f * u, 4f * u, 12f * u, 7.5f * u)
+                cubicTo(13.5f * u, 4f * u, 17.5f * u, 3.5f * u, 19.5f * u, 7f * u)
+                cubicTo(21f * u, 10f * u, 20f * u, 14.5f * u, 12f * u, 20f * u)
+                close()
+            }
+            if (g == Glyph.HEART_FULL) drawPath(heart, c) else drawPath(heart, c, style = line)
+        }
         Glyph.PERSON -> {
             drawCircle(c, 4f * u, Offset(12f * u, 8f * u), style = line)
             drawPath(p(4f, 21f, 4f, 19f, 8f, 15f, 16f, 15f, 20f, 19f, 20f, 21f), c, style = line)

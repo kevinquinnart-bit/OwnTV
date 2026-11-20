@@ -30,8 +30,64 @@ import java.security.MessageDigest
  * file itself, a small piece of each file at a time, and keeps them on the phone so it is done once.
  */
 object Scanner {
-    var data by mutableStateOf(LibraryData())
+    private var current by mutableStateOf(LibraryData())
+
+    /** Everything known about the music. Each change re-sorts the lists in the background (see [view]). */
+    var data: LibraryData
+        get() = current
+        private set(value) {
+            current = value
+            refreshView()
+        }
+
+    /** The library sorted into albums, artists and songs, ready for the screens. */
+    data class LibraryView(
+        val albums: List<Album> = emptyList(),
+        val artists: List<Artist> = emptyList(),
+        val songs: List<Track> = emptyList(),
+        val withCover: Int = 0,
+        val matched: List<Album> = emptyList(),
+        val leftToFix: Int = 0,
+    ) {
+        val byKey: Map<String, Album> by lazy { albums.associateBy { it.key } }
+    }
+
+    /**
+     * The sorted lists. Sorting thousands of songs takes a moment, so it is done away from the
+     * screens (doing it on the screens' own time froze KueSounds in 0.1.7), and only the newest
+     * library is sorted when changes come quickly.
+     */
+    var view by mutableStateOf(LibraryView())
         private set
+
+    private val viewDirty = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val viewBusy = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val viewScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private fun refreshView() {
+        viewDirty.set(true)
+        if (!viewBusy.compareAndSet(false, true)) return
+        viewScope.launch {
+            try {
+                while (viewDirty.getAndSet(false)) {
+                    val d = current
+                    val albums = Library.albums(d.tracks)
+                    val matched = albums.filter { Fixer.canFix(it, d) }
+                    view = LibraryView(
+                        albums = albums,
+                        artists = Library.artists(albums),
+                        songs = Library.songs(d.tracks),
+                        withCover = albums.count { d.art[it.key]?.let { p -> File(p).exists() } == true },
+                        matched = matched,
+                        leftToFix = matched.count { !Fixer.isFixed(it) },
+                    )
+                }
+            } finally {
+                viewBusy.set(false)
+                if (viewDirty.get()) refreshView()
+            }
+        }
+    }
 
     /** What the scan is doing, in words for the screen. Empty when it is idle. */
     var status by mutableStateOf("")
@@ -56,9 +112,10 @@ object Scanner {
     }
 
     /** The report: counts and the record, with no addresses or passwords in it. */
+    /** The report. Call off the main thread. */
     fun report(): String {
         val d = data
-        val albums = Library.albums(d.tracks)
+        val albums = view.albums
         val lines = mutableListOf(
             "KueSounds " + BuildConfig.VERSION_NAME,
             "Songs: " + d.tracks.size,
@@ -83,7 +140,7 @@ object Scanner {
 
     fun init(context: Context) {
         app = context.applicationContext
-        data = Library.load(libraryFile())
+        if (current.tracks.isEmpty()) data = Library.load(libraryFile())
         // Libraries kept before 0.1.5 had their albums looked up without keeping the catalogue's cover in
         // first place: every album is looked up once more.
         if (data.version < 2) {
@@ -165,6 +222,8 @@ object Scanner {
         }
         val gate = Semaphore(4)
         var sinceSave = 0
+        failures = 0
+        val before = read
         todo.chunked(25).forEach { chunk ->
             if (!scope.isActive) return
             status = "Reading song details · " + String.format("%,d", read) + " of " + String.format("%,d", data.tracks.size)
@@ -175,12 +234,13 @@ object Scanner {
             data = data.copy(tracks = data.tracks.map { byId[it.id]?.first ?: it }, art = data.art + done.filterNotNull().mapNotNull { it.second })
             read = data.tracks.count { it.tagged }
             sinceSave += chunk.size
-            if (sinceSave >= 25) {
+            if (sinceSave >= 100) {
                 save()
                 sinceSave = 0
             }
         }
         save()
+        note("song details: " + (read - before) + " read now, " + data.tracks.count { !it.tagged } + " still to read, " + failures + " failed")
         fillCovers()
         save()
     }

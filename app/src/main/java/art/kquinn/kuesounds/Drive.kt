@@ -108,7 +108,8 @@ object Drive {
                 Google.forget()
                 throw SignedOut()
             }
-            if (!r.isSuccessful) throw IOException("Google Drive answered " + r.code)
+            // Google's own reason goes into the report, so a failure can be traced.
+            if (!r.isSuccessful) throw IOException("Google Drive answered " + r.code + ": " + r.body.string().replace(Regex("\\s+"), " ").take(300))
             val bytes = r.body.bytes()
             // A Drive that ignores the range sends the whole file: keep only the part asked for.
             return if (r.code == 200 && bytes.size > (to - from + 1)) bytes.copyOfRange(from.toInt(), minOf(bytes.size, (to + 1).toInt())) else bytes

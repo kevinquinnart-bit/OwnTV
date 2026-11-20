@@ -16,23 +16,26 @@ import kotlinx.coroutines.tasks.await
 /**
  * Signing in to the Google account the music is in, with the phone's own Google sign-in.
  *
- * KueSounds normally asks only to READ that Drive. Fixing the files (putting the right cover and album
+ * KueSounds normally asks only to READ that Drive, plus to keep one file of its own there (favourites,
+ * synced between devices). Fixing the files (putting the right cover and album
  * details into them) needs permission to EDIT it, asked for separately, only when the person first
  * presses "Fix the files". Each permission lasts: every hour Google hands over a fresh pass without asking.
  */
 object Google {
     const val DRIVE_READ = "https://www.googleapis.com/auth/drive.readonly"
     const val DRIVE_EDIT = "https://www.googleapis.com/auth/drive"
+    /** Lets KueSounds keep its own one file in the Drive (favourites, synced between phone and TV). */
+    const val DRIVE_OWN_FILE = "https://www.googleapis.com/auth/drive.file"
 
     /** One permission and the pass held for it. */
-    private class Pass(val scope: String, val flag: String) {
+    private class Pass(val scopes: List<String>, val flag: String) {
         val lock = Mutex()
         var token: String? = null
         var at = 0L
     }
 
-    private val read = Pass(DRIVE_READ, "signedIn")
-    private val edit = Pass(DRIVE_EDIT, "canEdit")
+    private val read = Pass(listOf(DRIVE_READ, DRIVE_OWN_FILE), "signedIn")
+    private val edit = Pass(listOf(DRIVE_EDIT), "canEdit")
 
     private lateinit var app: Context
 
@@ -52,7 +55,7 @@ object Google {
 
     private fun request(pass: Pass): AuthorizationRequest =
         AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope(pass.scope)))
+            .setRequestedScopes(pass.scopes.map { Scope(it) })
             .apply { if (email.isNotBlank()) setAccount(Account(email, "com.google")) }
             .build()
 
