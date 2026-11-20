@@ -296,7 +296,9 @@ private fun App() {
     LaunchedEffect(chosenLang) { AddOns.lang = Langs.of(chosenLang) }
     var free by remember { mutableStateOf<List<Channel>>(emptyList()) }
     var freeOpen by remember { mutableStateOf(false) }
-    val library = remember(loaded, free) { loaded?.withFree(free) }
+    // Other providers chosen in Settings › Your provider to be in the lists too.
+    var others by remember { mutableStateOf<List<Pair<Account, Library>>>(emptyList()) }
+    val library = remember(loaded, free, others) { loaded?.let { Combined.merge(it, others) }?.withFree(free) }
     var problem by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var playing by remember { mutableStateOf<Playing?>(null) }
@@ -614,6 +616,27 @@ private fun App() {
         }
         loaded?.let { Report.note("Provider", "loaded: " + it.channels.size + " channels as " + it.groups.size + " rows, " + it.films.size + " films, " + it.shows.size + " series") }
     }
+    // The other providers' lists: kept ones at once, fetched afresh when old. One that can't be reached is left out.
+    LaunchedEffect(account, reload, Combined.changes, Providers.changes) {
+        val chosen = Combined.chosen(context).filter { it != account && it.isSet }
+        if (chosen.isEmpty()) { others = emptyList(); return@LaunchedEffect }
+        others = withContext(Dispatchers.IO) {
+            chosen.mapNotNull { a ->
+                val file = LibraryCache.file(context, a)
+                val kept = if (reload == 0) LibraryCache.read(file, a) else null
+                val lib = if (kept != null && System.currentTimeMillis() - kept.at in 0 until LibraryCache.FRESH_MS) kept.library else try {
+                    Provider.load(a).also { runCatching { LibraryCache.write(file, a, it) } }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Report.note("Provider", Providers.label(a) + " (shown alongside) couldn't be loaded: " + e.message)
+                    kept?.library
+                }
+                lib?.also { Combined.register(a, it.serverAheadSec) }?.let { a to it }
+            }
+        }
+        Report.note("Provider", others.size.toString() + " other providers in the lists: " + others.sumOf { it.second.channels.size } + " channels")
+    }
     // Every showing set to record: the showings still to come in each channel's guide are set, each time the app opens.
     LaunchedEffect(library != null, Resumes.count, SeriesLinks.changes) {
         val lib = library ?: return@LaunchedEffect
@@ -810,7 +833,7 @@ private fun App() {
                     browse.resumeKey = key
                     // The small TV shown while browsing carries on with this channel, in its lightest version.
                     if (live) items.getOrNull(index)?.let {
-                        val url = (it.streams.lastOrNull { s -> !s.label.startsWith("Free ") } ?: it.streams.lastOrNull())?.url ?: it.url
+                        val url = (it.streams.lastOrNull { s -> !s.label.startsWith("Free ") && !s.label.startsWith("Backup ") } ?: it.streams.lastOrNull())?.url ?: it.url
                         // An add-on's TV channel has no address of its own to show in the small picture.
                         if (AddOns.showable(url)) LastLive.item = Playable(it.name, url)
                     }
@@ -2098,6 +2121,15 @@ private fun MainScreen(
                                         (if (using) "● " else "") + Providers.label(a), { if (!using) extras.switchProvider(a) },
                                         look = Look.OTHER, below = if (using) "In use" else "OK to switch to this one · hold OK to take it off the list",
                                         onHold = if (using) null else ({ Providers.remove(context, a) }),
+                                    )
+                                }
+                                sub("Also in your lists")
+                                for (a in savedProviders) {
+                                    if (a == inUse) continue
+                                    val on = remember(Combined.changes) { Combined.isOn(context, a) }
+                                    FocusRow(
+                                        Providers.label(a) + ": " + if (on) "on" else "off", { Combined.setOn(context, a, !on) },
+                                        look = Look.OTHER, below = "Its channels, films and series shown with these ones · OK to change",
                                     )
                                 }
                                 sub("This provider")
@@ -3841,10 +3873,10 @@ private fun livePlayable(group: ChannelGroup, account: Account?, serverAheadSec:
     val kept = group.versions.firstOrNull { it.channel.catchupDays > 0 }?.channel
     return Playable(
         group.name, first.url, group.versions.map { Stream(it.label, it.channel.url) }, group.start,
-        guide = if (account == null) null else ({ NowNext.get(account, first.id, group.name) }),
-        fromStart = if (account == null || kept == null) null else ({ programme ->
-            catchupPlayable(group.name, account, kept.id, programme, serverAheadSec)
-        }),
+        guide = Combined.accountFor(account, first.id)?.let { a -> { NowNext.get(a, first.id, group.name) } },
+        fromStart = kept?.let { k -> Combined.accountFor(account, k.id) }?.let { a ->
+            { programme -> catchupPlayable(group.name, a, kept.id, programme, serverAheadSec) }
+        },
     )
 }
 
@@ -3871,7 +3903,8 @@ internal fun catchupPlayable(channelName: String, account: Account, channelId: S
  * so rows that are only passing by while the list is scrolled don't.
  */
 @Composable
-private fun nowLine(account: Account?, channelId: String, name: String = ""): String? {
+private fun nowLine(primary: Account?, channelId: String, name: String = ""): String? {
+    val account = Combined.accountFor(primary, channelId)
     // With no provider login, only the free guides can say what is on.
     if (account == null) return remember(channelId, FreeGuides.changes) { NowNext.line(FreeGuides.lookup(name), System.currentTimeMillis()) }
     val line by keyedState(channelId, { NowNext.cached(channelId)?.let { NowNext.line(it, System.currentTimeMillis()) } }) {
@@ -4916,7 +4949,8 @@ private fun HomeCard(
 
 /** What is on a channel, as far as is known: the provider's guide, or with no login the free guides. Null while it is being found. */
 @Composable
-private fun guideFor(account: Account?, channelId: String, name: String): List<Programme>? {
+private fun guideFor(primary: Account?, channelId: String, name: String): List<Programme>? {
+    val account = Combined.accountFor(primary, channelId)
     if (account == null) return remember(channelId, FreeGuides.changes) { FreeGuides.lookup(name) }
     val guide by keyedState(channelId, { NowNext.cached(channelId) }) {
         if (value != null) return@keyedState
@@ -5201,8 +5235,9 @@ private fun PreviewPicture(on: ChannelGroup?, modifier: Modifier) {
 
 /** What is on a channel now (with the whole description, as far as there is room) and what is on next. */
 @Composable
-private fun ProgrammeDetails(group: ChannelGroup, account: Account?, modifier: Modifier) {
+private fun ProgrammeDetails(group: ChannelGroup, primary: Account?, modifier: Modifier) {
     val id = group.versions[group.start].channel.id
+    val account = Combined.accountFor(primary, id)
     val guide by keyedState(id, { NowNext.cached(id) }) {
         if (value != null || account == null) return@keyedState
         value = try {

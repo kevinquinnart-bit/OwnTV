@@ -30,7 +30,10 @@ object LibraryCache {
 
     fun file(context: Context) = File(context.filesDir, "library.json.gz")
 
-    private fun who(account: Account): String = Integer.toHexString((account.server + "\n" + account.user + "\n" + account.pass + "\n" + account.playlist).hashCode())
+    /** Where another provider's lists are kept, for showing them alongside the one in use. */
+    fun file(context: Context, account: Account) = File(context.filesDir, "library-" + who(account) + ".json.gz")
+
+    fun who(account: Account): String = Integer.toHexString((account.server + "\n" + account.user + "\n" + account.pass + "\n" + account.playlist).hashCode())
 
     fun write(file: File, account: Account, library: Library, at: Long = System.currentTimeMillis()) {
         val part = File(file.path + ".part")

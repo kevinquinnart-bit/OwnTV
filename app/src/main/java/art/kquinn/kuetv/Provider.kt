@@ -174,6 +174,9 @@ class Library(
 class Version(val channel: Channel, val label: String, val rank: Int) {
     /** From a free channel list, not from the provider: kept behind the provider's versions, as a backup. */
     val free: Boolean get() = channel.id.startsWith(Library.FREE)
+
+    /** From another provider shown alongside the one in use: kept behind its versions, as a backup. */
+    val other: Boolean get() = Combined.isOther(channel.id)
 }
 
 /**
@@ -189,7 +192,7 @@ class ChannelGroup(val name: String, val versions: List<Version>) {
     val id: String get() = versions[0].channel.id
 
     /** The lightest of the provider's own versions, for the small pictures shown while browsing; a free one only if there is no other. */
-    val lightest: Channel get() = (versions.lastOrNull { !it.free } ?: versions.last()).channel
+    val lightest: Channel get() = (versions.lastOrNull { !it.free && !it.other } ?: versions.lastOrNull { !it.free } ?: versions.last()).channel
     val logo: String get() = versions.firstOrNull { it.channel.logo.isNotBlank() }?.channel?.logo.orEmpty()
 }
 
@@ -258,10 +261,21 @@ object Versions {
             val r = read(channel.name)
             val key = r.name.lowercase().replace(notNameMarks, " ").trim().ifEmpty { r.name.lowercase() }
             val free = channel.id.startsWith(Library.FREE)
-            byName.getOrPut(key) { names[key] = r.name; ArrayList() } += Version(channel, if (free) "Free " + r.label else r.label, r.rank)
+            val other = Combined.isOther(channel.id)
+            val label = when {
+                free -> "Free " + r.label
+                other -> "Backup " + r.label
+                else -> r.label
+            }
+            byName.getOrPut(key) { names[key] = r.name; ArrayList() } += Version(channel, label, r.rank)
         }
-        // Best picture first among the provider's own; then the free ones, best first, as the backup.
-        return byName.map { (key, versions) -> ChannelGroup(names.getValue(key), versions.sortedWith(compareBy<Version> { it.free }.thenByDescending { it.rank })) }
+        // Best picture first among the provider's own; then another provider's, then the free ones, best first, as backups.
+        // A channel only the other provider has isn't a backup of anything: its versions are named as usual.
+        return byName.map { (key, versions) ->
+            val hasOwn = versions.any { !it.free && !it.other }
+            val named = if (hasOwn) versions else versions.map { if (it.other) Version(it.channel, it.label.removePrefix("Backup "), it.rank) else it }
+            ChannelGroup(names.getValue(key), named.sortedWith(compareBy<Version> { if (it.free) 2 else if (it.other) 1 else 0 }.thenByDescending { it.rank }))
+        }
     }
 }
 
@@ -535,6 +549,7 @@ object Provider {
 
     /** What the provider says a film is about. Call off the main thread. */
     fun filmAbout(account: Account, filmId: String): About {
+        Combined.which(filmId)?.let { (a, id) -> return filmAbout(a, id) }
         val url = (account.server + "/player_api.php").toHttpUrlOrNull()?.newBuilder()
             ?.addQueryParameter("username", account.user)
             ?.addQueryParameter("password", account.pass)
@@ -560,6 +575,7 @@ object Provider {
 
     /** A series' episodes, in season then episode order. Call off the main thread. */
     fun episodes(account: Account, showId: String): List<Episode> {
+        Combined.which(showId)?.let { (a, id) -> return episodes(a, id) }
         val url = (account.server + "/player_api.php").toHttpUrlOrNull()?.newBuilder()
             ?.addQueryParameter("username", account.user)
             ?.addQueryParameter("password", account.pass)
@@ -597,6 +613,7 @@ object Provider {
 
     /** A channel's guide, oldest first: what the provider holds, past and coming. Call off the main thread. */
     fun guide(account: Account, channelId: String): List<Programme> {
+        Combined.which(channelId)?.let { (a, id) -> return guide(a, id) }
         val url = (account.server + "/player_api.php").toHttpUrlOrNull()?.newBuilder()
             ?.addQueryParameter("username", account.user)
             ?.addQueryParameter("password", account.pass)
@@ -620,6 +637,7 @@ object Provider {
 
     /** The address that replays [channelId] from a programme's start, for its length plus a little. */
     fun catchupUrl(account: Account, channelId: String, programme: Programme, serverAheadSec: Int): String {
+        Combined.which(channelId)?.let { (a, id) -> return catchupUrl(a, id, programme, Combined.aheadFor(channelId, serverAheadSec)) }
         val minutes = ((programme.stopMs - programme.startMs) / 60_000 + 5).coerceAtLeast(5)
         // The provider's own wording of the start is on its own clock already, which is what it wants back.
         val stamp = wallStamp(programme.startText) ?: stampFor(programme.startMs, serverAheadSec)
@@ -628,7 +646,7 @@ object Provider {
 
     /** The address that replays [channelId] from a moment the user picked, for [minutes]. */
     fun catchupUrlAt(account: Account, channelId: String, startMs: Long, minutes: Int, serverAheadSec: Int): String =
-        account.server + "/timeshift/" + who(account) + "/" + minutes + "/" + stampFor(startMs, serverAheadSec) + "/" + channelId + ".ts"
+        Combined.which(channelId)?.let { (a, id) -> catchupUrlAt(a, id, startMs, minutes, Combined.aheadFor(channelId, serverAheadSec)) } ?: account.server + "/timeshift/" + who(account) + "/" + minutes + "/" + stampFor(startMs, serverAheadSec) + "/" + channelId + ".ts"
 
     /** "2026-11-15 20:00:00" as the "2026-11-15:20-00" a catch-up address uses; null when it isn't that shape. */
     private fun wallStamp(text: String): String? {
