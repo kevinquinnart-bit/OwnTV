@@ -49,7 +49,8 @@ class LiveInAppsTest {
         org.junit.Assert.assertEquals("Channel 4", LiveInApps.forChannel("UK | Channel 4 HD")?.name)
         org.junit.Assert.assertEquals("E4", LiveInApps.forChannel("E4")?.name)
         org.junit.Assert.assertEquals(null, LiveInApps.forChannel("E4 +1"))
-        org.junit.Assert.assertEquals(null, LiveInApps.forChannel("RTE One"))
+        org.junit.Assert.assertEquals("RTÉ Live", LiveInApps.forChannel("RTE One")?.name)
+        org.junit.Assert.assertEquals("RTÉ Live", LiveInApps.forChannel("IE: RTÉ 2 HD")?.name)
         org.junit.Assert.assertEquals(null, LiveInApps.forChannel("ITV Wales"))
     }
 }

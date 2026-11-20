@@ -258,10 +258,7 @@ object Launcher {
  * Kevin's Fire TV on 19 November 2026 and went straight to that channel playing live.
  */
 object LiveInApps {
-    class Ch(val name: String, val app: String, val pkg: String, val link: String, val irelandOnly: Boolean = false)
-
-    /** The ones that work where the TV is now: RTÉ's only in Ireland. */
-    fun here(): List<Ch> = all.filter { !it.irelandOnly || Weather.country == "IE" }
+    class Ch(val name: String, val app: String, val pkg: String, val link: String)
 
     val all = listOf(
         Ch("ITV1", "ITVX", "air.ITVMobilePlayer", "https://www.itv.com/watch?channel=itv"),
@@ -275,28 +272,23 @@ object LiveInApps {
         Ch("E4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/E4"),
         Ch("More4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/M4"),
         Ch("Film4", "Channel 4", "com.channel4.ondemand", "channel4://www.channel4.com/now/F4"),
-        // RTÉ Player, shown only when the TV is in Ireland: RTÉ's live channels aren't offered in the UK, where these
-        // links open its Box Sets page instead (checked 19 November 2026). The channel names are RTÉ's own call signs
-        // from its station list. Not yet seen playing: to be checked the first time the TV is in Ireland.
-        Ch("RTÉ One", "RTÉ Player", "com.twentyfouri.tvbridge.rte", "rteplayer://open_app/player/onnow/RTEONE", irelandOnly = true),
-        Ch("RTÉ2", "RTÉ Player", "com.twentyfouri.tvbridge.rte", "rteplayer://open_app/player/onnow/RTE2", irelandOnly = true),
-        Ch("RTÉ News", "RTÉ Player", "com.twentyfouri.tvbridge.rte", "rteplayer://open_app/player/onnow/RTENewsNow", irelandOnly = true),
-        Ch("RTÉjr", "RTÉ Player", "com.twentyfouri.tvbridge.rte", "rteplayer://open_app/player/onnow/RTEJr", irelandOnly = true),
+        // RTÉ Player's own Live page: its "Live Now" row of RTÉ One, RTÉ2, RTÉ News and RTÉ ISL. This is the only
+        // link RTÉ Player answers for live TV; links naming one channel open its Box Sets page instead (all tried on
+        // Kevin's TV, 20 November 2026). Shown everywhere: RTÉ lets some programmes play in the UK, and its app says
+        // on screen when one can't.
+        Ch("RTÉ Live", "RTÉ Player", "com.twentyfouri.tvbridge.rte", "https://www.rte.ie/rpng-static/ctv/androidTv/onnow"),
     )
 
     /**
      * The entry for a channel by its name in a provider's list ("ITV 1 HD", "UK: Channel 4", "E4 +1" is left out:
-     * the apps only play the main channel). RTÉ isn't matched: its app's link plays whatever RTÉ has on, not one channel.
+     * the apps only play the main channel). RTÉ's channels all open RTÉ Player's Live page, where the channel is picked.
      */
     fun forChannel(name: String): Ch? {
         val n = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase().replace(Regex("^[a-z]{2,3}\\s*[:|]\\s*"), "").replace(Regex("\\b(hd|fhd|uhd|4k|sd|uk|london|\\(.*?\\))\\b"), " ")
             .replace(Regex("[^a-z0-9+]"), "")
         if (n.contains("+1") || n.contains("plus1")) return null
         val key = when (n) {
-            "rteone", "rte1", "rteonehd" -> "RTÉ One"
-            "rte2", "rtetwo" -> "RTÉ2"
-            "rtenews", "rtenewsnow", "rtenewschannel" -> "RTÉ News"
-            "rtejr", "rtejunior" -> "RTÉjr"
+            "rteone", "rte1", "rteonehd", "rte2", "rtetwo", "rtenews", "rtenewsnow", "rtenewschannel", "rtejr", "rtejunior" -> "RTÉ Live"
             // UTV is ITV1 in Northern Ireland: ITVX plays the viewer's own region of ITV1.
             "itv", "itv1", "utv" -> "ITV1"
             "itv2" -> "ITV2"
@@ -310,7 +302,7 @@ object LiveInApps {
             "film4" -> "Film4"
             else -> return null
         }
-        return here().firstOrNull { it.name == key }
+        return all.firstOrNull { it.name == key }
     }
 
     /** Opens the channel in its app; if the app isn't on the TV, the app store on a search for it. */
