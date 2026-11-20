@@ -37,6 +37,29 @@ class LanguagesTest {
         assertEquals("Settings", UiLang.tr("Settings"))
     }
 
+    @Test fun linesWithNumbersAndNamesInThemAreShownInTheLanguage() {
+        UiLang.set(context, "de")
+        assertEquals("Die 5 ausgewählten ausblenden", UiLang.tr("Hide the 5 picked"))
+        assertEquals("3 von 10 angezeigt", UiLang.tr("3 of 10 showing"))
+        assertEquals("Version 0.1.140 ist bereit", UiLang.tr("Version 0.1.140 is ready"))
+        assertEquals("Angemeldet als kev@example.com", UiLang.tr("Signed in as kev@example.com"))
+        assertEquals("BBC One aus KueTV entfernt", UiLang.tr("Removed BBC One from KueTV"))
+        // A number-only slot never takes a name: a film's own title is left alone.
+        assertEquals("Ten of Hearts", UiLang.tr("Ten of Hearts"))
+        // Sentences put together in one line are each translated.
+        assertEquals("Kein Internet", UiLang.tr("No internet"))
+        assertEquals("Prüfe ihn und versuche es erneut", UiLang.tr("Check it and try again"))
+        assertEquals(
+            "Dieser Link hat nicht wie ein Add-on geantwortet. Prüfe ihn und versuche es erneut.",
+            UiLang.tr("That link didn't answer like an add-on. Check it and try again."),
+        )
+        // A language that puts the numbers the other way round.
+        UiLang.set(context, "tr")
+        assertEquals("Denenen 5 taneden 3 tanesi yanıt verdi", UiLang.tr("3 of 5 tried answered"))
+        UiLang.set(context, "ja")
+        assertEquals("アンテナ放送を見る", UiLang.tr("Watch aerial TV"))
+    }
+
     @Test fun theChoiceIsKeptAndGoesRound() {
         UiLang.set(context, "fr")
         UiLang.load(context)

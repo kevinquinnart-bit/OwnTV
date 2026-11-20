@@ -690,7 +690,7 @@ private fun App() {
         Aerial.offering = false
         playing = null
         multi = null
-        if (!Aerial.open(context)) android.widget.Toast.makeText(context, "The TV's aerial channels wouldn't open.", android.widget.Toast.LENGTH_LONG).show()
+        if (!Aerial.open(context)) kueToast(context, "The TV's aerial channels wouldn't open.")
     }
     // A reminder that isn't answered goes after a minute and a half.
     LaunchedEffect(reminder) {
@@ -863,7 +863,7 @@ private fun App() {
                     // Both an add-on's stream and the provider's own copy: the user picks. Only one of them: it plays.
                     if (!live && item != null && item.url.isEmpty() && item.find == null) {
                         // From a catalogue, with no copy at the provider and no add-on that gives streams.
-                        android.widget.Toast.makeText(context, "Nothing to play this from yet. Add an add-on that gives streams, in Settings › Add-ons.", android.widget.Toast.LENGTH_LONG).show()
+                        kueToast(context, "Nothing to play this from yet. Add an add-on that gives streams, in Settings › Add-ons.")
                     } else if (!live && item?.find != null && item.url.isNotEmpty()) choice = Playing(items, index, false)
                     else playing = Playing(items, index, live)
                 },
@@ -939,7 +939,7 @@ private fun ReminderPopUp(reminder: Reminder, onWatch: () -> Unit, onClose: () -
  * time it is on that channel, then neither. Says on screen what it is now set to.
  */
 private fun stepLater(context: android.content.Context, plan: Timed, remind: Reminder, reminded: Boolean, recording: Boolean, at: String, channelId: String = "") {
-    val say: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
+    val say: (String) -> Unit = { kueToast(context, it) }
     val linked = SeriesLinks.has(context, plan.channel, plan.title)
     when {
         linked -> {
@@ -1342,14 +1342,14 @@ private fun TitleMenu(
             if (playUrl.isNotBlank()) {
                 FocusRow("Play in another player", {
                     onClose()
-                    if (!openElsewhere(context, playUrl, name)) android.widget.Toast.makeText(context, "There is no other video player on this device. VLC or MX Player can be installed from the app store.", android.widget.Toast.LENGTH_LONG).show()
+                    if (!openElsewhere(context, playUrl, name)) kueToast(context, "There is no other video player on this device. VLC or MX Player can be installed from the app store.")
                 }, look = Look.OTHER)
             }
             val t = found
             if (!t.isNullOrBlank()) {
                 FocusRow("▶ Watch the trailer", {
                     onClose()
-                    if (!openTrailer(context, t)) android.widget.Toast.makeText(context, "Nothing on this device can play YouTube trailers.", android.widget.Toast.LENGTH_LONG).show()
+                    if (!openTrailer(context, t)) kueToast(context, "Nothing on this device can play YouTube trailers.")
                 }, look = Look.OTHER)
             }
             FocusRow("Close", onClose, look = Look.OTHER)
@@ -1849,7 +1849,7 @@ private fun MainScreen(
                         val ids = library.groups.filter { it.id in picked }.flatMap { g -> g.versions.map { it.channel.id } }
                         HiddenChannels.hide(context, ids)
                         state.hiding = null
-                        android.widget.Toast.makeText(context, "Hidden " + picked.size + (if (picked.size == 1) " channel" else " channels") + ". Settings › Categories › Hidden channels brings them back.", android.widget.Toast.LENGTH_LONG).show()
+                        kueToast(context, "Hidden " + picked.size + (if (picked.size == 1) " channel" else " channels") + ". Settings › Categories › Hidden channels brings them back.")
                     }
                     /** Moves the picked channel to [to] in the list, and keeps that as the order. */
                     val moveTo: (Int) -> Unit = { to ->
@@ -1880,7 +1880,7 @@ private fun MainScreen(
                             withFrameNanos { }
                             runCatching { jumpFocus.requestFocus() }
                         } else {
-                            android.widget.Toast.makeText(context, "There is no channel $n in this list. It has ${shown.size}.", android.widget.Toast.LENGTH_SHORT).show()
+                            kueToast(context, "There is no channel $n in this list. It has ${shown.size}.", long = false)
                         }
                     }
                     Column(m) {
@@ -2141,7 +2141,7 @@ private fun MainScreen(
                                 History.LIVE -> {
                                     val group = library.groups.firstOrNull { g -> g.versions.any { it.channel.url == e.key } }
                                     if (group != null) onPlay(listOf(livePlayable(group, library.account, library.serverAheadSec)), 0, true, "history:" + e.key)
-                                    else android.widget.Toast.makeText(context, "That channel isn't in your provider's list any more.", android.widget.Toast.LENGTH_LONG).show()
+                                    else kueToast(context, "That channel isn't in your provider's list any more.")
                                 }
                                 History.FILM -> carryOn(Positions.Watching(e.key, e.name, e.poster, 0, 0, e.atMs))
                                 else -> onPlay(listOf(Playable(e.name, e.key)), 0, false, "history:" + e.key)
@@ -2342,7 +2342,7 @@ private fun MainScreen(
                                     "Keeping in step: on · press to stop",
                                     {
                                         Sync.setKey(context, "")
-                                        android.widget.Toast.makeText(context, "This device no longer keeps in step. To start again, send the set-up from the other device.", android.widget.Toast.LENGTH_LONG).show()
+                                        kueToast(context, "This device no longer keeps in step. To start again, send the set-up from the other device.")
                                     },
                                     look = Look.OTHER,
                                     below = if (met == 0L) "Not met the other device since opening" else "Last met the other device at " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(java.util.Date(met)),
@@ -2359,7 +2359,7 @@ private fun MainScreen(
                             val aerialName = remember(Resumes.count) { Aerial.name(context) }
                             if (aerialName != null) {
                                 sub("Aerial TV")
-                                FocusRow("Watch aerial TV", { if (!Aerial.open(context)) android.widget.Toast.makeText(context, "The TV's aerial channels wouldn't open.", android.widget.Toast.LENGTH_LONG).show() },
+                                FocusRow("Watch aerial TV", { if (!Aerial.open(context)) kueToast(context, "The TV's aerial channels wouldn't open.") },
                                     first(), look = Look.OTHER, below = "The digital channels from the aerial plugged into the TV. They work with no internet")
                                 val offer = remember(Aerial.changes) { Aerial.offerWhenOffline(context) }
                                 FocusRow("Offer aerial TV when the internet goes: " + if (offer) "on" else "off", { Aerial.offerWhenOffline(context, !offer) },
@@ -2369,12 +2369,12 @@ private fun MainScreen(
                             // The TV's own settings: each opens straight onto that screen, and Back comes back here.
                             val tvParts = remember(Resumes.count) { Launcher.tvSettings(context) }
                             tvParts.forEachIndexed { i, p ->
-                                FocusRow(p.label, { if (!Launcher.open(context, p)) android.widget.Toast.makeText(context, "That part of the TV's settings wouldn't open.", android.widget.Toast.LENGTH_LONG).show() },
+                                FocusRow(p.label, { if (!Launcher.open(context, p)) kueToast(context, "That part of the TV's settings wouldn't open.") },
                                     if (i == 0 && aerialName == null) first() else Modifier, look = Look.OTHER)
                             }
                             FocusRow("All Fire TV settings", { Launcher.openTvSettings(context) }, if (tvParts.isEmpty() && aerialName == null) first() else Modifier,
                                 look = Look.OTHER, below = "Amazon's own settings menu. Home or Back when done comes back to KueTV")
-                            FocusRow("Get more apps", { if (!Launcher.openAppstore(context)) android.widget.Toast.makeText(context, "Amazon's Appstore wouldn't open.", android.widget.Toast.LENGTH_LONG).show() },
+                            FocusRow("Get more apps", { if (!Launcher.openAppstore(context)) kueToast(context, "Amazon's Appstore wouldn't open.") },
                                 look = Look.OTHER, below = "Amazon's Appstore. New apps land in the right row on Home by themselves")
                         }
                         "Help" -> {
@@ -3040,7 +3040,7 @@ private fun Pane.EpisodePage(
                     if (!trailer.isNullOrBlank()) {
                         item(key = "trailer") {
                             FocusRow("▶ Watch the trailer", {
-                                if (!openTrailer(context, trailer)) android.widget.Toast.makeText(context, "Nothing on this device can play YouTube trailers.", android.widget.Toast.LENGTH_LONG).show()
+                                if (!openTrailer(context, trailer)) kueToast(context, "Nothing on this device can play YouTube trailers.")
                             }, look = Look.OTHER)
                         }
                     }
@@ -3063,7 +3063,7 @@ private fun Pane.EpisodePage(
                                 // Hold OK: marks it watched, or not watched.
                                 onHold = {
                                     Watched.set(context, episode.url, !watched)
-                                    android.widget.Toast.makeText(context, if (watched) "Marked as not watched." else "Marked as watched.", android.widget.Toast.LENGTH_SHORT).show()
+                                    kueToast(context, if (watched) "Marked as not watched." else "Marked as watched.", long = false)
                                 },
                                 below = listOfNotNull(
                                     episode.aired.takeIf { it.isNotBlank() }?.let { "First aired " + EpisodeOrder.airedWords(it) },
@@ -3169,7 +3169,7 @@ private fun Pane.SearchPane(
                                 }
                                 account != null && kept != null && programme.startMs >= now - kept.catchupDays * DAY_MS ->
                                     onPlay(listOf(catchupPlayable(group.name, account, kept.id, programme, library.serverAheadSec)), 0, false, key)
-                                else -> android.widget.Toast.makeText(context, "Your provider keeps no catch-up for this.", android.widget.Toast.LENGTH_LONG).show()
+                                else -> kueToast(context, "Your provider keeps no catch-up for this.")
                             }
                         },
                         if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier,
@@ -3265,7 +3265,7 @@ private fun Pane.TvAppsPane() {
                     icon = here?.icon,
                     onClick = {
                         val opened = if (here != null) TvAppsOnDevice.open(context, here.packageName) else TvAppsOnDevice.openStore(context, app.storeSearch)
-                        if (!opened) android.widget.Toast.makeText(context, "Couldn't open the app or the app store.", android.widget.Toast.LENGTH_LONG).show()
+                        if (!opened) kueToast(context, "Couldn't open the app or the app store.")
                     },
                 )
             }
@@ -3345,7 +3345,7 @@ private fun Pane.RecordingsPane(
     // Deleting is a mode of its own, switched on by its own row, so a recording is never deleted by a slip.
     var deleting by remember { mutableStateOf(false) }
     if (deleting) BackHandler { deleting = false }
-    val tell: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
+    val tell: (String) -> Unit = { kueToast(context, it) }
     val toCome = remember(TimedStore.changes, changes, Resumes.count) { TimedStore.all(context) }
     val whenText = remember { java.text.SimpleDateFormat("EEE d MMM HH:mm", java.util.Locale.getDefault()) }
     val endText = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
@@ -3423,7 +3423,7 @@ private fun Pane.RecordingsPane(
                                 onPlay(listOf(Playable(title(recording.name), drive.playUrl(recording.id), headers = mapOf("Authorization" to "Bearer $token"))), 0, false, key)
                             } else {
                                 val why = (pass.exceptionOrNull() as? DriveProblem)?.message ?: "Couldn't open Google Drive."
-                                android.widget.Toast.makeText(context, why, android.widget.Toast.LENGTH_LONG).show()
+                                kueToast(context, why)
                                 Recordings.changed()
                             }
                         }
@@ -4024,7 +4024,7 @@ private fun Pane.GuideGrid(
     // The channel row the remote is on: its picture plays in the top right corner.
     var onChannel by remember { mutableStateOf<ChannelGroup?>(null) }
     val nameWidth = 230.dp * scale
-    val tell: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
+    val tell: (String) -> Unit = { kueToast(context, it) }
 
     Column(fill()) {
         // The standard guide layout: what the remote is on, described along the top, with the channel's picture in
@@ -4698,7 +4698,7 @@ private fun HomeScreen(
             LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
                 // The TV's own aerial channels, first: they work with no internet.
                 if (aerial) item(key = "aerial") {
-                    HomeCard({ if (!Aerial.open(context)) android.widget.Toast.makeText(context, "The TV's aerial channels wouldn't open.", android.widget.Toast.LENGTH_LONG).show() },
+                    HomeCard({ if (!Aerial.open(context)) kueToast(context, "The TV's aerial channels wouldn't open.") },
                         Modifier.width(150.dp), 16f / 9f, "Aerial TV", "This TV") {
                         Text("📡 Aerial", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
@@ -6118,7 +6118,7 @@ private fun ChannelMenu(channel: ChannelGroup, login: Boolean, favourites: Favou
                     FocusRow(if (forCategory) "Make the category" else "Save the name", {
                         if (forCategory) {
                             val made = MyCategories.make(context, typed, channel.id)
-                            android.widget.Toast.makeText(context, "Made 📁 " + made.name + ". It is in Live TV's categories.", android.widget.Toast.LENGTH_LONG).show()
+                            kueToast(context, "Made 📁 " + made.name + ". It is in Live TV's categories.")
                         } else {
                             Renames.set(context, channel.versions.map { it.channel.id }, typed)
                         }

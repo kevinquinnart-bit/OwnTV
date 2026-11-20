@@ -853,3 +853,311 @@ TV channel apps
 Films and series apps
 Music apps
 Other apps
+That add-on has no streams or subtitles, so KueTV has no use for it
+Paste the add-on's link first
+That link didn't answer like an add-on
+Check it and try again
+Copying recordings to Google Drive
+The sign-in was refused on the phone
+Google wouldn't finish the sign-in ({})
+Google Drive isn't signed in
+Google Drive needs signing in again
+Google wouldn't renew the sign-in ({})
+Google Drive wouldn't make the recordings folder ({})
+Google Drive wouldn't list the recordings ({})
+Google Drive wouldn't delete that recording ({})
+Google Drive wouldn't look for the backup ({})
+That Google Drive is full
+Google Drive wouldn't take the backup ({})
+Google Drive wouldn't give the backup back ({})
+Check the internet connection
+Couldn't reach Google
+Google Drive wouldn't take the recording
+Google Drive lost its place in the recording
+It will start it again
+Google Drive stopped taking the recording ({})
+KueTV recordings
+Google wouldn't start the sign-in ({})
+the guide answered {}
+UK and Ireland free channels
+UK free channels
+Ireland free channels
+Every country's free channels
+answers
+{#} for a test film, {#} for a test episode
+{} in {} for a test film
+Catalogue "{}"
+empty
+{#} titles
+{#} more catalogues not tried
+Sign in again in Settings
+Signed in as {}
+All {#} usable add-ons are in KueTV
+Your provider answers, but sent no programmes for {}
+{#} programmes for {#} test channels
+It answers, but sent nothing about "{}"
+Add-on streams can't be found without it
+Found {#} films for a test search
+None of the {#} tried answered
+Not answering
+{#} of {#} tried answered
+All {#} tried answered, but these were empty
+{#} catalogues
+The {#} tried all answered, {#} titles on their first pages
+Whether each one plays isn't tested
+{#} channels listed
+{#} recordings there
+{#} of {#} not working
+{#} of {#} to look at
+All {#} working
+It answered, but not in the form expected
+KueTV stopped
+Irish
+French
+Spanish
+German
+Italian
+Portuguese
+Polish
+Dutch
+Arabic
+Hindi
+Turkish
+hour
+hours
+{#} hour later
+{#} hours later
+{#} hour earlier
+{#} hours earlier
+{#} minutes later
+{#} minutes earlier
+hidden
+shown
+Hidden channels brings them back
+There is no channel {} in this list
+It has {#}
+Channel {#}
+{#} picked
+Tap a channel to pick it or not
+OK on a channel to pick it or not
+Back to stop
+{#} channels
+Hide the {#} picked
+{#} films
+using {}
+Provider details ({#} saved), reload, categories, free channel lists
+Add-ons ({#}), Stremio account
+This TV
+The TV's own settings
+version {#}
+not working, report, updates
+Also in your lists
+Its channels, films and series shown with these ones
+Free channels, tried when your provider's won't play
+{#} of your channels have one
+Sounds as you move around
+Never over a programme
+Quiet ticks for moving, OK and Back
+Last backed up {}
+Last met the other device at {}
+Aerial TV
+The TV's aerial channels wouldn't open
+Watch aerial TV
+They work with no internet
+The digital channels from the aerial plugged into the TV
+Offer aerial TV when the internet goes
+The TV's settings
+That part of the TV's settings wouldn't open
+All Fire TV settings
+Amazon's own settings menu
+Home or Back when done comes back to KueTV
+Get more apps
+Amazon's Appstore wouldn't open
+New apps land in the right row on Home by themselves
+Amazon's Appstore
+{#} not working
+Tries every source the app uses
+Watch {}
+{#} to {#}
+{#} series
+Episode {#}
+Season {#}
+First aired {}
+Nothing matches "{}"
+until {#}
+Recordings will be copied to the folder "{}"
+The button below copies this code and opens this page:
+Paste the code there:
+and type this code:
+Remove {}?
+Remove {}
+An add-on's link (it ends in manifest.json) or a channel list's (it ends in .m3u)
+on your phone, on the same Wi-Fi, open {} and paste the link there
+{#} added, not checked yet
+{#} working
+{#} with a gap
+Then type this code there:
+On the other device, on the same Wi-Fi, open KueTV and choose "Copy set-up from another device"
+KueTV 2, version {#}
+Tap a category to pick it up
+OK on a category to pick it up
+Tap a category to hide it or show it again
+OK on a category to hide it or show it again
+{#} of {#} showing
+Your provider's own categories, and each free list's
+Put {}'s categories in order
+Show all of {}
+Hide all of {}
+Hidden channels
+Press and hold a channel in Live TV to hide it
+Hold OK on a channel in Live TV to hide it
+Show all hidden channels again
+{#} min left
+Ireland only
+You have version {#}
+Version {#} is on the download
+Version {#}
+Version {#} is ready
+Then choose Update now again
+My Fire TV
+Developer options
+Install unknown apps
+Update now to version {#}
+OK on a channel to watch it
+checked {}
+{} from the catalogue
+Watch the free channels
+Add {}
+working
+on your phone, on the same Wi-Fi, open {} and type them there
+Kept the file for {}
+Add the OpenVPN file from your VPN company, and the username and password that go with it
+While the VPN is on it covers the whole {}
+on your phone, on the same Wi-Fi, open {}
+Choose the file there and type the username and password
+VPN Jantit has a free server in Dublin
+On their page, make an account for the server called Ireland
+Where the {} appears to be
+While the VPN is on, everything on this {} goes through it, not just KueTV
+Removed {}
+Removed {} from KueTV
+Removing it from your Stremio account
+PIN for {}
+Switch to {}
+That isn't the PIN for {}
+Added {}
+New PIN for {}
+{} has no PIN now
+{} now asks for its PIN
+Picture for {}
+Set a PIN for {}
+Change or remove {}'s PIN
+Hide this channel
+Pick channels to hide
+OK picks each one; then hide them all at once
+Made 📁 {}
+No internet
+Watch the TV's aerial channels
+Started at {#} on {}
+Starting at {#} on {}
+Nothing set for {}
+Set to record every showing of {} on {}
+Next {#}
+In ITVX
+In Channel 4
+In RTÉ Player
+aired {}
+CH+ CH− a page
+OK watch
+Starts in {#} s
+{#} min
+Trying the next one ({#} of {#})
+That stream isn't playing
+Carrying on from {#} minutes in
+Rewind to start again
+Now on {}
+Kept stopping on {}
+No {} subtitles found for this one
+Trying {}
+{} isn't playing
+stopping in a minute
+Sleep timer to keep watching
+No {} subtitles
+{#} of {#}
+{} behind live
+Can go back {#} min
+tap the words for on time
+stops at {}
+Sound {#} ms later
+Sound {#} ms earlier
+Sound {#}
+Your provider answered with an error ({})
+Your provider says this account is "{}"
+{#} h {#} min
+the storage here is nearly full
+Recording stopped
+it couldn't be written to the storage here
+Copying to Google Drive stopped
+It will carry on next time
+Starting soon on {}
+That part is no longer kept
+The provider answered {}
+Not a copy's address
+The copy has gone
+Nothing arriving from the provider
+{} is built into Stremio, so it stays in your Stremio account
+{} wasn't in your Stremio account
+Also removed from your Stremio account
+It was already in your Stremio account
+its description didn't answer
+Also added to your Stremio account
+not a web link
+only works on the computer running Stremio
+nothing in it KueTV uses
+Sign in to Stremio first
+Nothing new to add
+Already here
+Left out
+Paste the link first
+Added the add-on {}
+That isn't a link
+That list holds no channels
+Added a free channel list
+They are in Live TV, at the top of the categories, under "Free:"
+That link isn't an add-on or a channel list KueTV can read
+Couldn't reach Stremio
+Check the internet and try again
+Check the email and password
+Type your Stremio email and password first
+Stremio signed you in but gave no key back
+favourites order
+hidden categories
+Stremio sign-in
+Last taken from the other device at {}
+Recording a programme
+Nobody was found sharing this torrent
+This torrent has no film in it
+There isn't enough storage here for this torrent
+The torrent couldn't be started
+Torrents can't be played on this device ({})
+Asked to read past the end of the film
+Nothing is open
+The torrent's file is shorter than it said
+The torrent was closed
+The torrent is arriving too slowly to play
+the download answered {}
+The link answered {}
+the lookup answered {}
+answers, but no {} ones for a test film
+1 channel
+1 film
+1 series
+network, display, sound, apps, developer options
+{#}% watched
+Sport, News, Entertainment and so on, free channels in with the rest
+RTÉ Player catch-up
+Removed, as they're gone from Stremio
+Stremio said
+10 s back
+30 s on
+That isn't a link. It should start with http:// or https://

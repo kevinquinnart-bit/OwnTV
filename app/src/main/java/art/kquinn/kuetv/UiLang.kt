@@ -59,6 +59,8 @@ object UiLang {
         private set
 
     @Volatile private var words: Map<String, String> = emptyMap()
+    /** Lines with something put in them ("Hide the {} picked"), as patterns, with their translations. */
+    @Volatile private var patterns: List<Pair<Regex, String>> = emptyList()
     private val made = HashMap<String, String>()
 
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("choices", Context.MODE_PRIVATE)
@@ -79,6 +81,7 @@ object UiLang {
     private fun use(context: Context, wanted: String) {
         val c = all.firstOrNull { it.code == wanted }?.code ?: "en"
         words = if (c == "en") emptyMap() else read(context, c)
+        patterns = patternsOf(words)
         synchronized(made) { made.clear() }
         code = c
     }
@@ -109,13 +112,42 @@ object UiLang {
         return done
     }
 
+    /**
+     * The lines with a {} or {#} in them, as patterns: each stands for whatever the app puts there (a name; a number).
+     * Longest first, so the most particular one is tried before a shorter one that also fits.
+     */
+    fun patternsOf(map: Map<String, String>): List<Pair<Regex, String>> = map.entries
+        .filter { (en, _) -> ("{}" in en || "{#}" in en) && en.replace("{}", "").replace("{#}", "").any { it.isLetter() } }
+        .distinctBy { it.key.lowercase() }
+        .sortedByDescending { it.key.length }
+        .map { (en, theirs) ->
+            // {} is anything (a name); {#} only a number, a time or a version ("3", "21:00", "0.1.135").
+            val pattern = Regex("\\{#?\\}").split(en).let { literal ->
+                val slots = Regex("\\{#?\\}").findAll(en).map { if (it.value == "{#}") "(\\d[\\d.,:]*)" else "(.+?)" }.toList()
+                literal.indices.joinToString("") { i -> Regex.escape(literal[i]) + (slots.getOrNull(i) ?: "") }
+            }
+            Regex("^$pattern$", RegexOption.IGNORE_CASE) to theirs
+        }
+
+    /** [theirs] with what the app put in: "{}" in turn, or "{1}", "{2}" where a language puts them in another order. */
+    fun fill(theirs: String, values: List<String>): String {
+        if (Regex("\\{\\d\\}").containsMatchIn(theirs)) return Regex("\\{(\\d)\\}").replace(theirs) { m -> values.getOrNull(m.groupValues[1].toInt() - 1).orEmpty() }
+        var i = 0
+        return Regex("\\{\\}").replace(theirs) { values.getOrNull(i++).orEmpty() }
+    }
+
     private val lead = Regex("^[^\\p{L}]+")
     private val tail = Regex("(\\s*\\([^)]*\\)|…|\\.|\\?|!|\\s+[\\d][\\d ,.:]*)$")
 
     private fun translate(t: String): String {
         (words[t.trim()] ?: words[t.trim().lowercase()])?.let { return cased(t, it) }
+        // A line with something put in it: the pattern's translation, with what was put in (itself translated, if it can be).
+        for ((pattern, theirs) in patterns) {
+            val m = pattern.matchEntire(t.trim()) ?: continue
+            return cased(t, fill(theirs, m.groupValues.drop(1).map { if (it.length < t.length) tr(it) else it }))
+        }
         // Lines built from parts: each part on its own.
-        for (cut in listOf("\n", " · ", " › ", ": ")) {
+        for (cut in listOf("\n", " · ", " › ", ": ", ". ", "? ")) {
             if (cut in t) return t.split(cut).joinToString(cut) { tr(it) }
         }
         // A sign or number in front ("● ", "📁 ", "3 "), or something after ("(3)", "…", "."), kept as it is.
@@ -160,4 +192,9 @@ fun TrText(
         lineHeight = lineHeight, overflow = overflow, softWrap = softWrap, maxLines = maxLines, minLines = minLines,
         onTextLayout = onTextLayout, style = style,
     )
+}
+
+/** A short message at the bottom of the screen, in the chosen language. */
+fun kueToast(context: Context, text: String, long: Boolean = true) {
+    android.widget.Toast.makeText(context, UiLang.tr(text), if (long) android.widget.Toast.LENGTH_LONG else android.widget.Toast.LENGTH_SHORT).show()
 }
