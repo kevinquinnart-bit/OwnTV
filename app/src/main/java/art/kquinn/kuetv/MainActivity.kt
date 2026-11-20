@@ -1481,6 +1481,14 @@ private class Panels {
 /** The side columns on a TV; null on a phone, where nothing folds. */
 private val LocalPanels = staticCompositionLocalOf<Panels?> { null }
 
+/** The small TV's way into full screen: what OK on it does, and where the remote lands on it after Back. */
+class SmallTvLink(val open: (() -> Unit)?, val back: FocusRequester?)
+
+val LocalSmallTv = staticCompositionLocalOf { SmallTvLink(null, null) }
+
+/** The key the player is opened with from the small TV, so Back lands on the small TV again. */
+private const val SMALL_TV_KEY = "smalltv"
+
 /**
  * The bar along the top of a TV screen, as on Freely: KueTV's mark, then the sections by name, with Search and
  * Settings as pictures at the end. The section shown is lit; coming up into the bar lands on it. OK opens one.
@@ -2436,6 +2444,19 @@ private fun MainScreen(
             }
         }
     }
+    // The small TV, wherever it shows: OK on it (a tap on a phone) plays its channel full screen; Back comes
+    // back to this section, onto the small TV.
+    val smallTv = SmallTvLink(
+        open = {
+            LastLive.item?.let { small ->
+                val group = library.groups.firstOrNull { g -> g.versions.any { it.channel.url == small.url } }
+                    ?: library.groups.firstOrNull { it.name == small.name }
+                onPlay(listOf(group?.let { livePlayable(it, library.account, library.serverAheadSec) } ?: small), 0, true, SMALL_TV_KEY)
+            }
+        },
+        back = if (state.resumeKey == SMALL_TV_KEY) resume else null,
+    )
+    CompositionLocalProvider(LocalSmallTv provides smallTv) {
     if (phone) {
         // Phone: the menu is a strip across the top that slides sideways; the section fills the rest.
         Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2485,6 +2506,7 @@ private fun MainScreen(
         }
         }
         }
+    }
     }
 }
 

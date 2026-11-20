@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -1693,10 +1694,17 @@ fun MiniTv(item: Playable, modifier: Modifier = Modifier) {
         player.seekToDefaultPosition()
         player.prepare()
     }
+    // The remote can move onto it: OK plays the channel full screen, and Back comes back here.
+    val link = LocalSmallTv.current
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(14.dp)
     Column(
         modifier
             .width(380.dp)
-            .background(Color(0xFF16213A), RoundedCornerShape(14.dp))
+            .then(if (link.back != null) Modifier.focusRequester(link.back) else Modifier)
+            .background(if (focused) Looks.accentColour else Color(0xFF16213A), shape)
+            .onFocusChanged { focused = it.isFocused }
+            .then(if (link.open != null) Modifier.clickable { link.open.invoke() } else Modifier)
             .padding(6.dp),
     ) {
         AndroidView(
@@ -1704,7 +1712,12 @@ fun MiniTv(item: Playable, modifier: Modifier = Modifier) {
             factory = { ctx -> PlayerView(ctx).apply { useController = false; isFocusable = false } },
             update = { it.player = player },
         )
-        Text(item.name, color = Color.White, fontSize = 17.sp, maxLines = 1, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+        Text(
+            if (focused) "OK: full screen" else item.name,
+            color = if (focused) Color.Black else Color.White, fontSize = 17.sp, maxLines = 1,
+            fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
     }
 }
 
