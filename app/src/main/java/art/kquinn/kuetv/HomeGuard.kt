@@ -102,6 +102,7 @@ class HomeGuard : AccessibilityService() {
         val now = SystemClock.uptimeMillis()
         if (running !== this || !onAmazonHome || inFront || now - firstAsk > 8_000) return
         if (now - lastLaunch >= 1_000) {
+            if (lastLaunch < firstAsk) Report.note("Home", "Fire TV's home screen came up; KueTV brought back")
             lastLaunch = now
             android.util.Log.i("KueHome", "opening KueTV")
             showCover()
@@ -145,6 +146,9 @@ class HomeGuard : AccessibilityService() {
 
         /** Leaves Amazon's home screen alone while the TV's settings open. */
         fun pause() { pausedUntil = SystemClock.uptimeMillis() + 3_000L }
+
+        /** Leaves Amazon's home screen alone for longer: while the installer opens over KueTV. */
+        fun pauseFor(ms: Long) { pausedUntil = SystemClock.uptimeMillis() + ms }
 
         /** True while KueTV's screen is in front. */
         @Volatile var inFront = false

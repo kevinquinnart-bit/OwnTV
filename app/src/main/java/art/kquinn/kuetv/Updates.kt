@@ -80,6 +80,13 @@ object Updates {
 
     @Volatile private var fetching = false
 
+    /** The build last handed to the installer, and when. */
+    @Volatile private var handedOver = 0
+    @Volatile private var handedAt = 0L
+
+    /** How long after handing over the same version isn't offered again: time to choose Install. */
+    private const val HANDED_WAIT = 2 * 60_000L
+
     /**
      * Checks for a newer version and, when there is one, downloads it straight away in the background. The
      * offer pops up once it is downloaded, so it is one press to install, with no wait for a download (and any
@@ -96,6 +103,12 @@ object Updates {
             return
         }
         if (latest.code == putOff) return
+        // Just handed to the installer: KueTV coming back to the front then must not offer it again over the
+        // installer (seen on Kevin's TV with every update up to 0.1.142: the offer came back 1 second later).
+        if (latest.code <= handedOver && android.os.SystemClock.uptimeMillis() - handedAt < HANDED_WAIT) {
+            Report.note("Updates", "back on screen while the installer has version " + latest.name + "; not offered again")
+            return
+        }
         if (ready?.exists() == true && readyCode >= latest.code) {
             offer = latest
             return
@@ -147,7 +160,17 @@ object Updates {
         }
         target.delete()
         if (!part.renameTo(target)) throw java.io.IOException("the downloaded app couldn't be kept")
-        return target
+        // Each build is kept under its own name, so a second download can never replace the file the
+        // installer is still reading.
+        val build = buildInside(context, target) ?: return target
+        val kept = File(folder(context), "KueTV2-" + build + ".apk")
+        if (kept.exists() && buildInside(context, kept) == build) {
+            target.delete()
+            return kept
+        }
+        kept.delete()
+        if (!target.renameTo(kept)) throw java.io.IOException("the downloaded app couldn't be kept")
+        return kept
     }
 
     /**
@@ -192,6 +215,12 @@ object Updates {
 
     /** Hands the downloaded app to the device's installer, which asks before it installs over this one. */
     fun install(context: Context, file: File) {
+        handedOver = buildInside(context, file)?.toInt() ?: readyCode
+        handedAt = android.os.SystemClock.uptimeMillis()
+        offer = null
+        // The Home watcher stands aside while the installer opens, so it can't pull KueTV back over it.
+        HomeGuard.pauseFor(HANDED_WAIT)
+        Report.note("Updates", "build " + handedOver + " handed to the installer")
         val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
         context.startActivity(
             Intent(Intent.ACTION_VIEW)

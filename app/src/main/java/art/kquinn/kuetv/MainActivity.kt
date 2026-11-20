@@ -1604,9 +1604,22 @@ private fun KueLogo(markSize: Dp, textSize: androidx.compose.ui.unit.TextUnit, m
             bitmap.asImageBitmap()
         }
         Image(bitmap = mark, contentDescription = null, modifier = Modifier.size(markSize))
-        Text("KueTV", color = Ink, fontSize = textSize, fontWeight = FontWeight.Bold, maxLines = 1)
+        // "Kue" in the page's own ink, "TV" in light blue, as on the Kue apps. A soft shadow keeps the light blue
+        // clear: a dark one on the dark look, and a dark blue one close in on the light look.
+        val shadow = if (Looks.light) androidx.compose.ui.graphics.Shadow(Color(0xB30E1626), androidx.compose.ui.geometry.Offset(1f, 1.5f), 2f)
+        else androidx.compose.ui.graphics.Shadow(Color(0xCC000000), androidx.compose.ui.geometry.Offset(0f, 2f), 6f)
+        val words = androidx.compose.ui.text.buildAnnotatedString {
+            append("Kue")
+            pushStyle(androidx.compose.ui.text.SpanStyle(color = KUE_LIGHT_BLUE, shadow = shadow))
+            append("TV")
+            pop()
+        }
+        androidx.compose.material3.Text(words, color = Ink, fontSize = textSize, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
+
+/** The light blue of the second word in every Kue app's name. */
+private val KUE_LIGHT_BLUE = Color(0xFF5CCEFF)
 
 /** Where the TV Guide (or Catch-up) is: the category, the channel opened, and any date-and-time step. */
 private class ChannelPick {
