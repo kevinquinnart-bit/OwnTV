@@ -128,11 +128,14 @@ object Ui {
         )
     }
 
+    /** The Kue K, the same mark as KueTV's. */
     @Composable
     private fun Mark(size: Dp) {
-        Box(Modifier.size(size).clip(RoundedCornerShape(size / 4)).background(K.Accent), contentAlignment = Alignment.Center) {
-            Sign(Glyph.NOTE, size * 0.6f, K.Page)
-        }
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(R.drawable.kue_mark),
+            contentDescription = null,
+            modifier = Modifier.size(size),
+        )
     }
 
     /** A big yellow button, or a blue one when it is the second choice. */
@@ -185,7 +188,7 @@ object Ui {
             }
             if (problem.isNotBlank()) {
                 Spacer(Modifier.height(20.dp))
-                Words(problem, 16, K.Accent, lines = 4, centre = true)
+                Words(problem, 16, K.Accent, lines = 7, centre = true)
             }
         }
     }

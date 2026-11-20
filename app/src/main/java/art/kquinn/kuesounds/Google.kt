@@ -67,7 +67,7 @@ object Google {
     } catch (e: ApiException) {
         Start.Failed(explain(e))
     } catch (e: Exception) {
-        Start.Failed("Couldn't reach Google. Check the internet and try again.")
+        Start.Failed("Couldn't reach Google. Check the internet and try again." + (e.message?.let { "\nGoogle's words: $it" } ?: ""))
     }
 
     /** Google's page has closed: reads what it gave. */
@@ -87,11 +87,17 @@ object Google {
     /** Plain words for what Google said no to. */
     fun explain(e: ApiException): String = when (e.statusCode) {
         // DEVELOPER_ERROR: the Google project doesn't list this app yet.
-        10 -> "Google doesn't know KueSounds yet. The one set-up step in Google Cloud is still needed."
+        10 -> "Google doesn't know KueSounds yet. The one set-up step in Google Cloud is still needed." + googleWords(e)
         // CANCELED, or the person closed the page.
         16, 12501 -> "Sign-in was closed before it finished."
         7 -> "Couldn't reach Google. Check the internet and try again."
-        else -> "Google said no (code " + e.statusCode + "). Try again."
+        else -> "Google said no (code " + e.statusCode + ")." + googleWords(e)
+    }
+
+    /** Google's own reason, word for word, so a failed sign-in can be looked into. */
+    private fun googleWords(e: ApiException): String {
+        val words = (e.status.statusMessage ?: e.message).orEmpty().removePrefix(e.statusCode.toString() + ":").trim()
+        return if (words.isEmpty()) "" else "\nGoogle's words: " + words
     }
 
     private fun accept(token: String) {

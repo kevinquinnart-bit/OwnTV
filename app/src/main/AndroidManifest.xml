@@ -15,8 +15,8 @@
 
     <application
         android:allowBackup="false"
-        android:icon="@drawable/kuesounds_mark"
-        android:roundIcon="@drawable/kuesounds_mark"
+        android:icon="@drawable/kue_mark"
+        android:roundIcon="@drawable/kue_mark"
         android:label="@string/app_name"
         android:theme="@style/KueTheme">
 
