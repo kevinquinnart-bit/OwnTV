@@ -4619,6 +4619,24 @@ private fun HomeScreen(
                 }
             }
         } },
+        // TV: RTÉ Player catch-up, two rows: programmes RTÉ lets play anywhere, then those only for Ireland.
+        *(listOf(true to "RTÉ Player catch-up", false to "RTÉ Player catch-up · Ireland only").map { (anywhere, title) ->
+        @Composable { if (!phone) Column(verticalArrangement = blockSpacing) {
+            LaunchedEffect(Unit) { RteCatchUp.load() }
+            val shows = RteCatchUp.list.filter { it.anywhere == anywhere }
+            if (shows.isNotEmpty()) {
+                Heading(title)
+                LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
+                    itemsIndexed(shows, key = { _, c -> c.guid }) { _, c ->
+                        HomeCard({ RteCatchUp.open(context, c) }, Modifier.width(150.dp), 16f / 9f, c.title, "RTÉ Player") {
+                            if (c.image.isNotBlank()) AsyncImage(model = c.image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            else Text(c.title, color = Ink, fontSize = 16.sp, maxLines = 2, modifier = Modifier.padding(8.dp))
+                        }
+                    }
+                }
+            }
+        } }
+        }).toTypedArray(),
         // TV: Pluto TV's live channels, each opening straight into Pluto TV playing it.
         { if (!phone) Column(verticalArrangement = blockSpacing) {
             LaunchedEffect(Unit) { PlutoChannels.load() }

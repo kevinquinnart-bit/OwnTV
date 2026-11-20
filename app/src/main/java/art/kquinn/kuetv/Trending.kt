@@ -314,6 +314,104 @@ object LiveInApps {
     }
 }
 
+/**
+ * RTÉ Player catch-up: the series RTÉ One and RTÉ2 showed in the last 8 days, newest first, from RTÉ's own
+ * programme feeds. Each opens its page in RTÉ Player, with Watch now and All Episodes: the series link was tried
+ * on Kevin's TV on 20 November 2026 (Fair City, The Late Late Show, Prime Time). RTÉ marks each programme for
+ * where it may play: "WW" anywhere, "IOI" the island of Ireland, "ROI" the Republic. Programmes marked for
+ * Ireland don't open in England (RTÉ Player keeps loading), so they get a row of their own, not hidden.
+ */
+object RteCatchUp {
+    class Show(val guid: String, val title: String, val image: String, val anywhere: Boolean)
+
+    var list by mutableStateOf<List<Show>>(emptyList())
+        private set
+    private var loadedAt = 0L
+
+    private const val FEEDS = "https://feed.entertainment.tv.theplatform.eu/f/1uC-gC/"
+    private val http by lazy { Provider.http.newBuilder().callTimeout(30, TimeUnit.SECONDS).build() }
+
+    private fun get(url: String): String =
+        http.newCall(Request.Builder().url(url).header("User-Agent", Provider.USER_AGENT).build()).execute()
+            .use { r -> if (!r.isSuccessful) throw IllegalStateException("answered " + r.code); r.body.string() }
+
+    /** Loads at most once an hour. */
+    suspend fun load() {
+        if (list.isNotEmpty() && System.currentTimeMillis() - loadedAt < 3_600_000L) return
+        val fresh = withContext(Dispatchers.IO) {
+            runCatching {
+                val now = System.currentTimeMillis()
+                val schedule = get(FEEDS + "rte-prd-prd-all-schedules?form=json&schema=2.15&range=1-2&maxListings=1000&byCallSign=RTEONE%7CRTE2" +
+                    "&byListingTime=" + (now - 8 * 86_400_000L) + "~" + now +
+                    "&fields=plchannelschedule\$listings.pllisting\$startTime,plchannelschedule\$listings.pllisting\$program.plprogram\$seriesId")
+                val order = recent(schedule, now)
+                val shows = HashMap<String, Show>()
+                order.chunked(60).forEach { some ->
+                    val text = get(FEEDS + "rte-prd-prd-all-movies-series?form=json&schema=2.15&byGuid=" + some.joinToString("%7C") +
+                        "&fields=guid,title,rte\$defaultThumbnail,plprogram\$programType,plprogramavailability\$media.plmedia\$availabilityTags")
+                    shows.putAll(details(text))
+                }
+                order.mapNotNull { shows[it] }
+            }.onFailure { Report.note("RTÉ catch-up", it.message.orEmpty()) }.getOrDefault(emptyList())
+        }
+        if (fresh.isNotEmpty()) { list = fresh; loadedAt = System.currentTimeMillis() }
+    }
+
+    /** The series in the schedule, the one shown last first; programmes yet to start are left out. */
+    internal fun recent(text: String, now: Long): List<String> {
+        val last = HashMap<String, Long>()
+        val entries = JSONObject(text).optJSONArray("entries") ?: return emptyList()
+        for (i in 0 until entries.length()) {
+            val listings = entries.optJSONObject(i)?.optJSONArray("plchannelschedule\$listings") ?: continue
+            for (j in 0 until listings.length()) {
+                val l = listings.optJSONObject(j) ?: continue
+                val start = l.optLong("pllisting\$startTime")
+                val series = l.optJSONObject("pllisting\$program")?.optString("plprogram\$seriesId").orEmpty().substringAfterLast('/')
+                if (series.isBlank() || start > now) continue
+                if (start > (last[series] ?: 0L)) last[series] = start
+            }
+        }
+        return last.entries.sortedByDescending { it.value }.map { it.key }
+    }
+
+    /** Series with episodes to watch, by guid. The weather and the Angelus are left out. */
+    internal fun details(text: String): Map<String, Show> {
+        val out = HashMap<String, Show>()
+        val entries = JSONObject(text).optJSONArray("entries") ?: return out
+        for (i in 0 until entries.length()) {
+            val e = entries.optJSONObject(i) ?: continue
+            val guid = e.optString("guid")
+            val title = e.optString("title")
+            if (guid.isBlank() || e.optString("plprogram\$programType") != "series") continue
+            if (title.startsWith("Weather") || title.contains("Weather (") || title == "The Angelus") continue
+            val places = HashSet<String>()
+            val media = e.optJSONArray("plprogramavailability\$media")
+            for (j in 0 until (media?.length() ?: 0)) {
+                val tags = media!!.optJSONObject(j)?.optJSONArray("plmedia\$availabilityTags") ?: continue
+                for (k in 0 until tags.length()) places += tags.optString(k)
+            }
+            if (places.none { it == "WW" || it == "IOI" || it == "ROI" }) continue
+            val old = out[guid]
+            val show = Show(guid, title, e.optString("rte\$defaultThumbnail"), "WW" in places)
+            if (old == null || (show.anywhere && !old.anywhere)) out[guid] = show
+        }
+        return out
+    }
+
+    fun link(show: Show): String {
+        val slug = java.text.Normalizer.normalize(show.title, java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+            .lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifBlank { "x" }
+        return "https://www.rte.ie/rpng-static/ctv/androidTv/series/" + slug + "/" + show.guid
+    }
+
+    fun open(context: Context, show: Show) {
+        val ok = runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(link(show))).setPackage("com.twentyfouri.tvbridge.rte").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        if (!ok) TvAppsOnDevice.openStore(context, "RTÉ Player")
+    }
+}
+
 /** Pluto TV's live channels in the UK, from Pluto's own list; each opens straight into Pluto TV playing it. */
 object PlutoChannels {
     class Ch(val number: Int, val name: String, val slug: String, val logo: String)
