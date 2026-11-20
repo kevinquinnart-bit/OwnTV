@@ -64,6 +64,9 @@ class HomeGuard : AccessibilityService() {
                 retryHome()
             }
             pkg == "com.android.systemui" || pkg == "android" || pkg.startsWith("com.amazon.tv.settings") -> Unit
+            // Amazon's Appstore shows its pages inside Amazon's home screen: opening it hands straight over to the
+            // home screen (seen on Kevin's TV, 20 November 2026), so that hand-over is let through like the settings.
+            pkg == APPSTORE -> { onAmazonHome = false; stop(); cancelAlarm(this); pause() }
             // KueTV's own windows: only KueTV itself being in front counts as arrived.
             pkg == packageName -> if (inFront) { onAmazonHome = false; pausedUntil = 0; stop() }
             // Any other app in front: the user went there, so nothing may pull them back.
@@ -109,6 +112,7 @@ class HomeGuard : AccessibilityService() {
     companion object {
         const val AMAZON_HOME = "com.amazon.tv.launcher"
         private const val AMAZON_HOME_SCREEN = "com.amazon.tv.launcher.ui.HomeActivity_vNext"
+        const val APPSTORE = "com.amazon.venezia"
 
         /** The watcher while it is running, so KueTV can take the cover down once it is on screen. */
         @Volatile var running: HomeGuard? = null

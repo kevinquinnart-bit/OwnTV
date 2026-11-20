@@ -251,6 +251,16 @@ object Launcher {
         Report.note("Home", "TV settings: nothing on this TV opened")
         return false
     }
+
+    /** Amazon's Appstore, which shows its pages inside Amazon's home screen: left alone while it opens. */
+    fun openAppstore(context: Context): Boolean {
+        HomeGuard.pause()
+        val ok = runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("amzn://apps/android?s=")).setPackage(HomeGuard.APPSTORE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        if (!ok) HomeGuard.pausedUntil = 0
+        return ok
+    }
 }
 
 /**

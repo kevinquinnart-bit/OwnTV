@@ -2294,6 +2294,8 @@ private fun MainScreen(
                             }
                             FocusRow("All Fire TV settings", { Launcher.openTvSettings(context) }, if (tvParts.isEmpty()) first() else Modifier,
                                 look = Look.OTHER, below = "Amazon's own settings menu. Home or Back when done comes back to KueTV")
+                            FocusRow("Get more apps", { if (!Launcher.openAppstore(context)) android.widget.Toast.makeText(context, "Amazon's Appstore wouldn't open.", android.widget.Toast.LENGTH_LONG).show() },
+                                look = Look.OTHER, below = "Amazon's Appstore. New apps land in the right row on Home by themselves")
                         }
                         "Help" -> {
                             FocusRow("Health check" + if (notWorking == 0) "" else " · $notWorking not working", onHealth, first(), look = Look.OTHER, below = "Tries every source the app uses")
