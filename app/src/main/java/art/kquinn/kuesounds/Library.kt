@@ -24,6 +24,8 @@ data class Track(
     var genre: String,
     /** True once the song's own details (its tags) have been read from the file. */
     var tagged: Boolean,
+    /** True once its album has been looked up in the music catalogue (MusicBrainz), found or not. */
+    var checked: Boolean = false,
 )
 
 /** A folder in the Drive: its name and the folder it sits in. */
@@ -87,7 +89,8 @@ object Library {
             }
         }
         var artist = parentOfFolder?.name?.trim().orEmpty()
-        val album = folder?.name?.trim().orEmpty()
+        val album = folder?.name?.let { cleanAlbum(it, artist).first }.orEmpty()
+        if (folder != null) discNo = discNo.takeIf { it > 0 } ?: cleanAlbum(folder.name, artist).second
         var title = stem
         // Loose files named "Artist - Song" give their artist when the folders don't.
         if (artist.isEmpty() && " - " in stem) {
@@ -117,10 +120,38 @@ object Library {
         return y
     }
 
-    /** The name an artist or album is grouped and sorted by: case, accents and a leading "The" set aside. */
+    /**
+     * The name an artist or album is grouped and sorted by: case, accents, curly quotes, leading
+     * punctuation and a leading "The" set aside.
+     */
     fun sortName(name: String): String {
-        val plain = Normalizer.normalize(name, Normalizer.Form.NFD).replace(Regex("""\p{M}"""), "").lowercase(Locale.ROOT).trim()
-        return plain.removePrefix("the ").trim()
+        val plain = Normalizer.normalize(name, Normalizer.Form.NFD).replace(Regex("""\p{M}"""), "")
+            .replace('\u2019', '\'').replace('\u2018', '\'').lowercase(Locale.ROOT).trim()
+        return plain.trimStart { !it.isLetterOrDigit() }.removePrefix("the ").trim()
+    }
+
+    private val discMark = Regex("""[\[(\-\s]*\b(?:disc|disk|cd)\s*(\d{1,2})\b\s*[\])]?""", RegexOption.IGNORE_CASE)
+
+    /**
+     * Tidies an album name taken from a folder or a tag: "1 - Garth Brooks - Ropin' the Wind [Disc 2] (1991)"
+     * becomes "Ropin' the Wind", disc 2. Gives back the tidy name and the disc number (0 when none).
+     */
+    fun cleanAlbum(raw: String, artist: String): Pair<String, Int> {
+        var t = raw.replace('_', ' ').trim()
+        var disc = 0
+        discMark.find(t)?.let {
+            disc = it.groupValues[1].toInt()
+            t = t.removeRange(it.range)
+        }
+        t = t.replace(Regex("""^\s*\d{1,3}\s*[-.)]\s+"""), "")
+        if (artist.isNotBlank() && artist != UNKNOWN_ARTIST) {
+            t = t.replace(Regex("^\\s*" + Regex.escape(artist) + "\\s*[-\u2013:]\\s*", RegexOption.IGNORE_CASE), "")
+        }
+        t = t.replace(Regex("""\s*[\[(](?:19|20)\d\d[\])]\s*$"""), "")
+        t = t.replace(Regex("""^(?:19|20)\d\d\s*-\s+"""), "")
+        t = t.trim().trimStart('-', '+', '_', '.', '~', '*', ' ').trimEnd('-', '+', '_', '~', '*', ' ')
+        t = t.replace(Regex("""\s{2,}"""), " ").trim()
+        return t.ifBlank { raw.trim() } to disc
     }
 
     fun albumKey(artist: String, album: String): String = sortName(artist) + "\u0001" + sortName(album)

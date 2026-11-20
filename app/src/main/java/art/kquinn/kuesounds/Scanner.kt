@@ -46,6 +46,34 @@ object Scanner {
 
     var signedOut by mutableStateOf(false)
 
+    /** A plain record of what the scan did and what failed, newest last, for the report. */
+    private val notes = ArrayDeque<String>()
+
+    fun note(text: String) = synchronized(notes) {
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.UK).format(java.util.Date())
+        notes.addLast("$time $text")
+        while (notes.size > 200) notes.removeFirst()
+    }
+
+    /** The report: counts and the record, with no addresses or passwords in it. */
+    fun report(): String {
+        val d = data
+        val albums = Library.albums(d.tracks)
+        val lines = mutableListOf(
+            "KueSounds " + BuildConfig.VERSION_NAME,
+            "Songs: " + d.tracks.size,
+            "Song details read: " + d.tracks.count { it.tagged },
+            "Albums: " + albums.size,
+            "Albums looked up: " + albums.count { al -> al.tracks.all { it.checked } },
+            "Albums with a cover: " + albums.count { artFor(it) != null },
+            "Folders: " + d.folders.size + ", folder cover pictures: " + d.folderCovers.size,
+            "Now: " + status.ifEmpty { "idle" } + (if (problem.isNotEmpty()) " / problem: $problem" else ""),
+            "",
+        )
+        synchronized(notes) { lines += notes }
+        return lines.joinToString("\n")
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
     private lateinit var app: Context
@@ -83,13 +111,18 @@ object Scanner {
                     .mapValues { (_, list) -> list.sortedBy { coverRank(it.name) }.first().id }
                 data = Library.merge(data, files, folders, covers, System.currentTimeMillis())
                 save()
+                note("found " + data.tracks.size + " songs in " + folders.size + " folders, " + covers.size + " folder cover pictures")
                 if (Google.email.isBlank()) runCatching { Google.keepEmail(Drive.whoAmI()) }
                 readDetails()
+                matchAlbums()
                 status = ""
+                note("scan finished")
             } catch (e: Drive.SignedOut) {
+                note("signed out by Google")
                 signedOut = true
                 status = ""
             } catch (e: Exception) {
+                note("scan stopped: " + e.javaClass.simpleName + " " + e.message)
                 problem = "Couldn't finish looking through your music. " + (e.message ?: "")
                 status = ""
             } finally {
@@ -106,6 +139,8 @@ object Scanner {
     }
 
     private fun save() = Library.save(libraryFile(), data)
+
+    @Volatile private var failures = 0
 
     /** Step 2: each song's own details, four at a time, kept every 25 songs. */
     private suspend fun readDetails() {
@@ -154,17 +189,21 @@ object Scanner {
             val artist = key(MediaMetadataRetriever.METADATA_KEY_ARTIST)
             val album = key(MediaMetadataRetriever.METADATA_KEY_ALBUM)
             val albumArtist = key(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+            val tidy = album?.let { Library.cleanAlbum(it, albumArtist ?: artist.orEmpty()) }
             val updated = t.copy(
                 title = title ?: t.title,
                 artist = artist ?: albumArtist ?: t.artist,
-                album = album ?: t.album,
+                album = tidy?.first ?: t.album,
                 albumArtist = albumArtist.orEmpty(),
                 trackNo = Library.number(key(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)).takeIf { it > 0 } ?: t.trackNo,
-                discNo = Library.number(key(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)).takeIf { it > 0 } ?: t.discNo,
+                discNo = Library.number(key(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)).takeIf { it > 0 }
+                    ?: tidy?.second?.takeIf { it > 0 } ?: t.discNo,
                 year = Library.year(key(MediaMetadataRetriever.METADATA_KEY_YEAR) ?: key(MediaMetadataRetriever.METADATA_KEY_DATE)),
                 durationMs = key(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L,
                 genre = key(MediaMetadataRetriever.METADATA_KEY_GENRE).orEmpty(),
                 tagged = true,
+                // Fresh details mean the album is looked up again with them.
+                checked = false,
             )
             val albumKey = Library.albumKey(Library.albumArtistOf(updated), updated.album)
             var art: Pair<String, String>? = null
@@ -175,6 +214,9 @@ object Scanner {
             }
             updated to art
         } catch (e: Exception) {
+            if (failures++ < 15) {
+                note("details not read for " + t.fileName + ": " + (source.failure ?: e).let { it.javaClass.simpleName + " " + it.message })
+            }
             // The Drive couldn't be reached, or the pass ran out: left as it is, to be read next time.
             if (source.failure != null) return null
             // A file whose details can't be read keeps its first guess, and isn't tried again.
@@ -206,6 +248,81 @@ object Scanner {
             }
         }
         data = data.copy(art = data.art + added)
+    }
+
+    /**
+     * Step 3: each album not yet looked up is found in MusicBrainz, which gives it its proper name,
+     * artist and year, and its cover. Songs with no album are looked up one by one. An album that
+     * isn't found keeps its tidied name. Each is looked up once.
+     */
+    private fun matchAlbums() {
+        val todo = Library.albums(data.tracks).filter { al -> al.tracks.any { !it.checked } }
+        if (todo.isEmpty()) return
+        var found = 0
+        var covers = 0
+        var notFound = 0
+        todo.forEachIndexed { i, al ->
+            status = "Matching albums · " + (i + 1) + " of " + todo.size
+            try {
+                if (Library.sortName(al.title) == Library.sortName(Library.UNKNOWN_ALBUM)) {
+                    for (t in al.tracks.filter { !it.checked }) {
+                        val m = Catalogue.findSong(t.title, t.artist)
+                        if (m != null) found++ else notFound++
+                        if (apply(setOf(t.id), al, m, t.album)) covers++
+                    }
+                } else {
+                    val (clean, _) = Library.cleanAlbum(al.title, al.artist)
+                    val m = Catalogue.findAlbum(clean, al.artist, al.tracks.size)
+                    if (m != null) found++ else {
+                        notFound++
+                        if (notFound <= 30) note("not in the catalogue: " + al.artist + " / " + clean)
+                    }
+                    if (apply(al.tracks.map { it.id }.toSet(), al, m, clean)) covers++
+                }
+            } catch (e: java.io.IOException) {
+                note("album lookups stopped: " + e.message)
+                save()
+                return@matchAlbums
+            }
+            if (i % 10 == 9) save()
+        }
+        save()
+        note("looked up " + todo.size + " albums: " + found + " found, " + notFound + " not found, " + covers + " covers fetched")
+    }
+
+    /**
+     * Puts what the catalogue found on these songs (or, when nothing was found, the tidied album name),
+     * and gives the album a cover. True when a new cover was fetched.
+     */
+    private fun apply(ids: Set<String>, al: Album, m: Catalogue.Match?, cleanTitle: String): Boolean {
+        val oldKey = al.key
+        data = data.copy(
+            tracks = data.tracks.map { t ->
+                if (t.id !in ids) t else {
+                    val disc = if (t.discNo > 0) t.discNo else Library.cleanAlbum(t.album, al.artist).second
+                    t.copy(
+                        album = m?.title ?: cleanTitle,
+                        albumArtist = m?.artist ?: t.albumArtist,
+                        year = m?.year?.takeIf { it > 0 } ?: t.year,
+                        discNo = disc,
+                        checked = true,
+                    )
+                }
+            },
+        )
+        val sample = data.tracks.first { it.id in ids }
+        val newKey = Library.albumKey(Library.albumArtistOf(sample), sample.album)
+        if (newKey in data.art) return false
+        // A cover already found for the album (in its folder or its files) moves with it.
+        data.art[oldKey]?.let {
+            data = data.copy(art = data.art + (newKey to it))
+            return false
+        }
+        if (m == null) return false
+        val bytes = runCatching { Catalogue.cover(m) }.getOrNull() ?: return false
+        val path = keepPicture(bytes, newKey) ?: return false
+        data = data.copy(art = data.art + (newKey to path))
+        return true
     }
 
     /** Shrinks a cover picture to at most 600 dots across and keeps it. Gives back the kept file's path. */

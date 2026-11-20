@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -654,7 +655,7 @@ object Ui {
     @Composable
     private fun Settings(back: () -> Unit) {
         val data = Scanner.data
-        Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 RoundButton(Glyph.BACK, "Back", onClick = back)
                 Spacer(Modifier.width(14.dp))
@@ -666,7 +667,9 @@ object Ui {
             }
             Panel {
                 Words("Your music", 14, K.Soft)
-                Words(count(data.tracks.size, "song") + " · " + count(Library.albums(data.tracks).size, "album"), 17)
+                val albums = remember(data) { Library.albums(data.tracks) }
+                Words(count(data.tracks.size, "song") + " · " + count(albums.size, "album"), 17)
+                Words(String.format("%,d", albums.count { Scanner.artFor(it) != null }) + " with a cover", 14, K.Soft)
                 val left = data.tracks.count { !it.tagged }
                 if (left > 0) Words("Song details still to read: " + String.format("%,d", left), 14, K.Soft, lines = 2)
                 Spacer(Modifier.height(8.dp))
@@ -679,6 +682,14 @@ object Ui {
             Panel {
                 Words("KueSounds", 14, K.Soft)
                 Words("Version " + BuildConfig.VERSION_NAME, 17)
+                Spacer(Modifier.height(8.dp))
+                var copied by remember { mutableStateOf(false) }
+                val context = LocalContext.current
+                Button(if (copied) "Copied. Paste it to Claude." else "Copy report for Claude", main = false, modifier = Modifier.fillMaxWidth()) {
+                    val clip = context.getSystemService(android.content.ClipboardManager::class.java)
+                    clip?.setPrimaryClip(android.content.ClipData.newPlainText("KueSounds report", Scanner.report()))
+                    copied = true
+                }
             }
         }
     }

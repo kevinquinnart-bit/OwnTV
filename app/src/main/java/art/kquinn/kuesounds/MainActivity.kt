@@ -34,7 +34,8 @@ class MainActivity : ComponentActivity() {
         Scanner.init(this)
         Playing.connect(this)
         signedIn = Google.signedIn
-        if (signedIn && Scanner.data.tracks.isEmpty() || signedIn && System.currentTimeMillis() - Scanner.data.scannedAt > 6 * 60 * 60 * 1000L) {
+        val unfinished = Scanner.data.tracks.any { !it.tagged || !it.checked }
+        if (signedIn && (Scanner.data.tracks.isEmpty() || unfinished || System.currentTimeMillis() - Scanner.data.scannedAt > 6 * 60 * 60 * 1000L)) {
             Scanner.scan()
         }
         setContent {
