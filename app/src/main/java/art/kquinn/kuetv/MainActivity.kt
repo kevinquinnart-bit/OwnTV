@@ -2452,6 +2452,50 @@ private fun MainScreen(
                                 look = Look.OTHER, below = "Amazon's own settings menu. Home or Back when done comes back to KueTV")
                             FocusRow("Get more apps", { if (!Launcher.openAppstore(context)) kueToast(context, "Amazon's Appstore wouldn't open.") },
                                 look = Look.OTHER, below = "Amazon's Appstore. New apps land in the right row on Home by themselves")
+                            // The free channels' own player apps, by country: add a country's missing ones in one go, or
+                            // add or remove one at a time. Looked at again each time KueTV comes back to the front.
+                            sub("Channel player apps")
+                            val players by produceState<List<TvAppsOnDevice.Found?>?>(null, Resumes.count) {
+                                value = withContext(Dispatchers.IO) { TvAppsOnDevice.find(context.applicationContext) }
+                            }
+                            val here = players
+                            if (here == null) Note("Looking at the apps on this TV…")
+                            else {
+                                val onTv = TvAppList.all.filterIndexed { i, _ -> here.getOrNull(i) != null }.map { it.title }.toSet()
+                                // Adding a country's players: after each visit to the store, the next one opens.
+                                LaunchedEffect(here) {
+                                    if (PlayerApps.queue.isNotEmpty()) {
+                                        delay(3_000)
+                                        PlayerApps.next(context, onTv)
+                                    }
+                                }
+                                if (PlayerApps.queue.isNotEmpty()) {
+                                    FocusRow("Stop adding · " + PlayerApps.queue.size + " still to go", { PlayerApps.queue = emptyList() },
+                                        look = Look.MAIN, below = "Next: " + PlayerApps.queue.first().title)
+                                }
+                                TvAppList.countries.forEach { country ->
+                                    val apps = TvAppList.all.withIndex().filter { it.value.country == country }
+                                    val missing = apps.filter { here.getOrNull(it.index) == null }.map { it.value }
+                                    FocusRow(
+                                        (if (missing.isEmpty()) "✓ " else "") + country + " channel players · " + (apps.size - missing.size) + " of " + apps.size + " on this TV",
+                                        { if (missing.isEmpty()) kueToast(context, "All the $country players are on this TV.") else PlayerApps.addAll(context, missing) },
+                                        look = Look.OTHER,
+                                        below = if (missing.isEmpty()) "All on this TV" else "OK adds the rest from the app store, one after another",
+                                    )
+                                    apps.forEach { (i, app) ->
+                                        val found = here.getOrNull(i)
+                                        FocusRow(
+                                            (if (found != null) "✓ " else "+ ") + app.title,
+                                            {
+                                                val ok = if (found != null) PlayerApps.remove(context, found.packageName, app.title) else PlayerApps.openStore(context, app)
+                                                if (!ok) kueToast(context, if (found != null) "The TV wouldn't remove it." else "The app store wouldn't open.")
+                                            },
+                                            look = Look.OTHER,
+                                            below = if (found != null) "On this TV · OK to remove it" else "Not on this TV · OK to add it",
+                                        )
+                                    }
+                                }
+                            }
                         }
                         "Help" -> {
                             FocusRow("Health check" + if (notWorking == 0) "" else " · $notWorking not working", onHealth, first(), look = Look.OTHER, below = "Tries every source the app uses")
@@ -4803,13 +4847,13 @@ private fun HomeScreen(
                 }
             }
         } },
-        // TV: RTÉ Player catch-up, two rows: programmes RTÉ lets play anywhere, then those only for Ireland.
-        *(listOf(true to "RTÉ Player catch-up", false to "RTÉ Player catch-up · Ireland only").map { (anywhere, title) ->
-        @Composable { if (!phone) Column(verticalArrangement = blockSpacing) {
+        // TV: RTÉ Player catch-up, one row: everything RTÉ One and RTÉ2 showed. Programmes RTÉ keeps to Ireland
+        // may not play away from Ireland; Kevin chose to have them all in the one row anyway (20 November 2026).
+        { if (!phone) Column(verticalArrangement = blockSpacing) {
             LaunchedEffect(Unit) { RteCatchUp.load() }
-            val shows = RteCatchUp.list.filter { it.anywhere == anywhere }
+            val shows = RteCatchUp.list
             if (shows.isNotEmpty()) {
-                Heading(title)
+                Heading("RTÉ Player catch-up")
                 LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
                     itemsIndexed(shows, key = { _, c -> c.guid }) { _, c ->
                         HomeCard({ RteCatchUp.open(context, c) }, Modifier.width(150.dp), 16f / 9f, c.title, "RTÉ Player") {
@@ -4819,8 +4863,7 @@ private fun HomeScreen(
                     }
                 }
             }
-        } }
-        }).toTypedArray(),
+        } },
         // TV: Pluto TV's live channels, each opening straight into Pluto TV playing it.
         { if (!phone) Column(verticalArrangement = blockSpacing) {
             LaunchedEffect(Unit) { PlutoChannels.load() }
