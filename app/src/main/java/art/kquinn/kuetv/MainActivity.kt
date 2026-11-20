@@ -113,6 +113,7 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.mutableLongStateOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -265,6 +266,14 @@ class MainActivity : ComponentActivity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         Pip.inPip = isInPictureInPictureMode
     }
+}
+
+/** What the loading screen is waiting on, and since when, so a long wait says where it is stuck. */
+private object LoadStep {
+    var step by mutableStateOf("")
+    var sinceMs by mutableLongStateOf(0L)
+
+    fun set(text: String) { step = text; sinceMs = android.os.SystemClock.uptimeMillis() }
 }
 
 /** Goes up each time the TV's Home button brings KueTV to the front: KueTV then shows its own Home. */
@@ -584,7 +593,15 @@ private fun App() {
         problem = null
         // Opening the app: the lists kept here from last time are shown at once. A reload always fetches them afresh.
         val file = LibraryCache.file(context)
+        LoadStep.set("Reading the lists kept on this device")
+        val readStart = android.os.SystemClock.uptimeMillis()
         val kept = if (reload == 0) withContext(Dispatchers.IO) { LibraryCache.read(file, account) } else null
+        Report.note(
+            "Provider",
+            "reading the kept lists took " + (android.os.SystemClock.uptimeMillis() - readStart) / 1000 + " seconds: " +
+                when { reload != 0 -> "skipped for a reload"; kept != null -> "found"; file.exists() -> "file there (" + file.length() / 1024 + " KB) but not used"; else -> "no file" },
+        )
+        if (kept == null) LoadStep.set("Asking your provider for the lists")
         if (kept != null) {
             loaded = kept.library
             val age = System.currentTimeMillis() - kept.at
@@ -835,7 +852,7 @@ private fun App() {
             healthOpen -> HealthScreen(account, library, onDone = { healthOpen = false })
             categoriesOpen && whole != null -> CategoriesScreen(whole, onDone = { categoriesOpen = false })
             problem != null -> ProblemScreen(problem.orEmpty(), onRetry = { reload++ }, onEdit = { editing = true })
-            lib == null -> LoadingScreen()
+            lib == null -> LoadingScreen(onReport = { reportOpen = true })
             else -> androidx.compose.runtime.key(profileId) { MainScreen(
                 extras = SettingsExtras(
                     switchProvider = { next ->
@@ -1105,7 +1122,18 @@ private fun Heading(text: String) {
 }
 
 @Composable
-private fun LoadingScreen() {
+private fun LoadingScreen(onReport: () -> Unit) {
+    // A count of the seconds spent on the present step, and after 15 of them, the report to send.
+    var seconds by remember { mutableIntStateOf(0) }
+    LaunchedEffect(LoadStep.sinceMs) {
+        while (true) {
+            seconds = ((android.os.SystemClock.uptimeMillis() - LoadStep.sinceMs) / 1000).toInt().coerceAtLeast(0)
+            delay(1_000)
+        }
+    }
+    val slow = seconds >= 15
+    val first = remember { FocusRequester() }
+    LaunchedEffect(slow) { if (slow) { withFrameNanos { }; runCatching { first.requestFocus() } } }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         CircularProgressIndicator(color = AccentInk)
         Spacer(Modifier.height(22.dp))
@@ -1114,6 +1142,16 @@ private fun LoadingScreen() {
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         )
+        if (LoadStep.step.isNotEmpty() && seconds >= 5) {
+            Text(
+                LoadStep.step + " · " + seconds + " s", color = Soft, fontSize = Sizes.HEADING,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp),
+            )
+        }
+        if (slow) {
+            Box(Modifier.width(420.dp)) { FocusRow("Report for Claude", onReport, Modifier.focusRequester(first), look = Look.MAIN) }
+        }
     }
 }
 
