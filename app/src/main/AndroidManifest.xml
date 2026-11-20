@@ -45,6 +45,9 @@
 
         <service android:name=".FixService" android:exported="false" android:foregroundServiceType="dataSync" />
 
+        <!-- Hears back from the phone's installer when a newer KueSounds is put on. -->
+        <receiver android:name=".UpdateReceiver" android:exported="false" />
+
         <!-- Hands a downloaded newer KueSounds to the phone's installer. -->
         <provider
             android:name="androidx.core.content.FileProvider"

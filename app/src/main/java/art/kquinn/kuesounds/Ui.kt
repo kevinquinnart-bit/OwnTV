@@ -313,7 +313,7 @@ object Ui {
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(K.Raised).padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Words(if (updating.isNotEmpty()) updating else "KueSounds " + offer.name + " is ready.", 15, lines = 2, modifier = Modifier.weight(1f))
+                Words(if (updating.isNotEmpty()) updating else "KueSounds " + offer.name + " is ready. After this one, updates go on by themselves.", 15, lines = 3, modifier = Modifier.weight(1f))
                 if (updating.isEmpty()) {
                     Button("Update", modifier = Modifier.height(44.dp)) {
                         if (!Updates.mayInstall(context)) {
@@ -326,7 +326,8 @@ object Ui {
                                 }
                                 if (file != null) {
                                     updating = ""
-                                    Updates.install(context, file)
+                                    // Through Android's own installer, so from now on updates go on by themselves.
+                                    runCatching { Updates.installSession(context, file) }.onFailure { Updates.install(context, file) }
                                 } else {
                                     updating = "The download didn't work. Try again later."
                                 }
@@ -340,7 +341,7 @@ object Ui {
                 }
             }
         }
-        val status = Scanner.status.ifEmpty { Fixer.status }
+        val status = Scanner.status.ifEmpty { Fixer.status }.ifEmpty { Updates.doing }
         if (status.isNotEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(color = K.Accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))

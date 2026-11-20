@@ -86,7 +86,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        lifecycleScope.launch(Dispatchers.IO) { Updates.checkOnOpen() }
+        lifecycleScope.launch(Dispatchers.IO) { Updates.checkAndFetch(applicationContext) }
+    }
+
+    /** Leaving KueSounds (Home or another app): a downloaded update goes on now, unless music is playing. */
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) Updates.installIfReady(applicationContext)
     }
 
     private fun signIn() {

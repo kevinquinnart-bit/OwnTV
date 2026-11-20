@@ -148,4 +148,95 @@ object Updates {
     fun tidy(context: Context) {
         runCatching { File(context.cacheDir, "update").deleteRecursively() }
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Updating by itself
+    //
+    // Android lets an app put its own updates on without asking only when the app itself put the
+    // version that's running on (it is then the app's "installer"), on Android 12 and later. The very
+    // first time, KueSounds was put on by the browser, so that one update asks once. From then on each
+    // new version is downloaded quietly and goes on the next time KueSounds is left (Home or another
+    // app), never while music is playing.
+
+    /** A newer version downloaded and checked, waiting to go on when KueSounds is next left. */
+    var ready by mutableStateOf<File?>(null)
+
+    /** What the update is doing, for the screen. Empty when nothing is happening. */
+    var doing by mutableStateOf("")
+
+    /** Whether updates can now go on without asking. */
+    fun quiet(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !mayInstall(context)) return false
+        val installer = runCatching { context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName }.getOrNull()
+        return installer == context.packageName
+    }
+
+    /**
+     * On opening: when a newer version is waiting and updates go on by themselves, downloads it
+     * quietly, ready for when KueSounds is left. Otherwise offers it on screen, as before. Call off
+     * the main thread.
+     */
+    fun checkAndFetch(context: Context) {
+        val latest = runCatching { check() }.getOrNull() ?: return
+        if (!isNewer(latest, BuildConfig.VERSION_CODE)) {
+            tidy(context)
+            return
+        }
+        if (!quiet(context)) {
+            if (latest.code != putOff) offer = latest
+            return
+        }
+        if (ready != null) return
+        doing = "Getting KueSounds " + latest.name
+        ready = runCatching { downloadChecked(context) {} }.getOrNull()
+        doing = ""
+    }
+
+    /** KueSounds has been left: a downloaded update goes on now, unless music is playing. */
+    fun installIfReady(context: Context) {
+        val file = ready ?: return
+        if (Playing.isPlaying || !quiet(context)) return
+        ready = null
+        runCatching { installSession(context, file) }
+    }
+
+    /**
+     * Puts the downloaded app on through Android's own installer. It goes on without a question when
+     * Android allows that; otherwise Android shows its usual "Update this app?" question.
+     */
+    fun installSession(context: Context, file: File) {
+        val installer = context.packageManager.packageInstaller
+        val params = android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+            setAppPackageName(context.packageName)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                setRequireUserAction(android.content.pm.PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+            }
+        }
+        val id = installer.createSession(params)
+        installer.openSession(id).use { session ->
+            session.openWrite("KueSounds.apk", 0, file.length()).use { out ->
+                file.inputStream().use { it.copyTo(out) }
+                session.fsync(out)
+            }
+            val flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) android.app.PendingIntent.FLAG_MUTABLE else 0)
+            val done = android.app.PendingIntent.getBroadcast(context, id, Intent(context, UpdateReceiver::class.java), flags)
+            session.commit(done.intentSender)
+        }
+    }
+}
+
+/** Hears back from Android's installer: shows its question when it has one, and tidies up afterwards. */
+class UpdateReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val status = intent.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS, -999)
+        if (status == android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            @Suppress("DEPRECATION")
+            val ask = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT) ?: return
+            runCatching { context.startActivity(ask.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        } else if (status != android.content.pm.PackageInstaller.STATUS_SUCCESS) {
+            // Tried again the next time KueSounds opens.
+            Scanner.note("update didn't go on: " + intent.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE))
+        }
+    }
 }
