@@ -28,11 +28,46 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** What to do once the person has allowed KueSounds to edit the music files. */
+    private var afterEditAllowed: (() -> Unit)? = null
+
+    private val editPage = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        when (val r = Google.finishEdit(this, result.data)) {
+            is Google.Start.Ready -> afterEditAllowed?.invoke()
+            is Google.Start.Failed -> Fixer.permissionProblem = r.message
+            is Google.Start.ShowGoogle -> Fixer.permissionProblem = "Permission wasn't given. Try again."
+        }
+        afterEditAllowed = null
+    }
+
+    private val noticesPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    /** Asks Google for permission to edit the music files, then does [then]. */
+    private fun askEdit(then: () -> Unit) {
+        Fixer.permissionProblem = ""
+        afterEditAllowed = then
+        lifecycleScope.launch {
+            when (val r = Google.startEdit(this@MainActivity)) {
+                is Google.Start.Ready -> { afterEditAllowed = null; then() }
+                is Google.Start.ShowGoogle -> editPage.launch(IntentSenderRequest.Builder(r.intent.intentSender).build())
+                is Google.Start.Failed -> { afterEditAllowed = null; Fixer.permissionProblem = r.message }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Google.init(this)
         Scanner.init(this)
         Playing.connect(this)
+        Fixer.askPermission = ::askEdit
+        Fixer.askNotices = {
+            if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                noticesPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
         signedIn = Google.signedIn
         val unfinished = Scanner.data.tracks.any { !it.tagged || !it.checked }
         if (signedIn && (Scanner.data.tracks.isEmpty() || unfinished || System.currentTimeMillis() - Scanner.data.scannedAt > 6 * 60 * 60 * 1000L)) {

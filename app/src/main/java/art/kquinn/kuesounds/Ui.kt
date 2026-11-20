@@ -340,7 +340,7 @@ object Ui {
                 }
             }
         }
-        val status = Scanner.status
+        val status = Scanner.status.ifEmpty { Fixer.status }
         if (status.isNotEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(color = K.Accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
@@ -502,6 +502,10 @@ object Ui {
                         Button("Play", glyph = Glyph.PLAY, modifier = Modifier.weight(1f)) { Playing.play(al.tracks, 0) }
                         Button("Shuffle", main = false, glyph = Glyph.SHUFFLE, modifier = Modifier.weight(1f)) { Playing.play(al.tracks, 0, shuffled = true) }
                     }
+                    if (Fixer.canFix(al)) {
+                        Spacer(Modifier.height(12.dp))
+                        FixFiles(listOf(al))
+                    }
                 }
             }
             itemsIndexed(al.tracks, key = { _, t -> t.id }) { i, t ->
@@ -514,6 +518,41 @@ object Ui {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * "Fix the files" for one album or many: asks once to be sure, then puts the right cover and album
+     * details into the files in the Drive.
+     */
+    @Composable
+    private fun FixFiles(albums: List<Album>, label: String = "Fix the files") {
+        val context = LocalContext.current
+        var sure by remember { mutableStateOf(false) }
+        val todo = albums.filter { Fixer.canFix(it) && !Fixer.isFixed(it) }
+        val songs = todo.sumOf { al -> al.tracks.count { Tagger.canFix(it.fileName) && !it.fixed } }
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            when {
+                todo.isEmpty() -> Words("Files fixed in your Drive.", 14, K.Soft, centre = albums.size == 1)
+                Fixer.running && todo.any { Fixer.isWaiting(it) } -> Words("Waiting to be fixed.", 14, K.Soft, centre = albums.size == 1)
+                Fixer.running && albums.size == 1 && Fixer.status.contains(todo.first().title) -> Words(Fixer.status, 14, K.Accent, lines = 2, centre = true)
+                !sure -> Button(label, main = false, modifier = Modifier.fillMaxWidth()) { sure = true }
+                else -> {
+                    Words(
+                        "This puts the right cover and album details into " + count(songs, "song file") +
+                            " in your Drive and takes out any other pictures. Google keeps the old versions for 30 days.",
+                        14, K.Soft, lines = 5,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button("Fix them", modifier = Modifier.weight(1f)) {
+                            sure = false
+                            Fixer.fix(context, todo)
+                        }
+                        Button("Cancel", main = false, modifier = Modifier.weight(1f)) { sure = false }
+                    }
+                }
+            }
+            if (Fixer.permissionProblem.isNotEmpty()) Words(Fixer.permissionProblem, 14, K.Accent, lines = 6)
         }
     }
 
@@ -678,6 +717,17 @@ object Ui {
                 } else {
                     Button("Look for new music", modifier = Modifier.fillMaxWidth()) { Scanner.scan() }
                 }
+            }
+            Panel {
+                Words("Fix the files", 14, K.Soft)
+                val albums = remember(data) { Library.albums(data.tracks) }
+                val fixable = albums.filter { Fixer.canFix(it) }
+                val left = fixable.count { !Fixer.isFixed(it) }
+                Words(count(fixable.size, "album") + " matched · " + String.format("%,d", left) + " still to fix", 17)
+                if (Fixer.status.isNotEmpty()) Words(Fixer.status, 14, K.Accent, lines = 2)
+                if (Fixer.lastResult.isNotEmpty() && !Fixer.running) Words(Fixer.lastResult, 14, K.Soft, lines = 2)
+                Spacer(Modifier.height(8.dp))
+                FixFiles(fixable, "Fix all matched albums")
             }
             Panel {
                 Words("KueSounds", 14, K.Soft)

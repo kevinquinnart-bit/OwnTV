@@ -97,9 +97,16 @@ object Scanner {
     var running by mutableStateOf(false)
         private set
 
+    /** Changes some songs and keeps the library at once. Used by the file fixing. */
+    fun changeTracks(ids: Set<String>, change: (Track) -> Track) = synchronized(this) {
+        data = data.copy(tracks = data.tracks.map { if (it.id in ids) change(it) else it })
+        save()
+    }
+
     /** Looks for music in the Drive, then reads the details of any song not yet read. */
     fun scan() {
-        if (job?.isActive == true) return
+        // Not while files are being fixed: the two would change the library at once.
+        if (job?.isActive == true || Fixer.running) return
         running = true
         job = scope.launch {
             problem = ""

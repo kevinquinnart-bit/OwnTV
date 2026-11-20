@@ -2,6 +2,9 @@ package art.kquinn.kuesounds
 
 import com.google.gson.JsonParser
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -120,6 +123,45 @@ object Drive {
             if (!r.isSuccessful) throw IOException("Google Drive answered " + r.code)
             target.parentFile?.mkdirs()
             r.body.byteStream().use { input -> target.outputStream().use { input.copyTo(it) } }
+        }
+    }
+
+    /** Downloads a whole song file to [target] with the editing pass. Call off the main thread. */
+    fun downloadWhole(id: String, target: File, token: String) {
+        val request = Request.Builder().url(mediaUrl(id)).header("Authorization", "Bearer $token").build()
+        http.newCall(request).execute().use { r ->
+            if (r.code == 401) throw SignedOut()
+            if (!r.isSuccessful) throw IOException("Google Drive answered " + r.code + " to the download")
+            target.parentFile?.mkdirs()
+            r.body.byteStream().use { input -> target.outputStream().use { input.copyTo(it) } }
+        }
+    }
+
+    /**
+     * Puts [file] back in the Drive as the new version of the same file (same name, same folder, same
+     * place in the person's Drive). Google keeps the old version for 30 days. Gives back the file's new
+     * size and change time. Call off the main thread.
+     */
+    fun uploadNewVersion(id: String, file: File, mime: String, token: String): Pair<Long, String> {
+        val type = mime.ifBlank { "application/octet-stream" }
+        val start = Request.Builder()
+            .url("https://www.googleapis.com/upload/drive/v3/files/$id?uploadType=resumable&fields=size,modifiedTime")
+            .header("Authorization", "Bearer $token")
+            .header("X-Upload-Content-Type", type)
+            .header("X-Upload-Content-Length", file.length().toString())
+            .patch("{}".toRequestBody("application/json; charset=UTF-8".toMediaType()))
+            .build()
+        val session = http.newCall(start).execute().use { r ->
+            if (r.code == 401) throw SignedOut()
+            if (!r.isSuccessful) throw IOException("Google Drive answered " + r.code + " to starting the upload")
+            r.header("Location") ?: throw IOException("Google Drive gave no upload address")
+        }
+        val slow = http.newBuilder().writeTimeout(10, TimeUnit.MINUTES).readTimeout(2, TimeUnit.MINUTES).build()
+        val put = Request.Builder().url(session).put(file.asRequestBody(type.toMediaType())).build()
+        slow.newCall(put).execute().use { r ->
+            if (!r.isSuccessful) throw IOException("Google Drive answered " + r.code + " to the upload")
+            val o = JsonParser.parseString(r.body.string()).asJsonObject
+            return (o.get("size")?.asString?.toLongOrNull() ?: file.length()) to o.get("modifiedTime")?.asString.orEmpty()
         }
     }
 

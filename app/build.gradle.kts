@@ -69,6 +69,8 @@ dependencies {
     implementation("com.google.code.gson:gson:2.13.1")
     implementation("io.coil-kt.coil3:coil-compose:3.6.0")
     implementation("androidx.core:core:1.19.0")
+    // Writing the right cover and album details into the music files themselves.
+    implementation("net.jthink:jaudiotagger:3.0.1")
     testImplementation("junit:junit:4.13.2")
 }
 

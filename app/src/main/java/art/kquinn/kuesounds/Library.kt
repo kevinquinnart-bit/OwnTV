@@ -26,6 +26,8 @@ data class Track(
     var tagged: Boolean,
     /** True once its album has been looked up in the music catalogue (MusicBrainz), found or not. */
     var checked: Boolean = false,
+    /** True once the right cover and album details have been written into the file in the Drive. */
+    var fixed: Boolean = false,
 )
 
 /** A folder in the Drive: its name and the folder it sits in. */
