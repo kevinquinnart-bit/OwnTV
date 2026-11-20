@@ -377,7 +377,8 @@ private fun App() {
         }
     }
     // A newer version downloaded last time is no longer needed once the app starts afresh.
-    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updates.tidy(context); ShiftBuffer.tidy(context) } }
+    // The update folder is tidied by the update check itself, once it knows no newer version is waiting.
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { ShiftBuffer.tidy(context) } }
     // The VPN: what it is doing, for its page; and on opening, connect it if that was chosen.
     LaunchedEffect(Unit) {
         Vpn.listen(context)
@@ -565,8 +566,15 @@ private fun App() {
         delay(20_000)
         withContext(Dispatchers.IO) { runCatching { Health.run(context, account, lib) } }
     }
-    // Each time KueTV comes to the front: is a newer version on the download?
-    LaunchedEffect(Resumes.count) { withContext(Dispatchers.IO) { Updates.checkOnOpen() } }
+    // Each time KueTV comes to the front, and every 10 minutes while it is on screen: is a newer version on the
+    // download? One found is downloaded at once, then offered on screen (after whatever is playing is closed).
+    LaunchedEffect(Resumes.count) { withContext(Dispatchers.IO) { Updates.checkAndFetch(context.applicationContext) } }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(10 * 60_000L)
+            if (Screen.visible) withContext(Dispatchers.IO) { Updates.checkAndFetch(context.applicationContext) }
+        }
+    }
 
     // The free channel lists: read when the app opens, when one is added or removed, and on a reload.
     LaunchedEffect(freeLinks, reload, addOns) {
@@ -5306,6 +5314,12 @@ private fun UpdateNow(latest: Updates.Latest, modifier: Modifier = Modifier) {
                 said = if (opened) "First, on the page that opened, turn on KueTV 2. Then come back and choose Update now again."
                 else "First allow KueTV 2 to install apps. On a Fire TV: Settings › My Fire TV › Developer options › Install unknown apps › KueTV 2 › On. Then choose Update now again."
             }
+            // Already downloaded in the background: straight to the installer.
+            Updates.ready?.takeIf { it.exists() && Updates.readyCode >= latest.code } != null -> {
+                said = "Choose Install on the next screen."
+                Report.note("Updates", "installing " + latest.name + " downloaded in the background")
+                Updates.install(context, Updates.ready!!)
+            }
             else -> {
                 busy = true
                 said = "Downloading · 0%"
@@ -5327,7 +5341,15 @@ private fun UpdateNow(latest: Updates.Latest, modifier: Modifier = Modifier) {
             }
         }
     }
-    FocusRow(if (busy) "Downloading…" else "Update now to version " + latest.name, go, modifier, look = Look.MAIN)
+    val downloaded = Updates.ready?.exists() == true && Updates.readyCode >= latest.code
+    FocusRow(
+        when {
+            busy -> "Downloading…"
+            downloaded -> "Install version " + latest.name + " now"
+            else -> "Update now to version " + latest.name
+        },
+        go, modifier, look = Look.MAIN,
+    )
     said?.let { Note(it) }
 }
 

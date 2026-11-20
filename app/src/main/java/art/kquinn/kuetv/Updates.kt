@@ -71,6 +71,51 @@ object Updates {
         }
     }
 
+    /** A newer version already downloaded and checked in the background, ready for the installer. */
+    var ready by mutableStateOf<File?>(null)
+
+    /** The build number of [ready]. */
+    var readyCode = 0
+        private set
+
+    @Volatile private var fetching = false
+
+    /**
+     * Checks for a newer version and, when there is one, downloads it straight away in the background. The
+     * offer pops up once it is downloaded, so it is one press to install, with no wait for a download (and any
+     * second try at the download happens out of sight). If the background download fails, the offer still pops
+     * up and downloads as before. Call off the main thread.
+     */
+    fun checkAndFetch(context: Context) {
+        val latest = runCatching { check() }.getOrElse {
+            Report.note("Updates", "check failed: " + it.message)
+            return
+        }
+        if (!isNewer(latest, BuildConfig.VERSION_CODE)) {
+            if (!fetching) tidy(context)
+            return
+        }
+        if (latest.code == putOff) return
+        if (ready?.exists() == true && readyCode >= latest.code) {
+            offer = latest
+            return
+        }
+        if (fetching) return
+        fetching = true
+        try {
+            Report.note("Updates", "version " + latest.name + " found, downloading it in the background")
+            val file = downloadChecked(context) {}
+            readyCode = buildInside(context, file)?.toInt() ?: latest.code
+            ready = file
+            Report.note("Updates", "version " + latest.name + " downloaded and checked, ready to install")
+        } catch (e: Exception) {
+            Report.note("Updates", "background download failed: " + e.javaClass.simpleName + " · " + e.message)
+        } finally {
+            fetching = false
+        }
+        offer = latest
+    }
+
     private fun folder(context: Context) = File(context.cacheDir, "update").apply { mkdirs() }
 
     /** Downloads the newest app, telling [progress] how far it has got, 0 to 100. Call off the main thread. */
