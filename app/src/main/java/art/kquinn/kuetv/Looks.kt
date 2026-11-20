@@ -21,6 +21,21 @@ import androidx.compose.ui.unit.dp
  */
 object Looks {
     val themes = listOf("Dark", "Light")
+
+    /**
+     * Colour schemes for the dark look: the page, the boxes on it and the highlight colour together. Kue blue
+     * (dark blue and yellow) is the usual one. Choosing a scheme also sets its highlight colour, which can then
+     * be changed on its own.
+     */
+    class Scheme(val name: String, val page: Long, val panel: Long, val nowCell: Long, val accent: Int, val glow: List<Long> = emptyList())
+
+    val schemes = listOf(
+        Scheme("Kue blue", 0xFF0E1626, 0xFF16213A, 0xFF263A63, accent = 0),
+        // Orange into pink across the top, over a deep plum page.
+        Scheme("Sunset", 0xFF1B1030, 0xFF2C1B45, 0xFF4A2A5E, accent = 4, glow = listOf(0xFFB4532A, 0xFF9B2A6E)),
+        Scheme("Midnight", 0xFF0A0A0F, 0xFF1A1A23, 0xFF2E2E3C, accent = 1),
+        Scheme("Forest", 0xFF0D1913, 0xFF16281E, 0xFF244030, accent = 3),
+    )
     val accents = listOf("Yellow", "Teal", "Blue", "Green", "Orange", "Pink")
     private val accentValues = listOf(0xFFFFD23F, 0xFF52DBC8, 0xFF5EC8FF, 0xFF6BDB8F, 0xFFFFA24C, 0xFFFF8AC8)
     val outlines = listOf("None", "Thin", "Thick")
@@ -35,6 +50,10 @@ object Looks {
         private set
     var glass by mutableIntStateOf(0)
         private set
+    var scheme by mutableIntStateOf(0)
+        private set
+
+    private val chosen: Scheme get() = schemes[scheme]
 
     private fun prefs(context: Context) = context.getSharedPreferences("looks", Context.MODE_PRIVATE)
 
@@ -45,6 +64,14 @@ object Looks {
         accent = p.getInt("accent", 0).coerceIn(0, accents.size - 1)
         outline = p.getInt("outline", 0).coerceIn(0, outlines.size - 1)
         glass = p.getInt("glass", 0).coerceIn(0, glasses.size - 1)
+        scheme = p.getInt("scheme", 0).coerceIn(0, schemes.size - 1)
+    }
+
+    /** Moves to the next colour scheme, with its own highlight colour, on the dark look. */
+    fun nextScheme(context: Context) {
+        val next = (scheme + 1) % schemes.size
+        prefs(context).edit().putInt("scheme", next).putInt("accent", schemes[next].accent).putInt("theme", 0).apply()
+        load(context)
     }
 
     /** Keeps one choice ("theme", "accent", "outline" or "glass") and shows it straight away. */
@@ -53,19 +80,20 @@ object Looks {
         load(context)
     }
 
-    /** Back to dark, yellow, no outline, no glass. */
+    /** Back to Kue blue: dark, yellow, no outline, no glass. */
     fun reset(context: Context) {
         prefs(context).edit().clear().apply()
         load(context)
     }
 
     /** What is kept, for the backup. */
-    fun export(context: Context): String = listOf(theme, accent, outline, glass).joinToString(",")
+    fun export(context: Context): String = listOf(theme, accent, outline, glass, scheme).joinToString(",")
 
     fun import(context: Context, text: String) {
         val v = text.split(',').map { it.trim().toIntOrNull() ?: 0 }
         if (v.size < 4) return
-        prefs(context).edit().putInt("theme", v[0]).putInt("accent", v[1]).putInt("outline", v[2]).putInt("glass", v[3]).apply()
+        prefs(context).edit().putInt("theme", v[0]).putInt("accent", v[1]).putInt("outline", v[2]).putInt("glass", v[3])
+            .putInt("scheme", v.getOrElse(4) { 0 }).apply()
         load(context)
     }
 
@@ -78,12 +106,12 @@ object Looks {
     val accentInk: Color get() = if (light) lerp(accentColour, Color.Black, 0.55f) else accentColour
 
     /** The page behind everything. */
-    val page: Color get() = if (light) Color(0xFFEEF1F6) else Color(0xFF0E1626)
+    val page: Color get() = if (light) Color(0xFFEEF1F6) else Color(chosen.page)
 
     /** Boxes and buttons on the page; see-through with the glass look. */
     val panel: Color
         get() {
-            val solid = if (light) Color.White else Color(0xFF16213A)
+            val solid = if (light) Color.White else Color(chosen.panel)
             return when (glass) {
                 1 -> solid.copy(alpha = if (light) 0.72f else 0.62f)
                 2 -> solid.copy(alpha = if (light) 0.5f else 0.4f)
@@ -102,11 +130,15 @@ object Looks {
     val faint2: Color get() = ink.copy(alpha = 0.2f)
 
     /** The programme on now, in the guide. */
-    val nowCell: Color get() = if (light) Color(0xFFD3DEF2) else Color(0xFF263A63)
+    val nowCell: Color get() = if (light) Color(0xFFD3DEF2) else Color(chosen.nowCell)
 
     /** The page's background: plain, or with the glass look a soft glow of the highlight colour from the top left. */
     val backdrop: Brush
-        get() = if (glass == 0) {
+        get() = if (glass == 0 && !light && chosen.glow.isNotEmpty()) {
+            // The scheme's own glow across the top (Sunset: orange into pink), fading into the page.
+            val (a, b) = chosen.glow.map { Color(it) }
+            Brush.linearGradient(0f to a, 0.3f to b, 0.62f to page, 1f to page, start = Offset(0f, 0f), end = Offset(900f, 1400f))
+        } else if (glass == 0) {
             Brush.linearGradient(listOf(page, page))
         } else {
             val glow = lerp(page, accentColour, if (glass == 2) 0.28f else 0.16f)

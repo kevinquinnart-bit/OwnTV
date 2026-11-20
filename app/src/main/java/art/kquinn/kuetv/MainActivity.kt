@@ -1366,7 +1366,7 @@ private fun TitleMenu(
         // a choice. Only a fresh press counts.
         val armed = remember { booleanArrayOf(false) }
         Column(
-            Modifier.width(460.dp).background(Color(0xFF0E1626), RoundedCornerShape(18.dp)).padding(14.dp)
+            Modifier.width(460.dp).background(Page, RoundedCornerShape(18.dp)).padding(14.dp)
                 .onPreviewKeyEvent { e ->
                     if (armed[0]) return@onPreviewKeyEvent false
                     if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) { armed[0] = true; false } else true
@@ -2120,7 +2120,7 @@ private fun MainScreen(
                     "Your provider" to "Provider details" + (if (savedProviders.size > 1) " (" + savedProviders.size + " saved)" else "") + ", reload, categories, free channel lists ($freeCount)",
                     "Films and series" to "Add-ons (" + addOns.size + "), Stremio account",
                     "Watching" to "Subtitles, pause and rewind, sound and picture, text size",
-                    "Looks" to UiLang.name(UiLang.code) + " · " + Looks.themes[Looks.theme] + " · " + Looks.accents[Looks.accent] + if (Looks.glass > 0) " · Glass look" else "",
+                    "Looks" to UiLang.name(UiLang.code) + " · " + Looks.schemes[Looks.scheme].name + " · " + Looks.themes[Looks.theme] + " · " + Looks.accents[Looks.accent] + if (Looks.glass > 0) " · Glass look" else "",
                     "Google Drive" to when { !drive.isSetUp -> "Not set up"; drive.signedIn -> "Signed in · backup and recordings"; else -> "Not signed in · backup and recordings" },
                     "TV and phone" to "Copy the set-up, keep in step: " + if (paired) "on" else "off",
                     "VPN" to remember(Vpn.changes, Vpn.level) { vpnLine(context) },
@@ -2326,6 +2326,10 @@ private fun MainScreen(
                                 "Language: " + UiLang.name(UiLang.code), { UiLang.set(context, UiLang.next()) }, first(), look = Look.OTHER,
                                 below = "KueTV's own words. OK for the next language",
                             )
+                            FocusRow(
+                                "Colour scheme: " + Looks.schemes[Looks.scheme].name, { Looks.nextScheme(context) }, look = Look.OTHER,
+                                below = Looks.schemes.joinToString(" · ") { it.name } + " · OK for the next",
+                            )
                             FocusRow("Colours: " + Looks.themes[Looks.theme], { Looks.set(context, "theme", (Looks.theme + 1) % Looks.themes.size) }, look = Look.OTHER, below = "Dark or light · OK to change")
                             FocusRow("Highlight colour: " + Looks.accents[Looks.accent], { Looks.set(context, "accent", (Looks.accent + 1) % Looks.accents.size) }, look = Look.OTHER, below = "What the remote is on, and the main buttons")
                             FocusRow("Outline round what the remote is on: " + Looks.outlines[Looks.outline], { Looks.set(context, "outline", (Looks.outline + 1) % Looks.outlines.size) }, look = Look.OTHER, below = "Easier to spot from across the room")
@@ -2409,6 +2413,12 @@ private fun MainScreen(
                             tvParts.forEachIndexed { i, p ->
                                 FocusRow(p.label, { if (!Launcher.open(context, p)) kueToast(context, "That part of the TV's settings wouldn't open.") },
                                     if (i == 0 && aerialName == null) first() else Modifier, look = Look.OTHER)
+                            }
+                            // Fire TV's own tools, moved here from Home's Other apps row.
+                            val tools = remember(Resumes.count) { Launcher.tvTools(context) }
+                            tools.forEach { t ->
+                                FocusRow(t.name, { if (!Launcher.openLeavingHome(context, t.packageName)) kueToast(context, t.name + " wouldn't open.") },
+                                    look = Look.OTHER, below = if (t.name.lowercase().contains("quick")) "Also: hold the Home button" else null)
                             }
                             FocusRow("All Fire TV settings", { Launcher.openTvSettings(context) }, if (tvParts.isEmpty() && aerialName == null) first() else Modifier,
                                 look = Look.OTHER, below = "Amazon's own settings menu. Home or Back when done comes back to KueTV")
@@ -4794,7 +4804,9 @@ private fun HomeScreen(
             Heading(title)
             LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
                 itemsIndexed(these, key = { _, a -> a.packageName }) { _, a ->
-                    HomeCard({ TvAppsOnDevice.open(context, a.packageName) }, Modifier.width(150.dp), 16f / 9f, a.name, null) {
+                    // Amazon's own apps can pass through Amazon's home screen as they open: it is let be for a moment.
+                    HomeCard({ if (a.packageName.startsWith("com.amazon.")) Launcher.openLeavingHome(context, a.packageName) else TvAppsOnDevice.open(context, a.packageName) },
+                        Modifier.width(150.dp), 16f / 9f, a.name, null) {
                         a.picture?.let { androidx.compose.foundation.Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(8.dp)) }
                             ?: Text(a.name, color = Soft, fontSize = 14.sp, maxLines = 2, modifier = Modifier.padding(8.dp))
                     }
@@ -4927,7 +4939,8 @@ private fun TrendingBanner(slides: List<Trending.Slide>, clock: String, modifier
         androidx.compose.animation.Crossfade(slide, label = "banner") { s ->
             Box(Modifier.fillMaxSize()) {
                 // The picture fills the right two thirds and fades into the panel on its left.
-                AsyncImage(model = s.picture, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxHeight().fillMaxWidth(0.66f).align(Alignment.CenterEnd))
+                // Cropped from the top, so heads and the tops of pictures are kept (cut from the middle, they were lost).
+                AsyncImage(model = s.picture, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxHeight().fillMaxWidth(0.66f).align(Alignment.CenterEnd))
                 Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(0f to Panel, 0.36f to Panel, 0.62f to Panel.copy(alpha = 0f))))
                 Column(Modifier.fillMaxHeight().fillMaxWidth(0.52f).padding(start = 20.dp, top = 14.dp, bottom = 12.dp, end = 8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -6128,7 +6141,7 @@ private fun ChannelMenu(channel: ChannelGroup, login: Boolean, favourites: Favou
         // The OK that opened this is still held down when it appears: only a fresh press counts.
         val armed = remember { booleanArrayOf(false) }
         Column(
-            Modifier.width(500.dp).background(Color(0xFF0E1626), RoundedCornerShape(18.dp)).padding(14.dp)
+            Modifier.width(500.dp).background(Page, RoundedCornerShape(18.dp)).padding(14.dp)
                 .verticalScroll(rememberScrollState())
                 .onPreviewKeyEvent { e ->
                     if (armed[0]) return@onPreviewKeyEvent false

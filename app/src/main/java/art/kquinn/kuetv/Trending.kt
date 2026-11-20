@@ -252,6 +252,26 @@ object Launcher {
         return false
     }
 
+    /** Fire TV's own tools (Quick Settings, Screen Saver), as the TV lists them. */
+    fun tvTools(context: Context): List<DeviceApps.App> = DeviceApps.list(context).filter { AppKinds.isTool(it) }
+
+    /**
+     * Opens one of Fire TV's own tools by its name. They open through Amazon's home screen, which the Home button
+     * watcher used to close straight away (why the tiles did nothing): it is left alone while they open.
+     */
+    fun openTvTool(context: Context, name: String): Boolean {
+        val app = tvTools(context).firstOrNull { it.name.lowercase().contains(name) } ?: return false
+        return openLeavingHome(context, app.packageName)
+    }
+
+    /** Opens an app with Amazon's home screen left alone for a moment, for Amazon's own apps that pass through it. */
+    fun openLeavingHome(context: Context, pkg: String): Boolean {
+        HomeGuard.pause()
+        val ok = TvAppsOnDevice.open(context, pkg)
+        if (!ok) HomeGuard.pausedUntil = 0
+        return ok
+    }
+
     /** Amazon's Appstore, which shows its pages inside Amazon's home screen: left alone while it opens. */
     fun openAppstore(context: Context): Boolean {
         HomeGuard.pause()
@@ -477,9 +497,15 @@ object AppKinds {
         "apple tv", "britbox", "stremio", "plex", "jellyfin", "emby", "kodi", "tubi", "rakuten", "mubi", "hayu", "discovery+", "crunchyroll")
     private val music = listOf("spotify", "music", "tidal", "deezer", "soundcloud", "audible", "tunein", "radio", "podcast")
 
+    /** Fire TV's own tools that show as apps: kept with the TV's settings, not on Home. */
+    private val tools = listOf("quick settings", "screen saver", "screensaver")
+
+    fun isTool(app: DeviceApps.App): Boolean = tools.any { app.name.lowercase().contains(it) }
+
     fun of(app: DeviceApps.App): String {
         val n = (app.name + " " + app.packageName).lowercase()
         return when {
+            isTool(app) -> "tool"
             music.any { n.contains(it) } && !n.contains("youtube") -> "music"
             tv.any { n.contains(it) } -> "tv"
             films.any { n.contains(it) } -> "films"

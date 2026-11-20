@@ -74,6 +74,29 @@ class HomeGuard : AccessibilityService() {
         }
     }
 
+    /**
+     * The Home button itself, caught before Fire OS acts on it: KueTV opens straight away, without Amazon's
+     * home screen coming up first (which made Home slow, and showed Fire TV's screen for a moment). Held
+     * down, it opens Fire TV's Quick Settings, as holding Home does on a Fire TV. Only while KueTV is the
+     * Home screen; if Fire OS doesn't hand the button over, the watcher above still brings KueTV back.
+     */
+    override fun onKeyEvent(event: android.view.KeyEvent?): Boolean {
+        if (event == null || event.keyCode != android.view.KeyEvent.KEYCODE_HOME || !Launcher.isHome(this)) return false
+        if (event.action == android.view.KeyEvent.ACTION_UP) {
+            val held = event.eventTime - event.downTime
+            if (held >= 600) {
+                Report.note("Home", "Home held: Quick Settings")
+                Launcher.openTvTool(this, "quick settings")
+            } else {
+                Report.note("Home", "Home pressed: KueTV opened at once")
+                onAmazonHome = false
+                stop()
+                openKueTv(this)
+            }
+        }
+        return true
+    }
+
     private fun retryHome() {
         main.removeCallbacks(retry)
         val now = SystemClock.uptimeMillis()
