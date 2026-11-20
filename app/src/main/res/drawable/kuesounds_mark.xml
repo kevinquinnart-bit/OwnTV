@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- KueSounds' mark: a yellow tile with a dark music note, in KueTV's colours. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="56dp" android:height="56dp" android:viewportWidth="100" android:viewportHeight="100">
+    <path android:pathData="M22,0H78A22,22 0 0 1 100,22V78A22,22 0 0 1 78,100H22A22,22 0 0 1 0,78V22A22,22 0 0 1 22,0Z" android:fillColor="#FFD23F"/>
+    <path android:pathData="M40,24L76,17V64A11,10 0 1 1 68,54.5V33L48,37V71A11,10 0 1 1 40,61.5Z" android:fillColor="#0E1626"/>
+</vector>

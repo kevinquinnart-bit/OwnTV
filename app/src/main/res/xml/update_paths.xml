@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The one folder KueSounds shares with the phone's installer: where a newer KueSounds is downloaded to. -->
+<paths>
+    <cache-path name="update" path="update/" />
+</paths>
