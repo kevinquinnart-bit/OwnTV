@@ -49,15 +49,26 @@ jobs:
 
       # make_latest stays false: the TV's Downloader code for KueTV fetches the project's "latest" download,
       # which must always be KueTV's.
-      - name: Publish
+      # The app first, then version.txt, which tells phones a new version is there: sent together, version.txt
+      # could arrive first and a phone asking then would get the old app (seen on KueTV, 20 Nov 2026).
+      - name: Publish the app
         uses: softprops/action-gh-release@v3
         with:
           tag_name: kuesounds
           target_commitish: ${{ github.sha }}
           name: KueSounds (${{ env.VERSION_NAME }})
-          files: |
-            dist/KueSounds.apk
-            dist/version.txt
+          files: dist/KueSounds.apk
+          body_path: dist/NOTES.md
+          prerelease: false
+          make_latest: false
+
+      - name: Publish the version number
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: kuesounds
+          target_commitish: ${{ github.sha }}
+          name: KueSounds (${{ env.VERSION_NAME }})
+          files: dist/version.txt
           body_path: dist/NOTES.md
           prerelease: false
           make_latest: false
