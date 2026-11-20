@@ -59,20 +59,24 @@ object Scanner {
         read = data.tracks.count { it.tagged }
     }
 
-    val running: Boolean get() = job?.isActive == true
+    /** Whether a scan is going on. Kept as screen state, so the screens change the moment it starts and ends. */
+    var running by mutableStateOf(false)
+        private set
 
     /** Looks for music in the Drive, then reads the details of any song not yet read. */
     fun scan() {
-        if (running) return
+        if (job?.isActive == true) return
+        running = true
         job = scope.launch {
             problem = ""
             try {
                 status = "Finding your music"
                 val files = Drive.listAll(Drive.MUSIC_QUERY) { n -> status = "Finding your music · " + String.format("%,d", n) + " files" }
-                status = "Finding your folders"
+                val found = String.format("%,d", files.count { Library.isMusic(it.name, it.mime) }) + " songs found"
+                status = "Finding your folders · $found"
                 val folderFiles = Drive.listAll(Drive.FOLDER_QUERY)
                 val folders = folderFiles.map { Folder(it.id, it.name, it.parent) }
-                status = "Finding album covers"
+                status = "Finding album covers · $found"
                 val covers = runCatching { Drive.listAll(Drive.COVER_QUERY) }.getOrDefault(emptyList())
                     .filter { Drive.isCoverName(it.name) && it.parent != null && it.size in 1..8_000_000 }
                     .groupBy { it.parent!! }
@@ -88,6 +92,8 @@ object Scanner {
             } catch (e: Exception) {
                 problem = "Couldn't finish looking through your music. " + (e.message ?: "")
                 status = ""
+            } finally {
+                running = false
             }
         }
     }
