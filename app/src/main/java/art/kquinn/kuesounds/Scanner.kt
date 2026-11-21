@@ -113,10 +113,14 @@ object Scanner {
     private val notes = ArrayDeque<String>()
 
     fun note(text: String) = synchronized(notes) {
-        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.UK).format(java.util.Date())
+        val time = java.text.SimpleDateFormat("dd MMM HH:mm:ss", java.util.Locale.UK).format(java.util.Date())
         notes.addLast("$time $text")
         while (notes.size > 200) notes.removeFirst()
+        // Kept on the phone too, so the report still has it after KueSounds has been closed.
+        if (::app.isInitialized) runCatching { notesFile().writeText(notes.joinToString("\n")) }
     }
+
+    private fun notesFile() = File(app.filesDir, "notes.txt")
 
     /** The report: counts and the record, with no addresses or passwords in it. */
     /** The report. Call off the main thread. */
@@ -147,6 +151,10 @@ object Scanner {
 
     fun init(context: Context) {
         app = context.applicationContext
+        synchronized(notes) {
+            if (notes.isEmpty()) runCatching { notesFile().readLines().filter { it.isNotBlank() }.takeLast(200).forEach { notes.addLast(it) } }
+        }
+        note("KueSounds opened, version " + BuildConfig.VERSION_NAME)
         if (current.tracks.isEmpty()) data = Library.load(libraryFile())
         // Libraries kept before 0.1.5 had their albums looked up without keeping the catalogue's cover in
         // first place: every album is looked up once more.
@@ -343,9 +351,33 @@ object Scanner {
      * when it was never on an album (Kevin, 21 November 2026). Songs with no album are looked up the same way.
      * Last, every other song is looked up once to see whether it came out as a single, for the Singles tab.
      */
+    /** Lookups that failed one after another; too many and step 3 stops until next time. */
+    private var failsInARow = 0
+
+    private class TooManyFailures(message: String) : Exception(message)
+
+    /**
+     * One lookup in the catalogue. A failure (the catalogue busy or not answering) is noted, then after a
+     * wait the next one is tried: that one is left to be looked up next time. After 8 failures in a row
+     * step 3 stops, with the reason shown.
+     */
+    private fun <T> lookup(what: String, ask: () -> T): Result<T> {
+        val r = runCatching(ask)
+        if (r.isSuccess) { failsInARow = 0; return r }
+        val e = r.exceptionOrNull()!!
+        failsInARow++
+        note("lookup failed (" + what + "): " + e.javaClass.simpleName + " " + e.message)
+        if (failsInARow >= 8) throw TooManyFailures(e.message ?: e.javaClass.simpleName)
+        status = "The music catalogue isn't answering. Trying again shortly"
+        Thread.sleep(30_000L)
+        return r
+    }
+
     private fun matchAlbums() {
         waitingForWifi = false
+        failsInARow = 0
         val todo = Library.albums(data.tracks).filter { al -> !onItsOwn(al) && al.tracks.any { !it.checked } }
+        note("step 3: " + todo.size + " albums to look up")
         var found = 0
         var covers = 0
         var notFound = 0
@@ -353,7 +385,9 @@ object Scanner {
             todo.forEachIndexed { i, al ->
                 status = "Looking up albums · " + (i + 1) + " of " + todo.size
                 val (clean, _) = Library.cleanAlbum(al.title, al.artist)
-                val m = Catalogue.findAlbum(clean, al.artist, al.tracks.size)
+                val asked = lookup(al.artist + " / " + clean) { Catalogue.findAlbum(clean, al.artist, al.tracks.size) }
+                if (asked.isFailure) return@forEachIndexed
+                val m = asked.getOrNull()
                 if (m != null) found++ else {
                     notFound++
                     if (notFound <= 30) note("not in the catalogue: " + al.artist + " / " + clean)
@@ -369,7 +403,7 @@ object Scanner {
             var moved = 0
             songs.forEachIndexed { i, (al, t) ->
                 status = "Finding the albums of songs on compilations · " + (i + 1) + " of " + songs.size
-                val home = Catalogue.findSongHome(t.title, t.artist)
+                val home = lookup(t.artist + " / " + t.title) { Catalogue.findSongHome(t.title, t.artist) }.getOrNull() ?: return@forEachIndexed
                 val target = home.album ?: home.single
                 if (target != null) {
                     apply(setOf(t.id), al, target, target.title, carryCover = false)
@@ -393,14 +427,14 @@ object Scanner {
                     return
                 }
                 status = "Looking for singles · " + (i + 1) + " of " + rest.size
-                val home = Catalogue.findSongHome(t.title, t.artist)
+                val home = lookup(t.artist + " / " + t.title) { Catalogue.findSongHome(t.title, t.artist) }.getOrNull() ?: return@forEachIndexed
                 if (keepSingle(t.id, home.single)) singles++
                 markSong(t.id) { it.copy(singleChecked = true) }
                 if (i % 20 == 19) save()
             }
             save()
             if (rest.isNotEmpty()) note("looked for singles for " + rest.size + " songs: " + singles + " found")
-        } catch (e: java.io.IOException) {
+        } catch (e: TooManyFailures) {
             note("lookups stopped: " + e.message)
             problem = "Looking up stopped: " + (e.message ?: "no reason given") + ". It tries again next time KueSounds opens."
             save()
