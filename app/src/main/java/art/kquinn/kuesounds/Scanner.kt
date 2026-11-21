@@ -336,42 +336,100 @@ object Scanner {
 
     /**
      * Step 3: each album not yet looked up is found in MusicBrainz, which gives it its proper name,
-     * artist and year, and its cover. Songs with no album are looked up one by one. An album that
-     * isn't found keeps its tidied name. Each is looked up once.
+     * artist and year, and its cover. An album that isn't found keeps its tidied name. Each is looked up once.
+     *
+     * Compilations (albums of mixed artists, such as "Now That's What I Call Music") are not kept: each of
+     * their songs is looked up on its own and given the artist's album it first came out on, or its single
+     * when it was never on an album (Kevin, 21 November 2026). Songs with no album are looked up the same way.
+     * Last, every other song is looked up once to see whether it came out as a single, for the Singles tab.
      */
     private fun matchAlbums() {
-        val todo = Library.albums(data.tracks).filter { al -> al.tracks.any { !it.checked } }
-        if (todo.isEmpty()) return
+        waitingForWifi = false
+        val todo = Library.albums(data.tracks).filter { al -> !onItsOwn(al) && al.tracks.any { !it.checked } }
         var found = 0
         var covers = 0
         var notFound = 0
-        todo.forEachIndexed { i, al ->
-            status = "Matching albums · " + (i + 1) + " of " + todo.size
-            try {
-                if (Library.sortName(al.title) == Library.sortName(Library.UNKNOWN_ALBUM)) {
-                    for (t in al.tracks.filter { !it.checked }) {
-                        val m = Catalogue.findSong(t.title, t.artist)
-                        if (m != null) found++ else notFound++
-                        if (apply(setOf(t.id), al, m, t.album)) covers++
-                    }
-                } else {
-                    val (clean, _) = Library.cleanAlbum(al.title, al.artist)
-                    val m = Catalogue.findAlbum(clean, al.artist, al.tracks.size)
-                    if (m != null) found++ else {
-                        notFound++
-                        if (notFound <= 30) note("not in the catalogue: " + al.artist + " / " + clean)
-                    }
-                    if (apply(al.tracks.map { it.id }.toSet(), al, m, clean)) covers++
+        try {
+            todo.forEachIndexed { i, al ->
+                status = "Looking up albums · " + (i + 1) + " of " + todo.size
+                val (clean, _) = Library.cleanAlbum(al.title, al.artist)
+                val m = Catalogue.findAlbum(clean, al.artist, al.tracks.size)
+                if (m != null) found++ else {
+                    notFound++
+                    if (notFound <= 30) note("not in the catalogue: " + al.artist + " / " + clean)
                 }
-            } catch (e: java.io.IOException) {
-                note("album lookups stopped: " + e.message)
-                save()
-                return@matchAlbums
+                if (apply(al.tracks.map { it.id }.toSet(), al, m, clean)) covers++
+                if (i % 10 == 9) save()
             }
-            if (i % 10 == 9) save()
+            save()
+            if (todo.isNotEmpty()) note("looked up " + todo.size + " albums: " + found + " found, " + notFound + " not found, " + covers + " covers fetched")
+
+            // Songs from compilations, and songs with no album: each to its own album.
+            val songs = Library.albums(data.tracks).filter { onItsOwn(it) }.flatMap { al -> al.tracks.filter { !it.ownLook }.map { al to it } }
+            var moved = 0
+            songs.forEachIndexed { i, (al, t) ->
+                status = "Finding the albums of songs on compilations · " + (i + 1) + " of " + songs.size
+                val home = Catalogue.findSongHome(t.title, t.artist)
+                val target = home.album ?: home.single
+                if (target != null) {
+                    apply(setOf(t.id), al, target, target.title, carryCover = false)
+                    moved++
+                }
+                keepSingle(t.id, home.single)
+                markSong(t.id) { it.copy(checked = true, ownLook = true, singleChecked = true) }
+                if (i % 10 == 9) save()
+            }
+            save()
+            if (songs.isNotEmpty()) note("looked up " + songs.size + " songs from compilations or with no album: " + moved + " given their own album")
+
+            // Every other song: did it come out as a single? One question per song, so only on Wi-Fi.
+            val rest = data.tracks.filter { !it.singleChecked }
+            var singles = 0
+            rest.forEachIndexed { i, t ->
+                if (!Net.unmetered(app)) {
+                    note("looking for singles waits for Wi-Fi")
+                    waitingForWifi = true
+                    save()
+                    return
+                }
+                status = "Looking for singles · " + (i + 1) + " of " + rest.size
+                val home = Catalogue.findSongHome(t.title, t.artist)
+                if (keepSingle(t.id, home.single)) singles++
+                markSong(t.id) { it.copy(singleChecked = true) }
+                if (i % 20 == 19) save()
+            }
+            save()
+            if (rest.isNotEmpty()) note("looked for singles for " + rest.size + " songs: " + singles + " found")
+        } catch (e: java.io.IOException) {
+            note("lookups stopped: " + e.message)
+            save()
         }
-        save()
-        note("looked up " + todo.size + " albums: " + found + " found, " + notFound + " not found, " + covers + " covers fetched")
+    }
+
+    /** True when the last scan stopped looking for singles because the phone wasn't on Wi-Fi. */
+    var waitingForWifi by mutableStateOf(false)
+        private set
+
+    /** Albums whose songs are looked up one by one: compilations of mixed artists, and songs with no album. */
+    private fun onItsOwn(al: Album): Boolean =
+        Catalogue.isVarious(al.artist) || Library.sortName(al.title) == Library.sortName(Library.UNKNOWN_ALBUM)
+
+    private fun markSong(id: String, change: (Track) -> Track) {
+        data = data.copy(tracks = data.tracks.map { if (it.id == id) change(it) else it })
+    }
+
+    /** Keeps the single a song came out as, with its cover. True when there was one. */
+    private fun keepSingle(id: String, single: Catalogue.Match?): Boolean {
+        if (single == null) return false
+        // One cover per single, shared by every copy of the song.
+        val key = "\u0003single" + single.groupId.ifEmpty { single.releaseId }
+        var path = data.singleArt.values.firstOrNull { File(it).name == pictureName(key) && File(it).exists() }
+        if (path == null) path = runCatching { Catalogue.cover(single) }.getOrNull()?.let { keepPicture(it, key) }
+        data = data.copy(
+            singleTitles = data.singleTitles + (id to single.title),
+            singleArt = if (path != null) data.singleArt + (id to path) else data.singleArt,
+        )
+        return true
     }
 
     /**
@@ -379,7 +437,7 @@ object Scanner {
      * and gives the album the catalogue's cover in place of any picture inside the files. True when a
      * catalogue cover was fetched.
      */
-    private fun apply(ids: Set<String>, al: Album, m: Catalogue.Match?, cleanTitle: String): Boolean {
+    private fun apply(ids: Set<String>, al: Album, m: Catalogue.Match?, cleanTitle: String, carryCover: Boolean = true): Boolean {
         val oldKey = al.key
         data = data.copy(
             tracks = data.tracks.map { t ->
@@ -409,7 +467,8 @@ object Scanner {
             }
         }
         // No catalogue cover: one already found for the album (in its folder or its files) moves with it.
-        if (newKey !in data.art) data.art[oldKey]?.let { data = data.copy(art = data.art + (newKey to it)) }
+        // (Not for a song taken out of a compilation: the compilation's cover isn't its album's.)
+        if (carryCover && newKey !in data.art) data.art[oldKey]?.let { data = data.copy(art = data.art + (newKey to it)) }
         return false
     }
 
@@ -421,12 +480,17 @@ object Scanner {
         var sample = 1
         while (bounds.outWidth / (sample * 2) >= 600) sample *= 2
         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
-        val name = MessageDigest.getInstance("SHA-1").digest(albumKey.toByteArray()).joinToString("") { "%02x".format(it) } + ".jpg"
-        val file = File(artFolder(), name)
+        val file = File(artFolder(), pictureName(albumKey))
         file.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 85, it) }
         bmp.recycle()
         return file.path
     }
+
+    private fun pictureName(key: String): String =
+        MessageDigest.getInstance("SHA-1").digest(key.toByteArray()).joinToString("") { "%02x".format(it) } + ".jpg"
+
+    /** The cover of the single a song came out as, if it did and there is one. */
+    fun singleArtFor(t: Track): File? = data.singleArt[t.id]?.let { File(it) }?.takeIf { it.exists() }
 
     /** The cover picture kept for an album, if there is one. */
     fun artFor(album: Album): File? = data.art[album.key]?.let { File(it) }?.takeIf { it.exists() }

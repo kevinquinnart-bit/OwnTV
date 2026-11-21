@@ -71,7 +71,9 @@ class MainActivity : ComponentActivity() {
             }
         }
         signedIn = Google.signedIn
-        val unfinished = Scanner.data.tracks.any { !it.tagged || !it.checked }
+        // Unfinished: song details or album lookups still to do, or (on Wi-Fi) singles still to look for.
+        val wifi = Net.unmetered(this)
+        val unfinished = Scanner.data.tracks.any { !it.tagged || !it.checked || (wifi && !it.singleChecked) }
         if (signedIn && Net.online(this) && (Scanner.data.tracks.isEmpty() || unfinished || System.currentTimeMillis() - Scanner.data.scannedAt > 6 * 60 * 60 * 1000L)) {
             Scanner.scan()
         }

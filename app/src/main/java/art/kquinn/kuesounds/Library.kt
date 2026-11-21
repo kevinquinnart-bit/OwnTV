@@ -28,6 +28,10 @@ data class Track(
     var checked: Boolean = false,
     /** True once the right cover and album details have been written into the file in the Drive. */
     var fixed: Boolean = false,
+    /** True once the song has been looked up on its own (a song from a compilation, or with no album). */
+    var ownLook: Boolean = false,
+    /** True once the song has been looked up to see whether it came out as a single. */
+    var singleChecked: Boolean = false,
 )
 
 /** A folder in the Drive: its name and the folder it sits in. */
@@ -54,6 +58,10 @@ data class LibraryData(
     val catalogueCovers: Set<String> = emptySet(),
     /** Which way the kept library is laid out, so an older one can be brought up to date. */
     val version: Int = 0,
+    /** Song id to the name of the single it came out as. */
+    val singleTitles: Map<String, String> = emptyMap(),
+    /** Song id to the file holding its single's cover on this phone. */
+    val singleArt: Map<String, String> = emptyMap(),
 )
 
 object Library {
@@ -289,6 +297,7 @@ object Library {
         return LibraryData(
             tracks, d.folders ?: emptyList(), d.art ?: emptyMap(), d.folderCovers ?: emptyMap(), d.scannedAt,
             d.releases ?: emptyMap(), d.catalogueCovers ?: emptySet(), d.version,
+            d.singleTitles ?: emptyMap(), d.singleArt ?: emptyMap(),
         )
     }
 

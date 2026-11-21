@@ -66,4 +66,43 @@ class CatalogueTest {
     fun searchWordsAreQuotedSafely() {
         assertEquals("\"Ropin' \\\"the\\\" Wind\"", Catalogue.quote("Ropin' \"the\" Wind"))
     }
+
+    /** Only the first 15 songs found, as the app asks for. */
+    private fun first15(name: String): String {
+        val root = com.google.gson.JsonParser.parseString(saved(name)).asJsonObject
+        val recs = root.getAsJsonArray("recordings")
+        val keep = com.google.gson.JsonArray()
+        for (i in 0 until minOf(15, recs.size())) keep.add(recs[i])
+        root.add("recordings", keep)
+        return root.toString()
+    }
+
+    @Test
+    fun wonderwallGoesHomeToMorningGloryAndItsSingle() {
+        val home = Catalogue.chooseSongHome(Catalogue.parseRecordings(first15("oasis_wonderwall_home.json")), "Wonderwall", "Oasis")
+        assertEquals("(What's the Story) Morning Glory?", home.album?.title)
+        assertEquals(1995, home.album?.year)
+        assertEquals("Wonderwall", home.single?.title)
+    }
+
+    @Test
+    fun billieJeanGoesHomeToThrillerAndItsSingle() {
+        val home = Catalogue.chooseSongHome(Catalogue.parseRecordings(first15("mj_billie_jean_home.json")), "Billie Jean", "Michael Jackson")
+        assertEquals("Thriller", home.album?.title)
+        assertEquals("Billie Jean", home.single?.title)
+    }
+
+    @Test
+    fun anotherArtistsSongFindsNoHome() {
+        val home = Catalogue.chooseSongHome(Catalogue.parseRecordings(first15("oasis_wonderwall_home.json")), "Wonderwall", "Ryan Adams")
+        assertEquals(null, home.album)
+        assertEquals(null, home.single)
+    }
+
+    @Test
+    fun variousArtistsCountAsVarious() {
+        assertEquals(true, Catalogue.isVarious("Various Artists"))
+        assertEquals(true, Catalogue.isVarious("Various artists"))
+        assertEquals(false, Catalogue.isVarious("Oasis"))
+    }
 }

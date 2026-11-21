@@ -42,13 +42,13 @@ object Catalogue {
     /** Writes a value into a search so its punctuation is read as words, not as search commands. */
     fun quote(text: String): String = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-    private fun ask(path: String, query: String): String {
+    private fun ask(path: String, query: String, limit: Int = 10): String {
         // One question a second at most, as MusicBrainz asks.
         val wait = lastAsked + 1100 - System.currentTimeMillis()
         if (wait > 0) Thread.sleep(wait)
         lastAsked = System.currentTimeMillis()
         val url = (SEARCH + path).toHttpUrl().newBuilder().addQueryParameter("query", query).addQueryParameter("fmt", "json")
-            .addQueryParameter("limit", "10").build()
+            .addQueryParameter("limit", limit.toString()).build()
         val request = Request.Builder().url(url).header("User-Agent", WHO).header("Accept", "application/json").build()
         repeat(5) { attempt ->
             Drive.http.newCall(request).execute().use { r ->
@@ -108,7 +108,7 @@ object Catalogue {
         return x == y || x.startsWith(y) || y.startsWith(x)
     }
 
-    private fun isVarious(name: String) = Library.sortName(name) in setOf("various artists", "various", "va")
+    fun isVarious(name: String) = Library.sortName(name) in setOf("various artists", "various", "various artist", "va")
 
     /**
      * Picks the right release for one of the person's albums, or none. It must be a close match on
@@ -157,6 +157,50 @@ object Catalogue {
         if (artist.isBlank() || artist == Library.UNKNOWN_ARTIST) return null
         val r = chooseForSong(parseSongReleases(ask("recording/", "recording:" + quote(title) + " AND artist:" + quote(artist))), artist) ?: return null
         return Match(r.title, r.artist, r.year, r.id, r.groupId)
+    }
+
+    /**
+     * Where a song properly belongs: the artist's own studio album it first came out on, and the single
+     * it came out as (if it did). Either can be missing.
+     */
+    data class SongHome(val album: Match?, val single: Match?)
+
+    /** Reads a song search: each found release with the found song's own title and its score. */
+    fun parseRecordings(json: String): List<Triple<Int, String, Release>> {
+        val root = JsonParser.parseString(json).asJsonObject
+        return root.getAsJsonArray("recordings")?.flatMap { el ->
+            val rec = el.asJsonObject
+            val score = rec.get("score")?.asInt ?: 0
+            val title = rec.get("title")?.asString.orEmpty().replace('’', '\'')
+            rec.getAsJsonArray("releases")?.mapNotNull { r -> releaseOf(r.asJsonObject, score)?.let { Triple(score, title, it) } }.orEmpty()
+        }.orEmpty()
+    }
+
+    /** A song's name without anything in brackets, for comparing ("Wonderwall (remastered)" is "wonderwall"). */
+    private fun bare(title: String): String = Library.sortName(title.replace(Regex("""\s*[\[(][^\])]*[\])]"""), ""))
+
+    /**
+     * Picks a song's home from a song search. Only the artist's own official releases count, and only
+     * plain ones: no live, compilation, remix or soundtrack records. The album is the earliest such album
+     * with the song on it; the single is the earliest single named after the song.
+     */
+    fun chooseSongHome(found: List<Triple<Int, String, Release>>, title: String, artist: String): SongHome {
+        val name = bare(title)
+        val plain = found.filter { (score, song, r) ->
+            score >= 85 && bare(song) == name && sameArtist(r.artist, artist) && r.otherTypes.isEmpty() &&
+                (r.status.isEmpty() || r.status.equals("Official", true))
+        }.map { it.third }
+        val byYear = compareBy<Release> { if (it.year > 0) it.year else 9999 }
+        val album = plain.filter { it.type.equals("Album", true) }.minWithOrNull(byYear)
+        val single = plain.filter { it.type.equals("Single", true) && bare(it.title).startsWith(name) }.minWithOrNull(byYear)
+        return SongHome(album?.let { Match(it.title, it.artist, it.year, it.id, it.groupId) }, single?.let { Match(it.title, it.artist, it.year, it.id, it.groupId) })
+    }
+
+    /** Looks a song up, to find the album it first came out on and the single it came out as. Call off the main thread. */
+    fun findSongHome(title: String, artist: String): SongHome {
+        if (artist.isBlank() || artist == Library.UNKNOWN_ARTIST || isVarious(artist)) return SongHome(null, null)
+        val query = "recording:" + quote(title) + " AND artist:" + quote(artist) + " AND status:official AND (primarytype:album OR primarytype:single)"
+        return chooseSongHome(parseRecordings(ask("recording/", query, 15)), title, artist)
     }
 
     /** Fetches the album's front cover (500 dots across). Null when the catalogue has none. */

@@ -106,7 +106,7 @@ sealed class Screen {
 }
 
 enum class Tab(val label: String) {
-    ALBUMS("Albums"), ARTISTS("Artists"), SONGS("Songs"), FOLDERS("Folders"), FAVOURITES("Favourites"), ON_PHONE("On phone"),
+    ALBUMS("Albums"), ARTISTS("Artists"), SONGS("Songs"), SINGLES("Singles"), FOLDERS("Folders"), FAVOURITES("Favourites"), ON_PHONE("On phone"),
 }
 
 object Ui {
@@ -294,6 +294,14 @@ object Ui {
                     tab == Tab.ALBUMS -> AlbumGrid(albums, go)
                     tab == Tab.ARTISTS -> ArtistList(artists, go)
                     tab == Tab.SONGS -> SongList(songs)
+                    tab == Tab.SINGLES -> {
+                        val titles = Scanner.data.singleTitles
+                        val singles = remember(titles, songs) {
+                            songs.filter { it.id in titles }.sortedWith(compareBy({ Library.sortName(it.artist) }, { Library.sortName(it.title) }))
+                        }
+                        if (singles.isEmpty()) Note("Songs that came out as singles show here, with the single's cover. They are found at step 3 in Settings.")
+                        else SingleList(singles, titles)
+                    }
                     tab == Tab.FAVOURITES -> {
                         val ids = Sync.favouriteIds()
                         val favs = remember(ids, songs) { songs.filter { it.id in ids } }
@@ -487,6 +495,28 @@ object Ui {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)) {
             itemsIndexed(songs, key = { _, t -> t.id }) { i, t ->
                 Row2(t.title, t.artist, Glyph.NOTE, highlight = t.id == Playing.currentId) { Playing.play(songs, i) }
+            }
+        }
+    }
+
+    /** Songs that came out as singles, each with its single's cover and name. */
+    @Composable
+    private fun SingleList(songs: List<Track>, titles: Map<String, String>) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)) {
+            itemsIndexed(songs, key = { _, t -> t.id }) { i, t ->
+                val on = t.id == Playing.currentId
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(RoundedCornerShape(12.dp))
+                        .background(if (on) K.Panel else Color.Transparent).clickable { Playing.play(songs, i) }.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Cover(Scanner.singleArtFor(t), Modifier.size(56.dp), corner = 10.dp, glyphSize = 24.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Words(t.title, 16, if (on) K.Accent else K.Ink, bold = on)
+                        Words(t.artist + " · single, " + (titles[t.id] ?: t.title), 13, K.Soft)
+                    }
+                }
             }
         }
     }
@@ -798,10 +828,15 @@ object Ui {
                 state = if (stage == 2) NOW else if (songs > 0 && read >= songs) DONE else WAITING,
                 progress = n(read) + " of " + n(songs) + " read",
             )
+            val singlesChecked = data.tracks.count { it.singleChecked }
             Step(
-                3, "Look up the albums", "Finds each album's proper name, year and cover in an online music catalogue.",
-                state = if (stage == 3) NOW else if (albums > 0 && view.lookedUp >= albums) DONE else WAITING,
-                progress = n(view.lookedUp) + " of " + n(albums) + " albums looked up · " + n(view.matched.size) + " matched",
+                3, "Look up albums and singles",
+                "Finds each album's proper name, year and cover in an online music catalogue. Songs on compilations are given the album they first came out on. Songs that came out as singles get the single's cover, in the Singles tab.",
+                state = if (stage == 3) NOW else if (albums > 0 && view.lookedUp >= albums && singlesChecked >= songs) DONE else WAITING,
+                progress = n(view.lookedUp) + " of " + n(albums) + " albums looked up · " + n(view.matched.size) + " matched\n" +
+                    n(singlesChecked) + " of " + n(songs) + " songs checked for singles · " + n(data.singleTitles.size) + " found" +
+                    (if (stage == 3 && Scanner.status.isNotEmpty()) "\nNow: " + Scanner.status else "") +
+                    (if (Scanner.waitingForWifi && !Scanner.running) "\nLooking for singles carries on when the phone is on Wi-Fi." else ""),
             )
             Step(
                 4, "Fix the files", "Only when you press Fix: writes the right album name and cover into each song file in your Drive and takes out wrong pictures. Google keeps the old files for 30 days.",
@@ -835,7 +870,7 @@ object Ui {
             Column(Modifier.weight(1f)) {
                 Words(name + when (state) { DONE -> " · done"; NOW -> " · now"; else -> "" }, 16, if (state == NOW) K.Accent else K.Ink, bold = true)
                 Words(what, 14, K.Soft, lines = 4)
-                if (progress.isNotEmpty()) Words(progress, 14, if (state == NOW) K.Accent else K.Ink, lines = 2)
+                if (progress.isNotEmpty()) Words(progress, 14, if (state == NOW) K.Accent else K.Ink, lines = 6)
             }
         }
     }
