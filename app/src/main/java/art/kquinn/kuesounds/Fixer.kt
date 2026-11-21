@@ -44,12 +44,17 @@ object Fixer {
     /** Asks Google for the edit permission, then does what is given. Set by the main screen. */
     var askPermission: (then: () -> Unit) -> Unit = { it() }
 
-    /** Asks once to show notices, so the fixing's progress shows in the pull-down. Set by the main screen. */
+    /**
+     * Asks to show notices, so the fixing's and saving's progress shows in the pull-down. Only from
+     * Settings › Notifications: fixing and saving work the same without them. Set by the main screen.
+     */
     var askNotices: () -> Unit = {}
+
+    /** Whether KueSounds may show notices. Kept up to date by the main screen. */
+    var noticesOn by androidx.compose.runtime.mutableStateOf(false)
 
     /** Fixes [albums], asking for the edit permission first when it hasn't been given. */
     fun fix(context: Context, albums: List<Album>) {
-        askNotices()
         val app = context.applicationContext
         if (Google.canEdit) start(app, albums) else askPermission { start(app, albums) }
     }

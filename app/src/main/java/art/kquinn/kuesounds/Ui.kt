@@ -615,7 +615,6 @@ object Ui {
                     14, K.Accent, centre = true,
                 )
             else -> Button("Save to phone", main = false, glyph = Glyph.SAVE, modifier = Modifier.fillMaxWidth()) {
-                Fixer.askNotices()
                 Offline.save(context, al.tracks)
             }
         }
@@ -911,6 +910,23 @@ object Ui {
                     else "Favourites synced with the Drive at " + java.text.SimpleDateFormat("HH:mm, d MMM", java.util.Locale.UK).format(java.util.Date(when_)),
                     14, K.Soft, lines = 2,
                 )
+            }
+            Panel {
+                Words("Notifications", 14, K.Soft)
+                val context = LocalContext.current
+                val on = Fixer.noticesOn
+                Words("Progress in the pull-down: " + if (on) "on" else "off", 17)
+                Words("Shows how saving to the phone and fixing the files are going, while KueSounds is closed. Both work the same without it.", 14, K.Soft, lines = 4)
+                Spacer(Modifier.height(8.dp))
+                Button(if (on) "Turn off in the phone's settings" else "Turn on", main = false, modifier = Modifier.fillMaxWidth()) {
+                    if (on) runCatching {
+                        context.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    } else Fixer.askNotices()
+                }
             }
             Panel {
                 Words("Fix the files", 14, K.Soft)

@@ -40,7 +40,12 @@ class MainActivity : ComponentActivity() {
         afterEditAllowed = null
     }
 
-    private val noticesPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private val noticesPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { readNotices() }
+
+    /** Whether notices are allowed: on Android 13 and later only once the person says yes. */
+    private fun readNotices() {
+        Fixer.noticesOn = androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()
+    }
 
     /** Asks Google for permission to edit the music files, then does [then]. */
     private fun askEdit(then: () -> Unit) {
@@ -63,11 +68,22 @@ class MainActivity : ComponentActivity() {
         Sync.init(this)
         Playing.connect(this)
         Fixer.askPermission = ::askEdit
+        // Settings › Notifications › Turn on: Android's question the first time; after that (Android won't
+        // ask twice), the phone's own notification settings for KueSounds.
         Fixer.askNotices = {
-            if (android.os.Build.VERSION.SDK_INT >= 33 &&
-                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
-            ) {
+            val prefs = getSharedPreferences("notices", MODE_PRIVATE)
+            val granted = android.os.Build.VERSION.SDK_INT < 33 ||
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted && !prefs.getBoolean("asked", false)) {
+                prefs.edit().putBoolean("asked", true).apply()
                 noticesPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                runCatching {
+                    startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName),
+                    )
+                }
             }
         }
         signedIn = Google.signedIn
@@ -90,6 +106,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        readNotices()
         if (signedIn) Sync.later(1000)
         lifecycleScope.launch(Dispatchers.IO) { Updates.checkAndFetch(applicationContext) }
     }
