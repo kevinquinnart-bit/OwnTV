@@ -48,6 +48,8 @@ object Scanner {
         val withCover: Int = 0,
         val matched: List<Album> = emptyList(),
         val leftToFix: Int = 0,
+        /** Albums already looked up in the online catalogue, found there or not. */
+        val lookedUp: Int = 0,
     ) {
         val byKey: Map<String, Album> by lazy { albums.associateBy { it.key } }
     }
@@ -80,6 +82,7 @@ object Scanner {
                         withCover = albums.count { d.art[it.key]?.let { p -> File(p).exists() } == true },
                         matched = matched,
                         leftToFix = matched.count { !Fixer.isFixed(it) },
+                        lookedUp = albums.count { al -> al.tracks.all { it.checked } },
                     )
                 }
             } finally {
@@ -88,6 +91,10 @@ object Scanner {
             }
         }
     }
+
+    /** Which step the scan is on, for Settings: 1 finding the music, 2 reading song details, 3 looking up albums. 0 idle. */
+    var stage by mutableStateOf(0)
+        private set
 
     /** What the scan is doing, in words for the screen. Empty when it is idle. */
     var status by mutableStateOf("")
@@ -168,6 +175,7 @@ object Scanner {
         job = scope.launch {
             problem = ""
             try {
+                stage = 1
                 status = "Finding your music"
                 val files = Drive.listAll(Drive.MUSIC_QUERY) { n -> status = "Finding your music · " + String.format("%,d", n) + " files" }
                 val found = String.format("%,d", files.count { Library.isMusic(it.name, it.mime) }) + " songs found"
@@ -183,7 +191,9 @@ object Scanner {
                 save()
                 note("found " + data.tracks.size + " songs in " + folders.size + " folders, " + covers.size + " folder cover pictures")
                 if (Google.email.isBlank()) runCatching { Google.keepEmail(Drive.whoAmI()) }
+                stage = 2
                 readDetails()
+                stage = 3
                 matchAlbums()
                 status = ""
                 note("scan finished")
@@ -196,6 +206,7 @@ object Scanner {
                 problem = "Couldn't finish looking through your music. " + (e.message ?: "")
                 status = ""
             } finally {
+                stage = 0
                 running = false
             }
         }

@@ -774,6 +774,72 @@ object Ui {
     // ---------------------------------------------------------------------------------------------
     // Settings
 
+    /**
+     * The four steps KueSounds takes with your music, each saying what it does and how far it has got.
+     * Steps 1 to 3 only read; the files in the Drive are changed only at step 4, when Fix is pressed.
+     */
+    @Composable
+    private fun MusicSteps(view: Scanner.LibraryView) {
+        val data = Scanner.data
+        val songs = data.tracks.size
+        val read = data.tracks.count { it.tagged }
+        val albums = view.albums.size
+        val stage = Scanner.stage
+        val n = { x: Int -> String.format("%,d", x) }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Words("Steps 1 to 3 only read your music. Your files are only changed at step 4, when you choose.", 14, K.Soft, lines = 3)
+            Step(
+                1, "Find your music", "Lists every song in your Google Drive.",
+                state = if (stage == 1) NOW else if (songs > 0) DONE else WAITING,
+                progress = if (stage == 1) Scanner.status.ifBlank { "Looking…" } else if (songs > 0) count(songs, "song") + " found" else "",
+            )
+            Step(
+                2, "Read the song details", "Reads each song's title, artist, album and any picture inside it.",
+                state = if (stage == 2) NOW else if (songs > 0 && read >= songs) DONE else WAITING,
+                progress = n(read) + " of " + n(songs) + " read",
+            )
+            Step(
+                3, "Look up the albums", "Finds each album's proper name, year and cover in an online music catalogue.",
+                state = if (stage == 3) NOW else if (albums > 0 && view.lookedUp >= albums) DONE else WAITING,
+                progress = n(view.lookedUp) + " of " + n(albums) + " albums looked up · " + n(view.matched.size) + " matched",
+            )
+            Step(
+                4, "Fix the files", "Only when you press Fix: writes the right album name and cover into each song file in your Drive and takes out wrong pictures. Google keeps the old files for 30 days.",
+                state = if (Fixer.running) NOW else if (view.matched.isNotEmpty() && view.leftToFix == 0) DONE else WAITING,
+                progress = if (view.matched.isEmpty()) "Nothing ready to fix yet"
+                else n(view.leftToFix) + " of " + count(view.matched.size, "matched album") + " still to fix · see Fix the files below",
+            )
+            if (Scanner.running) Words(
+                if (stage == 1) "Now on step 1." else if (stage == 2) "Now on step 2. Keep KueSounds open: it carries on from here next time if it is stopped."
+                else if (stage == 3) "Now on step 3. Keep KueSounds open: it carries on from here next time if it is stopped." else "Working…",
+                14, K.Accent, lines = 3,
+            )
+        }
+    }
+
+    private const val DONE = 2
+    private const val NOW = 1
+    private const val WAITING = 0
+
+    /** One step: its number (a tick once done), its name, what it does, and how far it has got. */
+    @Composable
+    private fun Step(number: Int, name: String, what: String, state: Int, progress: String) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(
+                Modifier.size(28.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(if (state == WAITING) K.Page else K.Accent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Words(if (state == DONE) "✓" else number.toString(), 14, if (state == WAITING) K.Soft else K.Page, bold = true)
+            }
+            Column(Modifier.weight(1f)) {
+                Words(name + when (state) { DONE -> " · done"; NOW -> " · now"; else -> "" }, 16, if (state == NOW) K.Accent else K.Ink, bold = true)
+                Words(what, 14, K.Soft, lines = 4)
+                if (progress.isNotEmpty()) Words(progress, 14, if (state == NOW) K.Accent else K.Ink, lines = 2)
+            }
+        }
+    }
+
     @Composable
     private fun Settings(back: () -> Unit) {
         val data = Scanner.data
@@ -792,14 +858,10 @@ object Ui {
                 val view = Scanner.view
                 Words(count(data.tracks.size, "song") + " · " + count(view.albums.size, "album"), 17)
                 Words(String.format("%,d", view.withCover) + " with a cover", 14, K.Soft)
-                val left = data.tracks.count { !it.tagged }
-                if (left > 0) Words("Song details still to read: " + String.format("%,d", left), 14, K.Soft, lines = 2)
+                Spacer(Modifier.height(12.dp))
+                MusicSteps(view)
                 Spacer(Modifier.height(8.dp))
-                if (Scanner.running) {
-                    Words(Scanner.status.ifBlank { "Looking through your music" }, 15, K.Accent, lines = 2)
-                } else {
-                    Button("Look for new music", modifier = Modifier.fillMaxWidth()) { Scanner.scan() }
-                }
+                if (!Scanner.running) Button("Look for new music", modifier = Modifier.fillMaxWidth()) { Scanner.scan() }
             }
             Panel {
                 Words("On this phone", 14, K.Soft)
