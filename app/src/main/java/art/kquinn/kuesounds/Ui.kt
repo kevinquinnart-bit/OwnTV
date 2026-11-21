@@ -603,6 +603,11 @@ object Ui {
         val songs = todo.sumOf { al -> al.tracks.count { Tagger.canFix(it.fileName) && !it.fixed } }
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when {
+                // Nothing matched yet: nothing has been fixed either, so it mustn't say so.
+                albums.isEmpty() -> Words(
+                    if (Scanner.running) "Nothing to fix yet. Albums are looked up once the song details are read." else "No albums matched yet.",
+                    14, K.Soft, lines = 2,
+                )
                 todo.isEmpty() -> Words("Files fixed in your Drive.", 14, K.Soft, centre = albums.size == 1)
                 Fixer.running && todo.any { Fixer.isWaiting(it) } -> Words("Waiting to be fixed.", 14, K.Soft, centre = albums.size == 1)
                 Fixer.running && albums.size == 1 && Fixer.status.contains(todo.first().title) -> Words(Fixer.status, 14, K.Accent, lines = 2, centre = true)
