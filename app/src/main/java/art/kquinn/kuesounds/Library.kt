@@ -175,6 +175,27 @@ object Library {
         return t.ifBlank { raw.trim() } to disc
     }
 
+    /** An artist without anyone featured ("Jay-Z feat. Alicia Keys" is "jay-z"), for telling artists apart. */
+    fun mainArtist(artist: String): String =
+        sortName(artist).split(Regex(""" (?:feat\.?|ft\.?|featuring|with|&|and|x|vs\.?) |, """)).first().trim()
+
+    /**
+     * Songs that sit on a compilation, though each is in a folder of its own (so they don't group as one
+     * album of mixed artists): an album name shared by 3 or more artists, where an artist has only one or
+     * two songs under it. An artist with more songs under the name ("Greatest Hits" by Queen) keeps them
+     * as their own album.
+     */
+    fun compilationSongs(tracks: List<Track>): Set<String> {
+        val out = HashSet<String>()
+        for ((title, list) in tracks.groupBy { sortName(it.album) }) {
+            if (title.isEmpty() || title == sortName(UNKNOWN_ALBUM)) continue
+            val byArtist = list.groupBy { mainArtist(it.artist) }
+            if (byArtist.size < 3) continue
+            for ((_, songs) in byArtist) if (songs.size <= 2) songs.forEach { out += it.id }
+        }
+        return out
+    }
+
     fun albumKey(artist: String, album: String): String = sortName(artist) + "\u0001" + sortName(album)
 
     /** The artist an album belongs to: the album artist when the songs name one. */

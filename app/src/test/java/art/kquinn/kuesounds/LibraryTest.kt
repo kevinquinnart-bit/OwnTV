@@ -188,4 +188,32 @@ class LibraryTest {
         assertEquals("1:02:05", Library.clock(3_725_000))
         assertEquals("0:00", Library.clock(0))
     }
+
+    @Test
+    fun songsOnACompilationInFoldersOfTheirOwnAreFound() {
+        val tracks = listOf(
+            track("1", "Johnny and Mary", "Robert Palmer", "101 80's Hits", 1, folder = "f1"),
+            track("2", "Back to Life", "Soul II Soul Feat. Caron Wheeler", "101 80's Hits", 2, folder = "f2"),
+            track("3", "Ghost Town", "The Specials", "101 80's Hits", 3, folder = "f3"),
+            track("4", "Vienna", "Ultravox", "101 80's Hits", 4, folder = "f4"),
+            // Queen's own Greatest Hits, beside two others' with the same name: kept as Queen's album.
+            track("q1", "Bohemian Rhapsody", "Queen", "Greatest Hits", 1, folder = "q"),
+            track("q2", "Another One Bites the Dust", "Queen", "Greatest Hits", 2, folder = "q"),
+            track("q3", "Killer Queen", "Queen", "Greatest Hits", 3, folder = "q"),
+            track("a1", "Dancing Queen", "ABBA", "Greatest Hits", 1, folder = "a"),
+            track("e1", "Hotel California", "Eagles", "Greatest Hits", 1, folder = "e"),
+            // One artist with guests on some songs: not a compilation.
+            track("p1", "California Love", "2Pac feat. Dr. Dre", "All Eyez on Me", 1, folder = "p"),
+            track("p2", "2 of Amerikaz Most Wanted", "2Pac feat. Snoop Doggy Dogg", "All Eyez on Me", 2, folder = "p"),
+            track("p3", "Ambitionz az a Ridah", "2Pac", "All Eyez on Me", 3, folder = "p"),
+        )
+        assertEquals(setOf("1", "2", "3", "4", "a1", "e1"), Library.compilationSongs(tracks))
+    }
+
+    @Test
+    fun featuredArtistsAreLeftOff() {
+        assertEquals("jay-z", Library.mainArtist("Jay-Z feat. Alicia Keys"))
+        assertEquals("soul ii soul", Library.mainArtist("Soul II Soul Feat. Caron Wheeler"))
+        assertEquals("waylon jennings", Library.mainArtist("Waylon Jennings & Willie Nelson"))
+    }
 }

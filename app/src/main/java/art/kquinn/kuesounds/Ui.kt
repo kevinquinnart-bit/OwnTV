@@ -929,6 +929,19 @@ object Ui {
                 var copied by remember { mutableStateOf(false) }
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
+                // Checking by hand, as well as the pop-up: finds a newer version and puts it on now.
+                var updateSays by remember { mutableStateOf("") }
+                var checking by remember { mutableStateOf(false) }
+                Button(if (checking) "Checking…" else "Check for updates", main = false, modifier = Modifier.fillMaxWidth()) {
+                    if (checking) return@Button
+                    checking = true
+                    scope.launch {
+                        updateSays = Updates.updateByHand(context) { updateSays = it }
+                        checking = false
+                    }
+                }
+                if (updateSays.isNotEmpty()) Words(updateSays, 14, K.Accent, lines = 3)
+                Spacer(Modifier.height(8.dp))
                 Button(if (copied) "Copied. Paste it to Claude." else "Copy report for Claude", main = false, modifier = Modifier.fillMaxWidth()) {
                     scope.launch {
                         val text = withContext(Dispatchers.Default) { Scanner.report() }

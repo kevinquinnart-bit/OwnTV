@@ -192,6 +192,31 @@ object Updates {
         doing = ""
     }
 
+    /**
+     * Settings › Check for updates: looks for a newer version and, when there is one, downloads it (or uses
+     * the one already downloaded) and puts it on now. [say] is told how it is going. Gives back the last word.
+     */
+    suspend fun updateByHand(context: Context, say: (String) -> Unit): String {
+        say("Checking…")
+        val latest = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { check() }.getOrNull() }
+            ?: return "Couldn't reach the download. Check the internet and try again."
+        if (!isNewer(latest, BuildConfig.VERSION_CODE)) return "You have the newest version."
+        if (!mayInstall(context)) {
+            openInstallPermission(context)
+            return "Version " + latest.name + " is ready. First allow KueSounds to install updates on the page that opened, then tap Check for updates again."
+        }
+        say("Downloading version " + latest.name + " · 0%")
+        val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            ready?.takeIf { it.exists() && (buildInside(context, it) ?: 0) >= latest.code }
+                ?: runCatching { downloadChecked(context) { p -> say("Downloading version " + latest.name + " · $p%") } }.getOrNull()
+        } ?: return "The download didn't work. Try again later."
+        ready = null
+        say("Putting version " + latest.name + " on…")
+        val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { installSession(context, file) }.isSuccess }
+        if (!ok) install(context, file)
+        return "Putting version " + latest.name + " on. Android may ask first. KueSounds closes while it goes on: open it again after."
+    }
+
     /** KueSounds has been left: a downloaded update goes on now, unless music is playing. */
     fun installIfReady(context: Context) {
         val file = ready ?: return

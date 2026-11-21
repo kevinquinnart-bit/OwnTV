@@ -369,14 +369,15 @@ object Scanner {
         note("lookup failed (" + what + "): " + e.javaClass.simpleName + " " + e.message)
         if (failsInARow >= 8) throw TooManyFailures(e.message ?: e.javaClass.simpleName)
         status = "The music catalogue isn't answering. Trying again shortly"
-        Thread.sleep(30_000L)
+        Thread.sleep(10_000L)
         return r
     }
 
     private fun matchAlbums() {
         waitingForWifi = false
         failsInARow = 0
-        val todo = Library.albums(data.tracks).filter { al -> !onItsOwn(al) && al.tracks.any { !it.checked } }
+        val loose = Library.compilationSongs(data.tracks)
+        val todo = Library.albums(data.tracks).filter { al -> !onItsOwn(al) && al.tracks.any { !it.checked && it.id !in loose } }
         note("step 3: " + todo.size + " albums to look up")
         var found = 0
         var covers = 0
@@ -399,7 +400,9 @@ object Scanner {
             if (todo.isNotEmpty()) note("looked up " + todo.size + " albums: " + found + " found, " + notFound + " not found, " + covers + " covers fetched")
 
             // Songs from compilations, and songs with no album: each to its own album.
-            val songs = Library.albums(data.tracks).filter { onItsOwn(it) }.flatMap { al -> al.tracks.filter { !it.ownLook }.map { al to it } }
+            val songs = Library.albums(data.tracks).flatMap { al ->
+                al.tracks.filter { !it.ownLook && (onItsOwn(al) || it.id in loose) }.map { al to it }
+            }
             var moved = 0
             songs.forEachIndexed { i, (al, t) ->
                 status = "Finding the albums of songs on compilations · " + (i + 1) + " of " + songs.size

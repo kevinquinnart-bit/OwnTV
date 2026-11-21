@@ -50,13 +50,16 @@ object Catalogue {
         val url = (SEARCH + path).toHttpUrl().newBuilder().addQueryParameter("query", query).addQueryParameter("fmt", "json")
             .addQueryParameter("limit", limit.toString()).build()
         val request = Request.Builder().url(url).header("User-Agent", WHO).header("Accept", "application/json").build()
-        repeat(5) { attempt ->
+        // Busy: wait longer each time (3, 6, 12, 24 then 45 seconds), or as long as MusicBrainz says to.
+        val waits = longArrayOf(3_000, 6_000, 12_000, 24_000, 45_000)
+        for (attempt in waits.indices) {
+            var told = 0L
             Drive.http.newCall(request).execute().use { r ->
                 if (r.isSuccessful) return r.body.string()
-                // Busy: wait and ask again.
                 if (r.code != 503 && r.code != 429) throw IOException("MusicBrainz answered " + r.code)
+                told = (r.header("Retry-After")?.trim()?.toLongOrNull() ?: 0L) * 1000L
             }
-            Thread.sleep(2000L * (attempt + 1))
+            Thread.sleep(maxOf(waits[attempt], minOf(told, 120_000L)))
             lastAsked = System.currentTimeMillis()
         }
         throw IOException("MusicBrainz stayed busy")
