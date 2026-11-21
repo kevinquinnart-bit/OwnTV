@@ -4718,7 +4718,7 @@ private fun HomeScreen(
             // Until it has been fetched (or with no internet): the channel last watched, as before.
             LaunchedEffect(Unit) { Trending.load(context) }
             val slides = Trending.slides
-            if (slides.isNotEmpty()) TrendingBanner(slides, clock, Modifier.fillMaxWidth().height(184.dp))
+            if (slides.isNotEmpty()) TrendingBanner(slides, clock, Modifier.fillMaxWidth().height(168.dp))
             else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4757,9 +4757,9 @@ private fun HomeScreen(
                 tiles.forEach { s ->
                     Tile(
                         { onOpen(s) },
-                        Modifier.size(width = 150.dp, height = 100.dp).then(if (s == state.cameFrom) Modifier.focusRequester(homeFocus) else Modifier),
+                        Modifier.size(width = 150.dp, height = 90.dp).then(if (s == state.cameFrom) Modifier.focusRequester(homeFocus) else Modifier),
                     ) { focused ->
-                        SectionIcon(s, if (focused) Color.Black else AccentInk, Modifier.size(38.dp))
+                        SectionIcon(s, if (focused) Color.Black else AccentInk, Modifier.size(34.dp))
                         Spacer(Modifier.height(6.dp))
                         Text(s.label, color = if (focused) Color.Black else Ink, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -4943,19 +4943,41 @@ private fun WholeRows(rows: List<@Composable () -> Unit>, modifier: Modifier = M
     val least = with(density) { 24.dp.roundToPx() }
     // The row peeking in, and how much of it shows (in pixels).
     var peek by remember { mutableStateOf(-1 to 0f) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val scope = rememberCoroutineScope()
+    // Each row's height at the last layout: rows with nothing in them (0) are passed over going up.
+    val heightsSeen = remember { arrayOf(IntArray(0)) }
     androidx.compose.ui.layout.Layout(
         content = {
             rows.forEachIndexed { i, row ->
                 Box(
                     Modifier
                         .onFocusChanged { if (it.hasFocus) focusedRow = i }
+                        // Up from the top row shown: the rows above sit out of sight, where the remote went past them
+                        // to the section tiles. So the row above is put back in place first, then the remote moves up.
+                        .onPreviewKeyEvent { e ->
+                            if (e.key != Key.DirectionUp || i == 0 || i != top[0]) return@onPreviewKeyEvent false
+                            if (e.type == KeyEventType.KeyDown) {
+                                var above = i - 1
+                                while (above > 0 && heightsSeen[0].getOrElse(above) { 1 } == 0) above--
+                                focusedRow = above
+                                scope.launch {
+                                    withFrameNanos { }
+                                    withFrameNanos { }
+                                    focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Up)
+                                }
+                            }
+                            true
+                        }
                         .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
                         .drawWithContent {
                             drawContent()
                             val (row, shows) = peek
-                            // Faded: two thirds there at its top, gone by the bottom of the screen.
+                            // Its heading clear, then fading away to nothing by the bottom of the screen.
                             if (row == i && shows > 0f) drawRect(
-                                androidx.compose.ui.graphics.Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.65f), 1f to Color.Transparent, startY = 0f, endY = shows),
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    0f to Color.Black, 0.3f to Color.Black.copy(alpha = 0.8f), 1f to Color.Transparent, startY = 0f, endY = shows,
+                                ),
                                 blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
                             )
                         },
@@ -4966,6 +4988,7 @@ private fun WholeRows(rows: List<@Composable () -> Unit>, modifier: Modifier = M
     ) { measurables, constraints ->
         val placeables = measurables.map { it.measure(constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)) }
         val heights = placeables.map { if (it.height > 0) it.height + gap else 0 }
+        heightsSeen[0] = placeables.map { it.height }.toIntArray()
         val room = constraints.maxHeight
         val f = focusedRow
         var t = top[0].coerceIn(0, (placeables.size - 1).coerceAtLeast(0))
@@ -5070,13 +5093,13 @@ private fun TrendingBanner(slides: List<Trending.Slide>, clock: String, modifier
                 // Cropped from the top, so heads and the tops of pictures are kept (cut from the middle, they were lost).
                 AsyncImage(model = s.picture, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxHeight().fillMaxWidth(0.66f).align(Alignment.CenterEnd))
                 Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(0f to Panel, 0.36f to Panel, 0.62f to Panel.copy(alpha = 0f))))
-                Column(Modifier.fillMaxHeight().fillMaxWidth(0.52f).padding(start = 20.dp, top = 14.dp, bottom = 12.dp, end = 8.dp)) {
+                Column(Modifier.fillMaxHeight().fillMaxWidth(0.52f).padding(start = 20.dp, top = 10.dp, bottom = 10.dp, end = 8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         KueLogo(24.dp, 17.sp)
                         Spacer(Modifier.width(14.dp))
                         Text(clock, color = Soft, fontSize = 14.sp, maxLines = 1)
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text("Trending · " + s.service, color = AccentInk, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text(s.title, color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (s.about.isNotBlank()) Text(s.about, color = Soft, fontSize = 15.sp, lineHeight = 20.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
