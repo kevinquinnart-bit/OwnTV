@@ -4718,7 +4718,7 @@ private fun HomeScreen(
             // Until it has been fetched (or with no internet): the channel last watched, as before.
             LaunchedEffect(Unit) { Trending.load(context) }
             val slides = Trending.slides
-            if (slides.isNotEmpty()) TrendingBanner(slides, clock, Modifier.fillMaxWidth().height(168.dp))
+            if (slides.isNotEmpty()) TrendingBanner(slides, clock, Modifier.fillMaxWidth().height(184.dp))
             else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4757,11 +4757,11 @@ private fun HomeScreen(
                 tiles.forEach { s ->
                     Tile(
                         { onOpen(s) },
-                        Modifier.size(width = 150.dp, height = 90.dp).then(if (s == state.cameFrom) Modifier.focusRequester(homeFocus) else Modifier),
+                        Modifier.size(width = 150.dp, height = 76.dp).then(if (s == state.cameFrom) Modifier.focusRequester(homeFocus) else Modifier),
                     ) { focused ->
-                        SectionIcon(s, if (focused) Color.Black else AccentInk, Modifier.size(34.dp))
-                        Spacer(Modifier.height(6.dp))
-                        Text(s.label, color = if (focused) Color.Black else Ink, fontSize = 17.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        SectionIcon(s, if (focused) Color.Black else AccentInk, Modifier.size(28.dp))
+                        Spacer(Modifier.height(4.dp))
+                        Text(s.label, color = if (focused) Color.Black else Ink, fontSize = 15.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -4772,7 +4772,7 @@ private fun HomeScreen(
         // down to it, and the rows then move up a row at a time.
         val blockSpacing = Arrangement.spacedBy(if (phone) 14.dp else 4.dp)
         val rowGap = Arrangement.spacedBy(if (phone) 12.dp else 18.dp)
-        val rowPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+        val rowPadding = PaddingValues(horizontal = 10.dp, vertical = if (phone) 6.dp else 4.dp)
         val rows: List<@Composable () -> Unit> = listOf(
         { Column(verticalArrangement = blockSpacing) {
         Heading("Favourite channels")
@@ -4788,7 +4788,7 @@ private fun HomeScreen(
                         ?.let { g -> val at = System.currentTimeMillis(); g.firstOrNull { it.startMs <= at && it.stopMs > at } }
                     HomeCard(
                         { onPlay(playables, i, true, key) },
-                        Modifier.width(if (phone) 150.dp else 176.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                        Modifier.width(if (phone) 150.dp else 152.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
                         16f / 9f,
                         onNow?.title?.ifBlank { null } ?: channel.name,
                         if (onNow?.title.isNullOrBlank()) null else channel.name,
@@ -4815,7 +4815,7 @@ private fun HomeScreen(
                     val left = ((w.lengthMs - w.positionMs) / 60_000).coerceAtLeast(1).toString() + " min left"
                     HomeCard(
                         { onCarryOn(w) },
-                        Modifier.width(if (phone) 150.dp else 176.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                        Modifier.width(if (phone) 150.dp else 152.dp).then(if (key == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
                         16f / 9f,
                         w.name,
                         left,
@@ -4839,12 +4839,12 @@ private fun HomeScreen(
                 // The TV's own aerial channels, first: they work with no internet.
                 if (aerial) item(key = "aerial") {
                     HomeCard({ if (!Aerial.open(context)) kueToast(context, "The TV's aerial channels wouldn't open.") },
-                        Modifier.width(150.dp), 16f / 9f, "Aerial TV", "This TV") {
+                        Modifier.width(136.dp), 16f / 9f, "Aerial TV", "This TV") {
                         Text("📡 Aerial", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
                 itemsIndexed(liveHere, key = { _, c -> c.link }) { _, c ->
-                    HomeCard({ LiveInApps.open(context, c) }, Modifier.width(150.dp), 16f / 9f, c.name, c.app) {
+                    HomeCard({ LiveInApps.open(context, c) }, Modifier.width(136.dp), 16f / 9f, c.name, c.app) {
                         Text(c.name, color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
@@ -4859,7 +4859,7 @@ private fun HomeScreen(
                 Heading("RTÉ Player catch-up")
                 LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
                     itemsIndexed(shows, key = { _, c -> c.guid }) { _, c ->
-                        HomeCard({ RteCatchUp.open(context, c) }, Modifier.width(150.dp), 16f / 9f, c.title, "RTÉ Player") {
+                        HomeCard({ RteCatchUp.open(context, c) }, Modifier.width(136.dp), 16f / 9f, c.title, "RTÉ Player") {
                             if (c.image.isNotBlank()) AsyncImage(model = c.image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             else Text(c.title, color = Ink, fontSize = 16.sp, maxLines = 2, modifier = Modifier.padding(8.dp))
                         }
@@ -4875,7 +4875,7 @@ private fun HomeScreen(
                 Heading("Pluto TV")
                 LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = rowPadding, horizontalArrangement = rowGap) {
                     itemsIndexed(pluto, key = { _, c -> c.slug }) { _, c ->
-                        HomeCard({ PlutoChannels.open(context, c) }, Modifier.width(150.dp), 16f / 9f, c.name, null) {
+                        HomeCard({ PlutoChannels.open(context, c) }, Modifier.width(136.dp), 16f / 9f, c.name, null) {
                             if (c.logo.isNotBlank()) AsyncImage(model = c.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(12.dp))
                             else Text(c.name, color = Ink, fontSize = 16.sp, maxLines = 2, modifier = Modifier.padding(8.dp))
                         }
@@ -4897,7 +4897,7 @@ private fun HomeScreen(
                 itemsIndexed(these, key = { _, a -> a.packageName }) { _, a ->
                     // Amazon's own apps can pass through Amazon's home screen as they open: it is let be for a moment.
                     HomeCard({ if (a.packageName.startsWith("com.amazon.")) Launcher.openLeavingHome(context, a.packageName) else TvAppsOnDevice.open(context, a.packageName) },
-                        Modifier.width(150.dp), 16f / 9f, a.name, null) {
+                        Modifier.width(136.dp), 16f / 9f, a.name, null) {
                         a.picture?.let { androidx.compose.foundation.Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(8.dp)) }
                             ?: Text(a.name, color = Soft, fontSize = 14.sp, maxLines = 2, modifier = Modifier.padding(8.dp))
                     }
@@ -5040,7 +5040,7 @@ private fun <T> PosterRow(
         itemsIndexed(items, key = { _, it -> key(it) }) { _, item ->
             HomeCard(
                 { state.resumeKey = key(item); onOpen(item) },
-                Modifier.width(if (phone) 110.dp else 84.dp).then(if (key(item) == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
+                Modifier.width(if (phone) 110.dp else 76.dp).then(if (key(item) == state.resumeKey) Modifier.focusRequester(resume) else Modifier),
                 2f / 3f,
                 name(item),
                 null,
@@ -5093,13 +5093,13 @@ private fun TrendingBanner(slides: List<Trending.Slide>, clock: String, modifier
                 // Cropped from the top, so heads and the tops of pictures are kept (cut from the middle, they were lost).
                 AsyncImage(model = s.picture, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxHeight().fillMaxWidth(0.66f).align(Alignment.CenterEnd))
                 Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(0f to Panel, 0.36f to Panel, 0.62f to Panel.copy(alpha = 0f))))
-                Column(Modifier.fillMaxHeight().fillMaxWidth(0.52f).padding(start = 20.dp, top = 10.dp, bottom = 10.dp, end = 8.dp)) {
+                Column(Modifier.fillMaxHeight().fillMaxWidth(0.52f).padding(start = 20.dp, top = 14.dp, bottom = 12.dp, end = 8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         KueLogo(24.dp, 17.sp)
                         Spacer(Modifier.width(14.dp))
                         Text(clock, color = Soft, fontSize = 14.sp, maxLines = 1)
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(8.dp))
                     Text("Trending · " + s.service, color = AccentInk, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text(s.title, color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (s.about.isNotBlank()) Text(s.about, color = Soft, fontSize = 15.sp, lineHeight = 20.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
