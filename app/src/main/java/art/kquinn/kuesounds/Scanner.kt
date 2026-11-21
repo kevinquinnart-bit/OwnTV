@@ -402,6 +402,7 @@ object Scanner {
             if (rest.isNotEmpty()) note("looked for singles for " + rest.size + " songs: " + singles + " found")
         } catch (e: java.io.IOException) {
             note("lookups stopped: " + e.message)
+            problem = "Looking up stopped: " + (e.message ?: "no reason given") + ". It tries again next time KueSounds opens."
             save()
         }
     }

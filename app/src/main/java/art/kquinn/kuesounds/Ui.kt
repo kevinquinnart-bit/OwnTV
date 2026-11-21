@@ -836,7 +836,8 @@ object Ui {
                 progress = n(view.lookedUp) + " of " + n(albums) + " albums looked up · " + n(view.matched.size) + " matched\n" +
                     n(singlesChecked) + " of " + n(songs) + " songs checked for singles · " + n(data.singleTitles.size) + " found" +
                     (if (stage == 3 && Scanner.status.isNotEmpty()) "\nNow: " + Scanner.status else "") +
-                    (if (Scanner.waitingForWifi && !Scanner.running) "\nLooking for singles carries on when the phone is on Wi-Fi." else ""),
+                    (if (Scanner.waitingForWifi && !Scanner.running) "\nLooking for singles carries on when the phone is on Wi-Fi." else "") +
+                    (if (!Scanner.running && Scanner.problem.isNotEmpty()) "\n" + Scanner.problem else ""),
             )
             Step(
                 4, "Fix the files", "Only when you press Fix: writes the right album name and cover into each song file in your Drive and takes out wrong pictures. Google keeps the old files for 30 days.",
@@ -869,8 +870,8 @@ object Ui {
             }
             Column(Modifier.weight(1f)) {
                 Words(name + when (state) { DONE -> " · done"; NOW -> " · now"; else -> "" }, 16, if (state == NOW) K.Accent else K.Ink, bold = true)
-                Words(what, 14, K.Soft, lines = 4)
-                if (progress.isNotEmpty()) Words(progress, 14, if (state == NOW) K.Accent else K.Ink, lines = 6)
+                Words(what, 14, K.Soft, lines = 8)
+                if (progress.isNotEmpty()) Words(progress, 14, if (state == NOW) K.Accent else K.Ink, lines = 10)
             }
         }
     }
